@@ -133,7 +133,7 @@ Sıralı; **üstten alta** ilerleriz. Akıllı Giriş çekirdek olduğu için ö
 | 04 | cikarim | **client-side** çıkarım (pdf.js/exifr/regex/boyut-route) + serverless gap-API (Claude vision); **Python YOK** | ⏳ |
 | 05 | asistan-semalari | özet & teyit ajanı prompt + tool-use JSON şemaları + triyaj sinyali + güven kuralları | ⏳ |
 | 06 | dilekce-uretimi | **Ayrı modül; 01 buraya yönlendirir.** docxtemplater (KGM Genel/Bölge/İşletmeci) + tek-sayfa margin + bölge eşleştirme + kaynak dosya bağı | ⏳ |
-| 07 | izleme-uyap | UYAP API-replay senkron + durum/tahsilat/tebliğ/itiraz + uyarılar | ⏳ |
+| 07 | izleme-uyap | **Ekran 1: takip-açıldı eşleştirme (icra no) · Ekran 2: eklenti köprüsü (senkron)** + durum/tahsilat/tebliğ/itiraz + uyarılar | ✅ taslak (2 ekran) |
 | 08 | guvenlik-ve-roller | auth, **müşteri seçim + tenant izolasyonu (RLS)**, audit log, rol modeli | ⏳ |
 
 > Akıllı Giriş'in (01) çalışması için zincir: 02 veri-modeli + 04 cikarim-worker + 05 asistan + 03 dosya-detay.
