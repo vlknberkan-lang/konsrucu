@@ -22,6 +22,7 @@ enum Rol {
 enum Yol {
   KLASIK
   IDARI
+  BELIRSIZ
 }
 
 enum DosyaDurum {
@@ -125,6 +126,8 @@ model Ayarlar {
   eposta         String?
   aciklamaFooter String? // ör. "K/Partners: ..."
   faizJson       Json? // dönemsel kanuni faiz oranları
+  vekilBaro      String?
+  faizTuru       String?  @default("Yasal faiz")
   updatedAt      DateTime @updatedAt
 }
 
@@ -138,6 +141,9 @@ model RucuDosyasi {
   hukukDosyaNo      String?
   hasarDosyaNo      String?
   hasarTarihi       DateTime?
+  sigortaliUnvan    String?
+  il                String?
+  muhatapOzet       String?
 
   // rücu
   brans             Brans?
@@ -157,10 +163,13 @@ model RucuDosyasi {
 
   // triyaj + durum
   yol               Yol?
+  yolGuven          Float?
+  yolNeden          String?         @db.Text
   durum             DosyaDurum      @default(HAVUZDA)
 
   // icra
   yetkiliIcra       String?
+  icraDairesi       String?
   icraDosyaNo       String?
   takipTarihi       DateTime?
   zamanasimi        DateTime?

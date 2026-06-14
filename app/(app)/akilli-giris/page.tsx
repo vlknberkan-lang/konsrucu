@@ -1,10 +1,13 @@
 /**
  * KonsRücü — Akıllı Giriş (Gelen Kutusu) · app/(app)/akilli-giris/page.tsx
- * Başlık + ingest paneli. (Sıradaki: gruplanmış rücu kayıtları listesi — Modül 1 backend.)
+ * Başlık + ingest paneli + gerçek dosya listesi (kart/tablo/timeline).
  */
 import { IngestPanel } from '@/components/akilli-giris/ingest-panel'
+import { CaseList } from '@/components/akilli-giris/case-list'
+import { listeDosyalar } from '@/lib/konsrucu/db'
 
-export default function AkilliGirisPage({ searchParams }: { searchParams: { yukle?: string } }) {
+export default async function AkilliGirisPage({ searchParams }: { searchParams: { yukle?: string } }) {
+  const list = await listeDosyalar()
   return (
     <div className="mx-auto max-w-[1500px] px-7 py-6">
       <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -20,7 +23,9 @@ export default function AkilliGirisPage({ searchParams }: { searchParams: { yukl
         <IngestPanel autoStart={searchParams?.yukle === '1'} />
       </div>
 
-      {/* TODO (Modül 1 backend): gruplanmış rücu kayıtları listesi (kart/tablo/timeline) */}
+      <div className="mt-2">
+        <CaseList list={list} />
+      </div>
     </div>
   )
 }
