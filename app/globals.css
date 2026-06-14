@@ -1,0 +1,148 @@
+/* ============================================================
+   KonsRücü — app/globals.css
+   Cobalt Steel token teması (KonstraERP ile aynı) + KonsRücü "kr" teal aksanı.
+   HSL kanalları olarak tutulur → hsl(var(--x)) ve hsl(var(--x) / 0.1) çalışır.
+   Light = :root · Dark = .dark (next-themes attribute="class").
+   ============================================================ */
+@import url("https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Inter+Tight:wght@700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── Marka çapaları (ham hex) ── */
+    --midnight: #0a1628;
+    --cobalt: #2e54e8;
+    --paper: #f5f7fa;
+
+    /* ── Yüzeyler & zemin ── */
+    --background: 214 32% 98%;
+    --foreground: 215 60% 12%;
+    --surface: 0 0% 100%;
+    --surface-muted: 214 32% 96%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 60% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 60% 12%;
+
+    /* ── Aksan · Cobalt ── */
+    --primary: 228 80% 55%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 228 80% 55%;
+    --accent-foreground: 0 0% 100%;
+    --ring: 228 80% 55%;
+
+    /* ── KonsRücü aksanı · teal (zeka / çıkarım) ── */
+    --kr: 184 74% 36%;
+    --kr-foreground: 0 0% 100%;
+    --kr-soft: 184 60% 95%;
+    --kr-ink: 184 70% 26%;
+
+    /* ── İkincil / muted ── */
+    --secondary: 214 32% 94%;
+    --secondary-foreground: 215 50% 20%;
+    --muted: 214 32% 94%;
+    --muted-foreground: 222 10% 46%;
+
+    /* ── Kenarlık ── */
+    --border: 222 12% 90%;
+    --border-subtle: 222 12% 94%;
+    --input: 222 12% 90%;
+
+    /* ── Durum ── */
+    --success: 160 84% 35%;
+    --success-foreground: 0 0% 100%;
+    --success-soft: 160 76% 95%;
+    --warning: 38 92% 48%;
+    --warning-foreground: 26 83% 14%;
+    --warning-soft: 48 96% 93%;
+    --danger: 0 72% 50%;
+    --danger-foreground: 0 0% 100%;
+    --danger-soft: 0 86% 96%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --info-soft: 199 96% 94%;
+
+    /* ── Tipografi ── */
+    --font-display: "Hanken Grotesk", system-ui, sans-serif;
+    --font-wordmark: "Inter Tight", system-ui, sans-serif;
+    --font-body: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+    /* ── Radius / shadow / motion ── */
+    --radius: 0.625rem;
+    --shadow-card: 0 1px 2px rgba(10, 22, 40, 0.05);
+    --shadow-pop: 0 8px 24px rgba(10, 22, 40, 0.12);
+    --shadow-float: 0 12px 32px rgba(10, 25, 41, 0.16);
+    --shadow-mock: 0 30px 80px -30px rgba(10, 22, 40, 0.35), 0 8px 24px rgba(10, 22, 40, 0.06);
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 213 31% 92%;
+    --surface: 217 33% 11%;
+    --surface-muted: 217 33% 17%;
+    --card: 217 33% 11%;
+    --card-foreground: 213 31% 92%;
+    --popover: 217 33% 14%;
+    --popover-foreground: 213 31% 92%;
+
+    --primary: 228 82% 64%;
+    --primary-foreground: 222 47% 9%;
+    --accent: 228 82% 64%;
+    --accent-foreground: 222 47% 9%;
+    --ring: 228 82% 64%;
+
+    --kr: 184 66% 50%;          /* parlak teal ~#46d6e0 */
+    --kr-foreground: 222 47% 9%;
+    --kr-soft: 184 48% 15%;
+    --kr-ink: 184 60% 70%;
+
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 213 31% 92%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 222 10% 66%;
+
+    --border: 222 16% 24%;
+    --border-subtle: 222 16% 19%;
+    --input: 222 16% 24%;
+
+    --success: 160 70% 45%;
+    --success-foreground: 222 47% 9%;
+    --success-soft: 160 50% 16%;
+    --warning: 38 90% 55%;
+    --warning-foreground: 26 83% 8%;
+    --warning-soft: 38 50% 18%;
+    --danger: 0 72% 60%;
+    --danger-foreground: 0 0% 100%;
+    --danger-soft: 0 50% 18%;
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --info: 199 89% 58%;
+    --info-foreground: 222 47% 9%;
+    --info-soft: 199 50% 18%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+  body {
+    font-family: var(--font-body);
+    color: hsl(var(--foreground));
+    background: hsl(var(--background));
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+  }
+}

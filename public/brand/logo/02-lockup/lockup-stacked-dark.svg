@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" width="640" height="480">
+  <g transform="translate(110 10)">
+    <rect x="6" y="10" width="14" height="80" rx="2" fill="#ffffff"></rect>
+    <path d="M22 50 L62 12 L78 12 L36 50 L78 88 L62 88 Z" fill="#ffffff"></path>
+    <circle cx="50" cy="50" r="7" fill="#2E54E8"></circle>
+  </g>
+  <text x="160" y="190" text-anchor="middle" font-family="Inter Tight, Inter, system-ui, sans-serif" font-weight="800" font-size="56" letter-spacing="-1.8" fill="#ffffff">Konstra<tspan fill="#2E54E8">ERP</tspan></text>
+</svg>
