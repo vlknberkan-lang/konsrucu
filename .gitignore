@@ -1,0 +1,39 @@
+# ─── bağımlılıklar ───
+/node_modules
+/.pnp
+.pnp.*
+
+# ─── next.js / build ───
+/.next/
+/out/
+/build
+/dist
+/coverage
+
+# ─── ortam / SECRETS — ASLA commit'leme ───
+.env
+.env.*
+!.env.example
+
+# ─── prisma (üretilen client) ───
+/prisma/generated
+
+# ─── supabase ───
+.branches
+.temp
+
+# ─── loglar ───
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── deploy ───
+.vercel
+
+# ─── os / editör ───
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.pem
