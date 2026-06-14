@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { KonsRucuWordmark } from '@/components/brand/konsrucu-mark'
 import { SignOutButton } from '@/components/auth/sign-out-button'
+import { secMusteri } from './actions'
 
 const ROL_ETIKET: Record<string, string> = {
   ADMIN: 'Yönetici',
@@ -27,7 +28,7 @@ export default async function DashboardPage() {
   const musteriler = dbUser?.musteriler.map((m) => m.musteri).filter((m) => m.aktif) ?? []
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-[100dvh] bg-background">
       <header className="flex items-center justify-between border-b border-border bg-card px-8 py-4">
         <KonsRucuWordmark size={22} />
         <div className="flex items-center gap-4">
@@ -57,20 +58,23 @@ export default async function DashboardPage() {
             </div>
           )}
           {musteriler.map((m) => (
-            <button
-              key={m.id}
-              className="group flex flex-col items-start rounded-xl border border-border bg-card p-6 text-left shadow-card transition hover:border-kr/40 hover:shadow-pop"
-            >
-              <div className="grid h-11 w-11 place-items-center rounded-[10px] bg-kr/10 font-display text-lg font-extrabold text-kr">
-                {m.ad.slice(0, 1)}
-              </div>
-              <div className="mt-4 font-display text-lg font-extrabold tracking-brand-tight text-foreground">
-                {m.ad}
-              </div>
-              <div className="mt-1 font-mono text-[11px] uppercase tracking-label text-muted-foreground">
-                Rücu havuzu →
-              </div>
-            </button>
+            <form key={m.id} action={secMusteri}>
+              <input type="hidden" name="musteriId" value={m.id} />
+              <button
+                type="submit"
+                className="group flex w-full flex-col items-start rounded-xl border border-border bg-card p-6 text-left shadow-card transition hover:border-kr/40 hover:shadow-pop"
+              >
+                <div className="grid h-11 w-11 place-items-center rounded-[10px] bg-kr/10 font-display text-lg font-extrabold text-kr">
+                  {m.ad.slice(0, 1)}
+                </div>
+                <div className="mt-4 font-display text-lg font-extrabold tracking-brand-tight text-foreground">
+                  {m.ad}
+                </div>
+                <div className="mt-1 font-mono text-[11px] uppercase tracking-label text-muted-foreground">
+                  Rücu havuzu →
+                </div>
+              </button>
+            </form>
           ))}
         </div>
       </main>

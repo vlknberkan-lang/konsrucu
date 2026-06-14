@@ -23,7 +23,7 @@ const STATS: [string, string][] = [
 
 export default function LoginPage() {
   return (
-    <div className="grid h-screen grid-cols-1 overflow-hidden md:grid-cols-[1.05fr_1fr]">
+    <div className="grid min-h-[100dvh] grid-cols-1 md:grid-cols-[1.05fr_1fr]">
       {/* ── sol: marka paneli ── */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-[#0a1628] p-12 text-white md:flex">
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px)] bg-[length:32px_32px]" />
