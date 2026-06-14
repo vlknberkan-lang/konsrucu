@@ -9,9 +9,11 @@
     "db:seed": "node prisma/seed.mjs"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3"
+    "@prisma/client": "^6.19.3",
+    "@supabase/supabase-js": "^2.108.1"
   },
   "devDependencies": {
+    "dotenv": "^17.4.2",
     "prisma": "^6.19.3"
   }
 }

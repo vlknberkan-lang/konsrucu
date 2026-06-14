@@ -18,6 +18,9 @@
 # ─── prisma (üretilen client) ───
 /prisma/generated
 
+# ─── yerel yardımcı scriptler (PII/şifre içerebilir) ───
+/scripts/
+
 # ─── supabase ───
 .branches
 .temp

@@ -71,6 +71,8 @@ Ayarlar (singleton)           (Şirket Bilgileri: MERSİS · K/Partners telefon 
 ne kadar güvenle geldiği izlenir. Düşük güven → gözden geçirmede işaretli.
 **Çift yönlü bağ:** üretilen dilekçe/blok ↔ kaynak ham evrak birbirine linklidir.
 
+**Aktif Müşteri (tenant) bağlamı.** konstraERP'deki proje seçimi gibi: **Müşteri Seçim** ekranı; seçilen müşteri oturum bağlamına girer. Tüm sorgular `musteriId` ile filtrelenir → **tam izolasyon** (Ray dosyaları Zurich'e karışmaz). Seçilen müşterinin `Ayarlar`'ı (MERSİS, alacaklı ünvan, footer, IBAN) takip-aç bloğu/dilekçeyi **otomatik** doldurur. Kullanıcı yalnız **atandığı** müşterileri (`MusteriKullanici`) görür; picker ona göre kısıtlı. (DB-seviyesi RLS izolasyonu: 08-güvenlik fazı.)
+
 ---
 
 ## 4. Asistan Katmanı — Desen
@@ -132,7 +134,7 @@ Sıralı; **üstten alta** ilerleriz. Akıllı Giriş çekirdek olduğu için ö
 | 05 | asistan-semalari | özet & teyit ajanı prompt + tool-use JSON şemaları + triyaj sinyali + güven kuralları | ⏳ |
 | 06 | dilekce-uretimi | **Ayrı modül; 01 buraya yönlendirir.** docxtemplater (KGM Genel/Bölge/İşletmeci) + tek-sayfa margin + bölge eşleştirme + kaynak dosya bağı | ⏳ |
 | 07 | izleme-uyap | UYAP API-replay senkron + durum/tahsilat/tebliğ/itiraz + uyarılar | ⏳ |
-| 08 | guvenlik-ve-roller | auth, RLS, audit log, rol modeli | ⏳ |
+| 08 | guvenlik-ve-roller | auth, **müşteri seçim + tenant izolasyonu (RLS)**, audit log, rol modeli | ⏳ |
 
 > Akıllı Giriş'in (01) çalışması için zincir: 02 veri-modeli + 04 cikarim-worker + 05 asistan + 03 dosya-detay.
 > Dilekçe (06) idari yolun hedefi; İzleme (07) ve güvenlik (08) sonra. Veri modeli (02) baştan hepsini düşünerek tasarlanır.
