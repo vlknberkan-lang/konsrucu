@@ -77,6 +77,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
   const [alanlar, setAlanlar] = useState<Alanlar | null>(null)
   const [pct, setPct] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [hasarNo, setHasarNo] = useState('')
   const router = useRouter()
 
   // "Yeni dosya yükle"den gelindiyse dosya seçiciyi aç (otomatik SAHTE işlem YOK).
@@ -100,6 +101,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
       plaka: new Set(), tc: new Set(), tarih: new Set(), tutar: new Set(), iban: new Set(),
     }
     const out: Row[] = []
+    let allText = ''
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i]
@@ -118,6 +120,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
             txt += c.items.map((it: any) => (typeof it.str === 'string' ? it.str : '')).join(' ') + '\n'
           }
           row.textLen = txt.length
+          allText += ' ' + txt
           collect(txt, acc)
           try { await doc.destroy() } catch { /* yoksay */ }
         } else if (f.type.startsWith('image/') || /\.(jpe?g|png|heic|webp|gif)$/.test(lower)) {
@@ -142,6 +145,10 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
       setPct(Math.round(((i + 1) / files.length) * 100))
     }
 
+    const fnames = files.map((f) => f.name).join(' ')
+    const labeled = allText.match(/hasar\s*(?:dosya)?\s*(?:no|nu)?\s*[:\-]?\s*(\d{8,13})/i)
+    const fnum = fnames.match(/\b(\d{10,13})\b/)
+    setHasarNo((labeled?.[1] || fnum?.[1] || '').trim())
     setAlanlar({
       plaka: [...acc.plaka], tc: [...acc.tc], tarih: [...acc.tarih], tutar: [...acc.tutar], iban: [...acc.iban],
     })
@@ -149,7 +156,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
   }
 
   function reset() {
-    setFiles([]); setRows([]); setAlanlar(null); setPct(0); setPhase('idle')
+    setFiles([]); setRows([]); setAlanlar(null); setPct(0); setPhase('idle'); setHasarNo('')
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -157,6 +164,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
     setSaving(true)
     try {
       const payload = {
+        hasarNo: hasarNo || undefined,
         alanlar: alanlar ?? { plaka: [], tc: [], tarih: [], tutar: [], iban: [] },
         dosyalar: rows.map((r) => ({ name: r.name, kind: r.kind, w: r.w, h: r.h, exifDate: r.exifDate, kamera: r.kamera, textLen: r.textLen })),
       }

@@ -30,8 +30,11 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
   if (!dbUser) redirect('/login')
   const izinli = dbUser.musteriler.map((m) => m.musteriId)
 
-  const dosya = await prisma.rucuDosyasi.findUnique({
-    where: { id: params.id },
+  const dosya = await prisma.rucuDosyasi.findFirst({
+    where: {
+      musteriId: { in: izinli },
+      OR: [{ id: params.id }, { hasarDosyaNo: params.id }, { id: { startsWith: params.id } }],
+    },
     include: {
       belgeler: true,
       borclular: true,
@@ -40,7 +43,7 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
       aktiviteler: { orderBy: { createdAt: 'desc' }, take: 25, include: { kullanici: true } },
     },
   })
-  if (!dosya || !izinli.includes(dosya.musteriId)) notFound()
+  if (!dosya) notFound()
 
   const cj = (dosya.cikarimJson ?? {}) as { alanlar?: Record<string, string[]> }
   const alanlar = cj.alanlar ?? {}

@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 
 type DosyaPayload = {
+  hasarNo?: string
   alanlar: { plaka: string[]; tc: string[]; tarih: string[]; tutar: string[]; iban: string[] }
   dosyalar: { name: string; kind: 'pdf' | 'belge' | 'foto' | 'diger'; w?: number; h?: number; exifDate?: string; kamera?: string; textLen?: number }[]
 }
@@ -35,6 +36,7 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
   const dosya = await prisma.rucuDosyasi.create({
     data: {
       musteriId,
+      hasarDosyaNo: payload.hasarNo || null,
       durum: DosyaDurum.INCELENIYOR,
       cikarimJson: payload as unknown as Prisma.InputJsonValue,
       belgeler: {
