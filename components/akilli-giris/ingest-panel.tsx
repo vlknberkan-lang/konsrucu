@@ -2,136 +2,296 @@
 
 /**
  * KonsRücü — Yeni dosya yükle (ingest) paneli · components/akilli-giris/ingest-panel.tsx
- * Sürükle-bırak dropzone → katmanlı işleme animasyonu (0-3, ucuz katman önce) → "kayıt oluştu".
- * autoStart: "Yeni dosya yükle" (sidebar, ?yukle=1) ile gelindiğinde otomatik başlar.
  *
- * Gerçek entegrasyon (TODO):
- *  - onDrop'taki dosyaları Supabase Storage'a yükleyin (ham evrak).
- *  - Çıkarım worker'ını (PyMuPDF/EXIF/regex + gerekirse LLM) tetikleyin; ilerlemeyi
- *    websocket/poll ile bağlayın (buradaki sahte interval yerine).
- *  - Bittiğinde oluşan RucuDosyasi id'sine yönlendirin.
+ * GERÇEK yerel çıkarım (mock YOK). Sürüklenen dosyalar tarayıcıda işlenir — sunucuya gitmeden:
+ *  [0] METİN  : pdf.js ile dijital PDF metin katmanı
+ *  [1] REGEX  : plaka · T.C. · tarih · tutar · IBAN  (çıkarılan metin + dosya adı)
+ *  [2] ROUTE  : görsel boyut + EXIF (tarih/kamera) → belge(A4) / hasar fotoğrafı ayrımı
+ * Maliyet ₺0 (tamamı yerel). [3] LLM (kusur/oluş şekli) ve kayıt/Storage backend'i sonraki adım.
  */
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import {
-  UploadCloud, Loader2, Check, FolderCheck, X, ArrowRight,
-} from 'lucide-react'
+import { UploadCloud, FileText, Image as ImageIcon, File as FileIcon, Loader2, Check, X, RotateCcw } from 'lucide-react'
 
-type Layer = { tag: string; free: boolean; label: string; sub: string }
-const LAYERS: Layer[] = [
-  { tag: '0', free: true, label: 'Metin çıkar', sub: 'PyMuPDF · dijital PDF metin katmanı / yerel OCR' },
-  { tag: '1', free: true, label: 'Kural + Regex', sub: 'plaka · poliçe/hasar no · tarih · tutar · IBAN · T.C.' },
-  { tag: '2', free: true, label: 'Grupla & route', sub: 'EXIF tarih · kamera · boyut → belge/foto + klasör' },
-  { tag: '3', free: false, label: 'Boş alan → LLM', sub: 'yalnız kusur/oluş şekli net değilse · Haiku (birkaç kuruş)' },
-]
-const ACCEPT = ['PDF', 'JPG / HEIC', 'PNG', 'DOCX', 'ZIP klasör']
+type Kind = 'pdf' | 'belge' | 'foto' | 'diger'
+type Row = {
+  name: string
+  size: number
+  kind: Kind
+  w?: number
+  h?: number
+  exifDate?: string
+  kamera?: string
+  textLen?: number
+  err?: boolean
+}
+type Alanlar = { plaka: string[]; tc: string[]; tarih: string[]; tutar: string[]; iban: string[] }
+
+const ACCEPT = '.pdf,image/*,.docx,.zip'
+const KIND_META: Record<Kind, { label: string; icon: typeof FileText; cls: string }> = {
+  pdf: { label: 'PDF', icon: FileText, cls: 'bg-danger-soft text-danger' },
+  belge: { label: 'Belge (A4)', icon: FileText, cls: 'bg-info-soft text-info' },
+  foto: { label: 'Fotoğraf', icon: ImageIcon, cls: 'bg-success-soft text-success' },
+  diger: { label: 'Diğer', icon: FileIcon, cls: 'bg-muted text-muted-foreground' },
+}
+
+const RX = {
+  plaka: /\b(0[1-9]|[1-7]\d|8[01])\s?[A-Z]{1,3}\s?\d{2,4}\b/g,
+  tc: /\b[1-9]\d{10}\b/g,
+  tarih: /\b\d{1,2}[.\/]\d{1,2}[.\/]\d{4}\b/g,
+  tutar: /\b\d{1,3}(?:\.\d{3})*,\d{2}\b/g,
+  iban: /\bTR\d{2}(?:\s?\d{4}){5}\s?\d{2}\b/gi,
+}
+
+function fmtSize(b: number) {
+  if (b < 1024) return `${b} B`
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`
+  return `${(b / 1024 / 1024).toFixed(1)} MB`
+}
+
+function imgDims(file: File): Promise<{ w: number; h: number }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const img = new window.Image()
+    img.onload = () => { resolve({ w: img.naturalWidth, h: img.naturalHeight }); URL.revokeObjectURL(url) }
+    img.onerror = () => { resolve({ w: 0, h: 0 }); URL.revokeObjectURL(url) }
+    img.src = url
+  })
+}
+
+function collect(text: string, acc: Record<keyof Alanlar, Set<string>>) {
+  for (const m of text.matchAll(RX.plaka)) acc.plaka.add(m[0].replace(/\s+/g, ' ').toUpperCase().trim())
+  for (const m of text.matchAll(RX.tc)) acc.tc.add(m[0])
+  for (const m of text.matchAll(RX.tarih)) acc.tarih.add(m[0])
+  for (const m of text.matchAll(RX.tutar)) acc.tutar.add(m[0])
+  for (const m of text.matchAll(RX.iban)) acc.iban.add(m[0].replace(/\s+/g, ''))
+}
 
 export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
-  const router = useRouter()
-  const [phase, setPhase] = useState<'idle' | 'proc' | 'done'>('idle')
+  const inputRef = useRef<HTMLInputElement>(null)
   const [hot, setHot] = useState(false)
-  const [active, setActive] = useState(-1)
+  const [phase, setPhase] = useState<'idle' | 'ready' | 'proc' | 'done'>('idle')
+  const [files, setFiles] = useState<File[]>([])
+  const [rows, setRows] = useState<Row[]>([])
+  const [alanlar, setAlanlar] = useState<Alanlar | null>(null)
   const [pct, setPct] = useState(0)
-  const timers = useRef<ReturnType<typeof setInterval>[]>([])
 
-  const clearTimers = () => { timers.current.forEach(clearInterval); timers.current = [] }
-  useEffect(() => () => clearTimers(), [])
+  // "Yeni dosya yükle"den gelindiyse dosya seçiciyi aç (otomatik SAHTE işlem YOK).
+  useEffect(() => { if (autoStart) inputRef.current?.click() }, [autoStart])
 
-  function run() {
-    if (phase === 'proc') return
-    setPhase('proc'); setActive(0); setPct(0)
-    let step = 0
-    const stepIv = setInterval(() => {
-      step++
-      if (step < LAYERS.length) setActive(step)
-      else clearInterval(stepIv)
-    }, 720)
-    const pctIv = setInterval(() => {
-      setPct((p) => {
-        if (p >= 100) { clearInterval(pctIv); setActive(LAYERS.length); setTimeout(() => setPhase('done'), 350); return 100 }
-        return p + 4
-      })
-    }, 110)
-    timers.current.push(stepIv, pctIv)
+  function pick(list: FileList | null) {
+    if (!list || list.length === 0) return
+    setFiles(Array.from(list))
+    setPhase('ready')
   }
 
-  useEffect(() => { if (autoStart) run() /* eslint-disable-next-line */ }, [autoStart])
+  async function isle() {
+    if (files.length === 0) return
+    setPhase('proc'); setPct(0); setRows([])
 
-  // ── bitti ──
-  if (phase === 'done') {
-    return (
-      <div className="mb-[22px] flex items-center gap-3.5 rounded-2xl border border-success/40 bg-gradient-to-br from-success-soft/50 to-surface p-5">
-        <div className="grid h-11 w-11 place-items-center rounded-2xl bg-success-soft text-success"><FolderCheck className="h-[22px] w-[22px]" /></div>
-        <div className="flex-1">
-          <div className="font-display text-base font-extrabold">Yığın gruplandı — 1 yeni rücu kaydı oluştu</div>
-          <div className="font-mono mt-0.5 text-[11px] text-muted-foreground">3 PDF · 39 foto · 8 alan çıkarıldı · ₺ 0 API maliyeti · 5 alan teyit bekliyor</div>
-        </div>
-        {/* TODO: oluşan dosyanın gerçek id'sine yönlendirin */}
-        <button onClick={() => router.push('/akilli-giris/10202409588')} className="inline-flex items-center gap-1.5 rounded-[9px] bg-kr px-3 py-1.5 text-xs font-semibold text-white shadow-[0_2px_8px_hsl(var(--kr)/0.32)] transition hover:brightness-95">
-          <ArrowRight className="h-3.5 w-3.5" /> Kaydı aç
-        </button>
-        <button onClick={() => setPhase('idle')} aria-label="Kapat" className="grid h-[34px] w-[34px] place-items-center rounded-[9px] text-muted-foreground transition hover:bg-surface-muted hover:text-foreground"><X className="h-4 w-4" /></button>
-      </div>
-    )
+    const pdfjs: any = await import('pdfjs-dist')
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
+    const exifr: any = (await import('exifr')).default
+
+    const acc: Record<keyof Alanlar, Set<string>> = {
+      plaka: new Set(), tc: new Set(), tarih: new Set(), tutar: new Set(), iban: new Set(),
+    }
+    const out: Row[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]
+      const row: Row = { name: f.name, size: f.size, kind: 'diger' }
+      const lower = f.name.toLowerCase()
+      try {
+        if (f.type === 'application/pdf' || lower.endsWith('.pdf')) {
+          row.kind = 'pdf'
+          const buf = await f.arrayBuffer()
+          const doc = await pdfjs.getDocument({ data: buf, isEvalSupported: false }).promise
+          let txt = ''
+          const n = Math.min(doc.numPages, 15)
+          for (let p = 1; p <= n; p++) {
+            const page = await doc.getPage(p)
+            const c = await page.getTextContent()
+            txt += c.items.map((it: any) => (typeof it.str === 'string' ? it.str : '')).join(' ') + '\n'
+          }
+          row.textLen = txt.length
+          collect(txt, acc)
+          try { await doc.destroy() } catch { /* yoksay */ }
+        } else if (f.type.startsWith('image/') || /\.(jpe?g|png|heic|webp|gif)$/.test(lower)) {
+          const { w, h } = await imgDims(f)
+          row.w = w; row.h = h
+          const ex = await exifr.parse(f, ['DateTimeOriginal', 'Make', 'Model']).catch(() => null)
+          if (ex?.DateTimeOriginal) { try { row.exifDate = new Date(ex.DateTimeOriginal).toLocaleDateString('tr-TR') } catch { /* */ } }
+          const kam = [ex?.Make, ex?.Model].filter(Boolean).join(' ').trim()
+          if (kam) row.kamera = kam
+          const aspect = w && h ? h / w : 0
+          // dikey ~A4 + büyük = belge taraması; aksi halde hasar fotoğrafı
+          row.kind = aspect > 1.2 && aspect < 1.75 && Math.max(w, h) > 1000 ? 'belge' : 'foto'
+          collect(f.name, acc)
+        } else {
+          row.kind = 'diger'
+        }
+      } catch {
+        row.err = true
+      }
+      out.push(row)
+      setRows([...out])
+      setPct(Math.round(((i + 1) / files.length) * 100))
+    }
+
+    setAlanlar({
+      plaka: [...acc.plaka], tc: [...acc.tc], tarih: [...acc.tarih], tutar: [...acc.tutar], iban: [...acc.iban],
+    })
+    setPhase('done')
   }
 
-  // ── işleniyor ──
-  if (phase === 'proc') {
-    return (
-      <div className="mb-[22px] overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
-        <div className="flex items-center gap-2.5 border-b border-border-subtle px-5 py-4">
-          <Loader2 className="h-[17px] w-[17px] animate-spin text-kr" />
-          <h3 className="font-display text-[15px] font-bold tracking-[-0.02em]">Yığın işleniyor — ucuz katman önce</h3>
-          <span className="font-mono ml-auto text-[11px] font-semibold text-muted-foreground">%{pct}</span>
-        </div>
-        <div className="px-5 pb-5 pt-1">
-          {LAYERS.map((L, i) => (
-            <div key={i} className="flex items-center gap-3 border-b border-border-subtle py-3 transition-opacity last:border-0" style={{ opacity: i > active ? 0.4 : 1 }}>
-              <span className={`font-mono grid h-[30px] w-[30px] shrink-0 place-items-center rounded-[9px] text-[10px] font-bold ${L.free ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>{L.tag}</span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-[13px] font-semibold">
-                  {L.label}
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${L.free ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>{L.free ? '0 ₺ · yerel' : 'kuruş · LLM'}</span>
-                </div>
-                <div className="font-mono mt-0.5 text-[10.5px] text-muted-foreground">{L.sub}</div>
-              </div>
-              {i < active ? <Check className="h-4 w-4 text-success" />
-                : i === active ? <Loader2 className="h-[15px] w-[15px] animate-spin text-kr" />
-                : <span className="font-mono text-[10px] text-muted-foreground">bekliyor</span>}
+  function reset() {
+    setFiles([]); setRows([]); setAlanlar(null); setPct(0); setPhase('idle')
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
+  const count = (k: Kind) => rows.filter((r) => r.kind === k).length
+
+  return (
+    <div className="mb-[22px]">
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept={ACCEPT}
+        className="hidden"
+        onChange={(e) => pick(e.target.files)}
+      />
+
+      {/* ── boşta: dropzone ── */}
+      {phase === 'idle' && (
+        <div
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setHot(true) }}
+          onDragLeave={() => setHot(false)}
+          onDrop={(e) => { e.preventDefault(); setHot(false); pick(e.dataTransfer.files) }}
+          className={`group relative cursor-pointer overflow-hidden rounded-[18px] border-2 border-dashed px-7 py-10 text-center transition ${
+            hot ? 'border-kr bg-kr-soft/50 shadow-[inset_0_0_0_4px_hsl(var(--kr)/0.14)]' : 'border-border bg-surface-muted/50 hover:border-kr hover:bg-kr-soft/50'
+          }`}
+        >
+          <div className={`pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--kr)/0.04)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--kr)/0.04)_1px,transparent_1px)] bg-[length:26px_26px] transition-opacity ${hot ? 'opacity-100' : 'opacity-0'}`} />
+          <div className="relative">
+            <div className={`mx-auto mb-3.5 grid h-16 w-16 place-items-center rounded-[18px] bg-kr/[0.12] text-kr transition ${hot ? '-translate-y-0.5 scale-105' : ''}`}>
+              <UploadCloud className="h-7 w-7" />
             </div>
-          ))}
-          <div className="mt-3.5 h-[5px] overflow-hidden rounded-full bg-surface-muted">
-            <div className="h-full rounded-full bg-kr transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} />
+            <div className="font-display text-[19px] font-extrabold tracking-[-0.02em]">Hasar dosyasının ham evrak yığınını buraya bırakın</div>
+            <div className="mt-1.5 text-[13px] text-muted-foreground">Poliçe · ekspertiz · tutanak · dekont + fotoğraflar — birden çok dosya seçin. Çıkarım tarayıcınızda yapılır (₺0).</div>
+            <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+              {['PDF', 'JPG / PNG', 'HEIC', 'DOCX'].map((t) => (
+                <span key={t} className="font-mono rounded-md border border-border bg-surface px-2 py-1 text-[10px] tracking-[0.04em] text-muted-foreground">{t}</span>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-    )
-  }
+      )}
 
-  // ── boşta: dropzone ──
-  return (
-    <div
-      onClick={run}
-      onDragOver={(e) => { e.preventDefault(); setHot(true) }}
-      onDragLeave={() => setHot(false)}
-      onDrop={(e) => { e.preventDefault(); setHot(false); run() /* TODO: e.dataTransfer.files'i yükle */ }}
-      className={`group relative mb-[22px] cursor-pointer overflow-hidden rounded-[18px] border-2 border-dashed px-7 py-10 text-center transition ${
-        hot ? 'border-kr bg-kr-soft/50 shadow-[inset_0_0_0_4px_hsl(var(--kr)/0.14)]' : 'border-border bg-surface-muted/50 hover:border-kr hover:bg-kr-soft/50'
-      }`}
-    >
-      <div className={`pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--kr)/0.04)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--kr)/0.04)_1px,transparent_1px)] bg-[length:26px_26px] transition-opacity ${hot ? 'opacity-100' : 'opacity-0'}`} />
-      <div className="relative">
-        <div className={`mx-auto mb-3.5 grid h-16 w-16 place-items-center rounded-[18px] bg-kr/[0.12] text-kr transition ${hot ? '-translate-y-0.5 scale-105' : ''}`}>
-          <UploadCloud className="h-7 w-7" />
+      {/* ── seçildi: dosya listesi + İşle ── */}
+      {phase === 'ready' && (
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+          <div className="flex items-center gap-2.5 border-b border-border-subtle px-5 py-4">
+            <h3 className="font-display text-[15px] font-bold tracking-[-0.02em]">{files.length} dosya seçildi</h3>
+            <span className="font-mono ml-auto text-[11px] text-muted-foreground">{fmtSize(files.reduce((s, f) => s + f.size, 0))}</span>
+          </div>
+          <div className="max-h-72 overflow-y-auto px-5 py-2">
+            {files.map((f, i) => (
+              <div key={i} className="flex items-center gap-2.5 border-b border-border-subtle py-2 text-[13px] last:border-0">
+                <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                <span className="font-mono shrink-0 text-[11px] text-muted-foreground">{fmtSize(f.size)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-3 border-t border-border-subtle px-5 py-4">
+            <button onClick={isle} className="inline-flex items-center gap-2 rounded-[10px] bg-kr px-4 py-2.5 text-sm font-semibold text-kr-foreground shadow-[0_2px_8px_hsl(var(--kr)/0.32)] transition hover:bg-kr/90">
+              <UploadCloud className="h-4 w-4" /> İşle — yerel · ₺0
+            </button>
+            <button onClick={reset} className="text-sm font-medium text-muted-foreground transition hover:text-foreground">Vazgeç</button>
+          </div>
         </div>
-        <div className="font-display text-[19px] font-extrabold tracking-[-0.02em]">Hasar dosyasının ham evrak yığınını buraya bırakın</div>
-        <div className="mt-1.5 text-[13px] text-muted-foreground">Poliçe · ekspertiz · tutanak · dekont + 100+ fotoğraf — hepsi tek seferde. Sistem otomatik gruplar.</div>
-        <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-          {ACCEPT.map((t) => (
-            <span key={t} className="font-mono rounded-md border border-border bg-surface px-2 py-1 text-[10px] tracking-[0.04em] text-muted-foreground">{t}</span>
-          ))}
+      )}
+
+      {/* ── işleniyor / bitti: gerçek sonuçlar ── */}
+      {(phase === 'proc' || phase === 'done') && (
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+          <div className="flex items-center gap-2.5 border-b border-border-subtle px-5 py-4">
+            {phase === 'proc' ? <Loader2 className="h-[17px] w-[17px] animate-spin text-kr" /> : <Check className="h-[17px] w-[17px] text-success" />}
+            <h3 className="font-display text-[15px] font-bold tracking-[-0.02em]">
+              {phase === 'proc' ? 'Yerel çıkarım sürüyor…' : 'Çıkarım tamam — tamamı tarayıcıda, ₺0'}
+            </h3>
+            <span className="font-mono ml-auto text-[11px] font-semibold text-muted-foreground">%{pct}</span>
+            {phase === 'done' && (
+              <button onClick={reset} className="ml-2 inline-flex items-center gap-1.5 rounded-[9px] border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:border-kr/40 hover:text-foreground">
+                <RotateCcw className="h-3.5 w-3.5" /> Yeni yığın
+              </button>
+            )}
+          </div>
+
+          {/* özet sayımlar (gerçek) */}
+          <div className="flex flex-wrap gap-2 px-5 pt-4">
+            {(['pdf', 'belge', 'foto', 'diger'] as Kind[]).map((k) => {
+              const c = count(k)
+              if (c === 0) return null
+              const M = KIND_META[k]
+              return (
+                <span key={k} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${M.cls}`}>
+                  <M.icon className="h-3.5 w-3.5" /> {c} {M.label}
+                </span>
+              )
+            })}
+          </div>
+
+          {/* çıkarılan alanlar (gerçek regex) */}
+          {alanlar && (
+            <div className="grid grid-cols-1 gap-3 px-5 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+              {([
+                ['Plaka', alanlar.plaka], ['T.C. No', alanlar.tc], ['Tarih', alanlar.tarih],
+                ['Tutar', alanlar.tutar], ['IBAN', alanlar.iban],
+              ] as [string, string[]][]).map(([lbl, vals]) => (
+                <div key={lbl} className="rounded-xl border border-border-subtle bg-surface-muted/40 p-3">
+                  <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">{lbl} · {vals.length}</div>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {vals.length === 0 && <span className="text-[12px] text-muted-foreground">—</span>}
+                    {vals.slice(0, 6).map((v) => (
+                      <span key={v} className="font-mono rounded-md border border-border bg-surface px-1.5 py-0.5 text-[11px]">{v}</span>
+                    ))}
+                    {vals.length > 6 && <span className="text-[11px] text-muted-foreground">+{vals.length - 6}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* dosya satırları (gerçek sınıflandırma) */}
+          <div className="max-h-72 overflow-y-auto px-5 pb-3 pt-4">
+            {rows.map((r, i) => {
+              const M = KIND_META[r.kind]
+              return (
+                <div key={i} className="flex items-center gap-3 border-b border-border-subtle py-2.5 text-[13px] last:border-0">
+                  <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-[8px] ${M.cls}`}><M.icon className="h-4 w-4" /></span>
+                  <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                  <span className="font-mono hidden shrink-0 text-[10.5px] text-muted-foreground sm:block">
+                    {r.kind === 'pdf' && r.textLen != null ? `${r.textLen.toLocaleString('tr-TR')} kar.` : ''}
+                    {(r.kind === 'foto' || r.kind === 'belge') && r.w ? `${r.w}×${r.h}${r.exifDate ? ' · ' + r.exifDate : ''}${r.kamera ? ' · ' + r.kamera : ''}` : ''}
+                  </span>
+                  {r.err
+                    ? <X className="h-4 w-4 shrink-0 text-danger" />
+                    : <Check className="h-4 w-4 shrink-0 text-success" />}
+                </div>
+              )
+            })}
+          </div>
+
+          {phase === 'done' && (
+            <div className="border-t border-border-subtle bg-surface-muted/40 px-5 py-3 text-[12px] text-muted-foreground">
+              Sıradaki: kusur/oluş şekli için LLM (Katman 3) + <b className="text-foreground">triyaj</b> (klasik / idari) + kayıt oluşturma — backend bağlanıyor.
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </div>
   )
 }
