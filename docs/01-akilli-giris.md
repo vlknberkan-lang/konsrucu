@@ -176,7 +176,7 @@ Açıklama kalıbı (klasik yol):
 [KAZA TARİHİ] tarihinde Ray Sigorta A.Ş nezdinde sigortalı bulunan [SİG.PLAKA] plakalı
 araç ile [KARŞI PLAKA] plakalı [araç/motosiklet] arasında meydana gelen trafik kazası
 neticesinde sigortalıya ödenen tazminatın kusurlu taraftan rücu bedeline ilişkindir.
-K/Partners: 0544 764 2624 / 0544 764 2590 / 0534 566 72 37
+K/Partners: ⟨telefonlar — Şirket Bilgileri'nden (DB Ayarlar)⟩
 ```
 ZMMS/karşı plaka yok → minimal uyarla; borçlu tartışmalıysa nötr bitir + footer **her zaman**.
 

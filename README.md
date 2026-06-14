@@ -135,7 +135,7 @@ konstraERP ile **aynı yığın** — kütüphaneler, desenler ve `export-word` 
 - **Fotoğraf Galerisi:** EXIF/kamera/boyuta göre kümelenmiş; belge ↔ hasar ayrımı; etiketle/taşı.
 - **Dilekçe Üretimi:** Şablon seç (KGM Genel / Bölge / İşletmeci), önizle, üret, indir/mail.
 - **Bölge Eşleştirme:** Kaza yeri → KGM Bölge Müdürlüğü tablosu (5. Bölge = Osmaniye/Adana/Mersin/Hatay/K.Maraş; 1. Bölge = İstanbul/Kocaeli; 14. Bölge = Bursa …).
-- **Şablon Yönetimi:** Vekil sabitleri (Av. M. Burak Küçükislamoğlu, IBAN, KEP), faiz cümlesi, işletmeci varyantı.
+- **Şirket Bilgileri / Şablon Yönetimi:** Vekil sabitleri (ad / IBAN / KEP), MERSİS, K/Partners footer, faiz cümlesi → DB `Ayarlar`'da, ekrandan düzenlenir; işletmeci varyantı.
 - **Arşiv & Arama:** Çıkarılan metin üzerinde tam-metin arama (bedava); "alkollü dosyalar", "5. bölge" vb.
 
 ---

@@ -63,6 +63,8 @@ RucuDosyasi 1─N Belge         (kategori + storagePath + extractedText + exif/c
 RucuDosyasi 1─N UretilenCikti (takip-aç bloğu | dilekçe | _bilgiler.json; kaynakBelge'ye BAĞLI)
 RucuDosyasi 1─N TakipOlayi    (durum/tahsilat/tebliğ/itiraz — İzleme fazında)
    · yol: KLASIK | IDARI        (triyaj kararı — §4'teki yönlendirmeyi belirler)
+
+Ayarlar (singleton)           (Şirket Bilgileri: MERSİS · K/Partners telefon · vekil ad/IBAN/KEP · açıklama footer · faiz oranları) — KODDA DEĞİL, DB'de
 ```
 
 **Altın kural:** her çıkarılan alan `{ value, confidence, sourceRef }` taşır — nereden,
@@ -95,11 +97,13 @@ takip-aç bloğunu hazırlar. Bu yönlendirme Akıllı Giriş'in (01) çekirdeğ
 memory'den gelen, üründe sabitlenecek kurallar:
 
 - **Açıklama kalıbı** sabit + sonda her zaman `K/Partners` footer (`rucu-takip-aciklama-formati`).
-- **Alacaklı her zaman** `RAY SİGORTA A.Ş. · MERSİS 0734003979800033` (`ray-sigorta-alacakli-mersis`).
+- **Alacaklı her zaman** `RAY SİGORTA A.Ş. · MERSİS ⟨Şirket Bilgileri'nden⟩` (`ray-sigorta-alacakli-mersis`).
 - **Yetkili icra = KAZA YERİ** (HMK m.16), borçlu ikameti değil (`rucu-yetki-kaza-yeri`).
 - **Borçlu = çoklu/müteselsil**; branşa göre rücu yönü: KASKO→karşı taraf, ZMMS→kendi sigortalı taraf, oto-dışı→kusurlu (`rucu-coklu-borclu-brans`).
 - **Faiz:** kanuni faiz, başlangıç = ana ödeme tarihi → takip günü; işlemiş faiz + anapara.
 - **Borçlu↔plaka bağı belgesizse** → tescil/işleten sorgusu ÖNERİSİ (bloke değil).
+
+> **Sabit iş bilgileri KODDA DEĞİL, DB'de (`Ayarlar`).** MERSİS, K/Partners telefonları, vekil ad/adres/IBAN/KEP, açıklama footer'ı → **Şirket Bilgileri** ekranından düzenlenir. Böylece repo'da hassas sabit kalmaz, değişince kod elden geçmez. (Berkan önerisi, 2026-06-14.)
 
 ---
 
