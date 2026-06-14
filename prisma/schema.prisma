@@ -1,0 +1,305 @@
+// KonsRücü — veri modeli (kanonik kaynak). Tasarım: docs/02-veri-modeli.md
+// Çok-kiracılı (Musteri = sigortacı). Dosya = kalıcı tam kayıt (hub).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // serverless runtime (transaction pooler 6543)
+  directUrl = env("DIRECT_URL") // migration/push (session pooler 5432)
+}
+
+// ─────────────────── enum'lar ───────────────────
+enum Rol {
+  ADMIN
+  AVUKAT
+  AVUKAT_YRD
+  GORUNTULEYEN
+}
+
+enum Yol {
+  KLASIK
+  IDARI
+}
+
+enum DosyaDurum {
+  HAVUZDA
+  INCELENIYOR
+  TAKIBE_HAZIR
+  TAKIP_ACILDI
+  TEBLIG_EDILDI
+  ITIRAZ
+  KESINLESTI
+  TAHSIL
+  KAPANDI
+  IDARI_YOL
+}
+
+enum Brans {
+  KASKO
+  ZMMS
+  OTO_DISI
+}
+
+enum BorcluRol {
+  RUHSAT_SAHIBI
+  SURUCU
+  ISVEREN
+  KAT_MALIKI
+  YONETIM
+  DIGER
+}
+
+enum TeyitDurum {
+  TEYIT_EDILDI
+  TEYIT_GEREK
+  SUPHE
+}
+
+enum BelgeKategori {
+  POLICE
+  DEKONT
+  LEHE
+  EKSPERTIZ
+  TUTANAK
+  SBM
+  EHLIYET
+  RUHSAT
+  ALKOL
+  HASAR_FOTO
+  DIGER
+}
+
+enum CiktiTip {
+  TAKIP_BLOGU
+  DILEKCE
+  BILGILER_JSON
+}
+
+// ─────────────────── tenant / kullanıcı ───────────────────
+model Musteri {
+  id           String             @id @default(uuid())
+  ad           String             @unique // "Ray Sigorta A.Ş."
+  aktif        Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  ayarlar      Ayarlar?
+  dosyalar     RucuDosyasi[]
+  kullanicilar MusteriKullanici[]
+}
+
+model Kullanici {
+  id             String             @id // = Supabase auth.users.id (uuid)
+  ad             String
+  eposta         String             @unique
+  rol            Rol                @default(AVUKAT_YRD)
+  aktif          Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  musteriler     MusteriKullanici[]
+  atananDosyalar RucuDosyasi[]      @relation("AtananKullanici")
+  notlar         Not[]
+  aktiviteler    Aktivite[]
+}
+
+model MusteriKullanici {
+  musteriId   String
+  kullaniciId String
+  musteri     Musteri   @relation(fields: [musteriId], references: [id], onDelete: Cascade)
+  kullanici   Kullanici @relation(fields: [kullaniciId], references: [id], onDelete: Cascade)
+
+  @@id([musteriId, kullaniciId])
+}
+
+// ─────────────────── şirket bilgileri (her müşteriye ayrı) ───────────────────
+model Ayarlar {
+  id             String   @id @default(uuid())
+  musteriId      String   @unique
+  musteri        Musteri  @relation(fields: [musteriId], references: [id], onDelete: Cascade)
+  alacakliUnvan  String?
+  mersis         String?
+  vekilAd        String?
+  vekilAdres     String?
+  iban           String?
+  kep            String?
+  eposta         String?
+  aciklamaFooter String? // ör. "K/Partners: ..."
+  faizJson       Json? // dönemsel kanuni faiz oranları
+  updatedAt      DateTime @updatedAt
+}
+
+// ─────────────────── rücu dosyası (kalıcı tam kayıt = hub) ───────────────────
+model RucuDosyasi {
+  id                String          @id @default(uuid())
+  musteriId         String
+  musteri           Musteri         @relation(fields: [musteriId], references: [id])
+
+  // kimlik
+  hukukDosyaNo      String?
+  hasarDosyaNo      String?
+  hasarTarihi       DateTime?
+
+  // rücu
+  brans             Brans?
+  rucuSebebi        String?
+  rucuOrani         String?
+  rucuTutari        Decimal?        @db.Decimal(14, 2)
+  asilAlacak        Decimal?        @db.Decimal(14, 2)
+
+  // taraflar / kaza
+  sigortaliPlaka    String?
+  karsiPlaka        String?
+  kazaYeri          String? // = yetkili icra yeri (HMK m.16)
+  kazaTarihi        DateTime?
+  istikamet         String?
+  olusSekli         String?         @db.Text
+  kusurDurumu       String?
+
+  // triyaj + durum
+  yol               Yol?
+  durum             DosyaDurum      @default(HAVUZDA)
+
+  // icra
+  yetkiliIcra       String?
+  icraDosyaNo       String?
+  takipTarihi       DateTime?
+  zamanasimi        DateTime?
+
+  // çıkarım izi (her alan: value + confidence + sourceRef)
+  cikarimJson       Json?
+  kaynakKlasor      String?
+
+  // atama
+  atananKullaniciId String?
+  atanan            Kullanici?      @relation("AtananKullanici", fields: [atananKullaniciId], references: [id])
+
+  // meta
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // ilişkiler
+  borclular         Borclu[]
+  odemeler          Odeme[]
+  belgeler          Belge[]
+  ciktilar          UretilenCikti[]
+  olaylar           TakipOlayi[]
+  notlar            Not[]
+  aktiviteler       Aktivite[]
+
+  @@index([musteriId])
+  @@index([durum])
+  @@index([yol])
+}
+
+model Borclu {
+  id          String      @id @default(uuid())
+  dosyaId     String
+  dosya       RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  adUnvan     String
+  tcVkn       String?
+  adres       String?     @db.Text
+  rol         BorcluRol   @default(DIGER)
+  kaynak      String? // Lehe / ekspertiz / tutanak / tescil
+  teyitDurumu TeyitDurum  @default(TEYIT_GEREK)
+  not         String?     @db.Text
+
+  @@index([dosyaId])
+}
+
+model Odeme {
+  id         String      @id @default(uuid())
+  dosyaId    String
+  dosya      RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  tarih      DateTime?
+  tutar      Decimal?    @db.Decimal(14, 2)
+  aciklama   String?
+  anaOdemeMi Boolean     @default(false) // ana ödeme = faiz başlangıcı
+
+  @@index([dosyaId])
+}
+
+model Belge {
+  id            String        @id @default(uuid())
+  dosyaId       String
+  dosya         RucuDosyasi   @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  kategori      BelgeKategori @default(DIGER)
+  dosyaAdi      String
+  storagePath   String // Supabase Storage yolu
+  extractedText String?       @db.Text
+  exifTarih     DateTime?
+  kamera        String?
+  genislik      Int?
+  yukseklik     Int?
+  confidence    Float?
+  createdAt     DateTime      @default(now())
+  ciktiBaglari  CiktiKaynak[]
+
+  @@index([dosyaId])
+  @@index([kategori])
+}
+
+model UretilenCikti {
+  id          String        @id @default(uuid())
+  dosyaId     String
+  dosya       RucuDosyasi   @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  tip         CiktiTip
+  storagePath String?
+  icerik      String?       @db.Text // takip-aç bloğu metni
+  durum       String? // TASLAK / IMZAYA_GIDEN / GONDERILDI
+  kaynaklar   CiktiKaynak[] // çift yönlü bağ: hangi belgelerden üretildi
+  createdAt   DateTime      @default(now())
+
+  @@index([dosyaId])
+}
+
+// üretilen çıktı <-> kaynak belge (ham evrak ↔ dilekçe çift yönlü bağ)
+model CiktiKaynak {
+  ciktiId String
+  belgeId String
+  cikti   UretilenCikti @relation(fields: [ciktiId], references: [id], onDelete: Cascade)
+  belge   Belge         @relation(fields: [belgeId], references: [id], onDelete: Cascade)
+
+  @@id([ciktiId, belgeId])
+}
+
+// izleme fazı (UYAP durum/tahsilat/tebliğ/itiraz)
+model TakipOlayi {
+  id        String      @id @default(uuid())
+  dosyaId   String
+  dosya     RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  tip       String // DURUM / TAHSILAT / TEBLIG / ITIRAZ / HESAP
+  aciklama  String?     @db.Text
+  tutar     Decimal?    @db.Decimal(14, 2)
+  tarih     DateTime?
+  hamJson   Json?
+  createdAt DateTime    @default(now())
+
+  @@index([dosyaId])
+}
+
+model Not {
+  id          String      @id @default(uuid())
+  dosyaId     String
+  dosya       RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  kullaniciId String?
+  kullanici   Kullanici?  @relation(fields: [kullaniciId], references: [id])
+  metin       String      @db.Text
+  tip         String? // NOT / ARAMA / ISLEM / HATIRLATMA
+  createdAt   DateTime    @default(now())
+
+  @@index([dosyaId])
+}
+
+// audit — "kim ne zaman ne yaptı" (Dosya Detay / Yelda senaryosu)
+model Aktivite {
+  id          String       @id @default(uuid())
+  dosyaId     String?
+  dosya       RucuDosyasi? @relation(fields: [dosyaId], references: [id], onDelete: SetNull)
+  kullaniciId String?
+  kullanici   Kullanici?   @relation(fields: [kullaniciId], references: [id])
+  eylem       String // "takip-aç bloğu üretildi", "durum → TAKIBE_HAZIR" ...
+  detayJson   Json?
+  createdAt   DateTime     @default(now())
+
+  @@index([dosyaId])
+}
