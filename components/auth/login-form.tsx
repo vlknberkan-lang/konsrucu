@@ -71,7 +71,6 @@ export function LoginForm() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="ad.soyad@kucukislamoglu.av.tr"
           className="w-full rounded-[10px] border border-border bg-card py-3 pl-10 pr-3.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/60 focus:border-kr focus:ring-4 focus:ring-kr/15"
         />
       </div>

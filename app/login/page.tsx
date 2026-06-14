@@ -54,8 +54,6 @@ export default function LoginPage() {
             ))}
           </div>
         </div>
-
-        <div className="font-mono relative z-10 text-[10.5px] text-white/40">Yelda Hukuk Bürosu · Ray Sigorta A.Ş. vekili</div>
       </div>
 
       {/* ── sağ: form ── */}
