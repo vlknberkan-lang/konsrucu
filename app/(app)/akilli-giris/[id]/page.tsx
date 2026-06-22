@@ -29,6 +29,8 @@ const fmtTRY = (n: number | null | undefined) =>
 const fmtDate = (d: Date | null | undefined) => (d ? d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
 const fmtDateTime = (d: Date) => `${d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
 const initials = (ad: string) => ad.split(/\s+/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase()
+// input'a yazılacak Türkçe ondalık (virgül, binlik grubu yok) — istemci numTR ile birebir round-trip eder
+const toTRInput = (n: number) => (Number.isFinite(n) ? n.toLocaleString('tr-TR', { useGrouping: false, maximumFractionDigits: 2 }) : '')
 
 const YOL_LABEL: Record<string, string> = { KLASIK: 'Klasik İcra', IDARI: 'İdari Yol', BELIRSIZ: 'Belirsiz' }
 
@@ -107,14 +109,14 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
   const faizToplam = faizEff != null ? faizAnapara + faizEff : null
 
   const faizInit = {
-    davaTutari: dosya.rucuTutari != null ? String(Number(dosya.rucuTutari)) : '',
-    asilAlacak: dosya.asilAlacak != null ? String(Number(dosya.asilAlacak)) : '',
+    davaTutari: dosya.rucuTutari != null ? toTRInput(Number(dosya.rucuTutari)) : '',
+    asilAlacak: dosya.asilAlacak != null ? toTRInput(Number(dosya.asilAlacak)) : '',
     faizBaslangic: dosya.faizBaslangic ? dosya.faizBaslangic.toISOString().slice(0, 10) : '',
     faizBitis: dosya.faizBitis ? dosya.faizBitis.toISOString().slice(0, 10) : '',
-    faizTutari: dosya.faizTutari != null ? String(Number(dosya.faizTutari)) : '',
+    faizTutari: dosya.faizTutari != null ? toTRInput(Number(dosya.faizTutari)) : '',
     dekontlar: [...dosya.odemeler]
       .sort((a, b) => (a.tarih?.getTime() ?? 0) - (b.tarih?.getTime() ?? 0))
-      .map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : '', tutar: o.tutar != null ? String(Number(o.tutar)) : '', haricMi: o.haricMi, aciklama: o.aciklama ?? '' })),
+      .map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : '', tutar: o.tutar != null ? toTRInput(Number(o.tutar)) : '', haricMi: o.haricMi, aciklama: o.aciklama ?? '' })),
   }
 
   // takip süreci: bakiye + olaylar

@@ -25,7 +25,15 @@ export type FaizInit = {
 
 const fmtTRY = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺'
 const fmtDate = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
-const numTR = (s: string) => { const n = Number(String(s).replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
+// Hem TR (1.234,56) hem makine biçimini (1234.56) çözer — sunucudaki guvenliDecimal ile aynı mantık.
+// Virgül son noktadan sonra geliyorsa TR (nokta=binlik), değilse makine/US (nokta=ondalık).
+const numTR = (s: string) => {
+  const c = String(s).replace(/[^\d.,-]/g, '')
+  if (!c) return 0
+  const norm = c.includes(',') && c.lastIndexOf(',') > c.lastIndexOf('.') ? c.replace(/\./g, '').replace(',', '.') : c.replace(/,/g, '')
+  const n = Number(norm)
+  return Number.isFinite(n) ? n : 0
+}
 
 const INP = 'w-full rounded-[9px] border border-border bg-surface px-2.5 py-1.5 text-[13px] outline-none transition focus:border-kr focus:ring-4 focus:ring-kr/15'
 const LBL = 'font-mono mb-1 block text-[9px] uppercase tracking-[0.1em] text-muted-foreground'
