@@ -9,8 +9,9 @@ import { ChevronLeft, Sparkles, Check, AlertTriangle, Clock, Scale, Send, Sticky
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { footerOlustur, aciklamaTam } from '@/lib/konsrucu/takip'
-import { faizHesapla, oranlariOku } from '@/lib/konsrucu/faiz'
+import { faizHesapla, oranlariOku, sonDekontTarihi, odenenToplam, type DekontGirdi } from '@/lib/konsrucu/faiz'
 import { takipAcildi } from '../actions'
+import { FaizPanel } from '@/components/akilli-giris/detay/faiz-panel'
 import { Kopyala } from '@/components/akilli-giris/kopyala'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { AiCikarButton } from '@/components/akilli-giris/detay/ai-cikar-button'
@@ -87,16 +88,36 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
   const onay = cj.onay && cj.onay.ok === true ? cj.onay : null
   const onayli = !!onay
   const anapara = dosya.asilAlacak != null ? Number(dosya.asilAlacak) : dosya.rucuTutari != null ? Number(dosya.rucuTutari) : null
-  const anaOdeme = dosya.odemeler.find((o) => o.anaOdemeMi) ?? dosya.odemeler[0]
 
   const footer = footerOlustur(ayarlar)
   const aciklamaMetni = aciklamaTam(cj.aciklama, footer)
-  const faizAnapara = dosya.rucuTutari != null ? Number(dosya.rucuTutari) : (anapara ?? 0)
+
+  // ── FAİZ (efektif): anapara = rücu/kusur payı; başlangıç = override ?? son dekont; bitiş = override ?? bugün ──
+  const bugun = new Date().toISOString().slice(0, 10)
   const faizOranlar = oranlariOku(ayarlar?.faizJson)
-  const faiz = faizAnapara > 0 && anaOdeme?.tarih ? faizHesapla(faizAnapara, new Date(anaOdeme.tarih), new Date(), faizOranlar) : null
+  const faizAnapara = dosya.rucuTutari != null ? Number(dosya.rucuTutari) : (anapara ?? 0)
+  const dekontGirdi: DekontGirdi[] = dosya.odemeler.map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : null, tutar: o.tutar != null ? Number(o.tutar) : 0, haricMi: o.haricMi }))
+  const odenenEksHaric = odenenToplam(dekontGirdi)
+  const otoBas = sonDekontTarihi(dekontGirdi)
+  const faizBasEff = dosya.faizBaslangic ? dosya.faizBaslangic.toISOString().slice(0, 10) : otoBas
+  const faizBitEff = dosya.faizBitis ? dosya.faizBitis.toISOString().slice(0, 10) : bugun
+  const faizHesap = faizAnapara > 0 && faizBasEff ? faizHesapla(faizAnapara, new Date(faizBasEff), new Date(faizBitEff), faizOranlar) : null
+  const faizEff = dosya.faizTutari != null ? Number(dosya.faizTutari) : (faizHesap?.faiz ?? null)
+  const faizToplam = faizEff != null ? faizAnapara + faizEff : null
+
+  const faizInit = {
+    davaTutari: dosya.rucuTutari != null ? String(Number(dosya.rucuTutari)) : '',
+    asilAlacak: dosya.asilAlacak != null ? String(Number(dosya.asilAlacak)) : '',
+    faizBaslangic: dosya.faizBaslangic ? dosya.faizBaslangic.toISOString().slice(0, 10) : '',
+    faizBitis: dosya.faizBitis ? dosya.faizBitis.toISOString().slice(0, 10) : '',
+    faizTutari: dosya.faizTutari != null ? String(Number(dosya.faizTutari)) : '',
+    dekontlar: [...dosya.odemeler]
+      .sort((a, b) => (a.tarih?.getTime() ?? 0) - (b.tarih?.getTime() ?? 0))
+      .map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : '', tutar: o.tutar != null ? String(Number(o.tutar)) : '', haricMi: o.haricMi, aciklama: o.aciklama ?? '' })),
+  }
 
   // takip süreci: bakiye + olaylar
-  const toplamTalep = faizAnapara + (faiz?.faiz ?? 0)
+  const toplamTalep = faizToplam ?? faizAnapara
   const tahsilEdilen = dosya.olaylar.filter((o) => o.tip === 'TAHSILAT').reduce((s, o) => s + (o.tutar != null ? Number(o.tutar) : 0), 0)
   const bakiye = { toplam: toplamTalep, tahsil: tahsilEdilen, kalan: Math.max(0, toplamTalep - tahsilEdilen) }
   const olaylarUi = dosya.olaylar.map((o) => ({ id: o.id, tip: o.tip, tarih: o.tarih ? o.tarih.toISOString() : null, tutar: o.tutar != null ? Number(o.tutar) : null, aciklama: o.aciklama }))
@@ -114,7 +135,7 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
   const checks = [
     { label: 'Borçlu · TC/VKN · adres', ok: teyitliBorclu, okText: `${dosya.borclular.length} borçlu çıkarıldı, en az biri teyitli`, hint: 'Çıkarım yapın; en az bir borçlu TC ve adresiyle teyitli olmalı' },
     { label: 'Asıl alacak (anapara)', ok: anapara != null, okText: fmtTRY(anapara) ?? '', hint: 'Ödenen tazminat (asıl alacak) girilmeli' },
-    { label: 'Faiz başlangıcı', ok: !!anaOdeme?.tarih, okText: anaOdeme?.tarih ? `Ana ödeme · ${fmtDate(anaOdeme.tarih)}` : '', hint: 'Ana ödeme tarihi (faiz başlangıcı) gerekli' },
+    { label: 'Faiz başlangıcı', ok: !!faizBasEff, okText: faizBasEff ? `Son dekont · ${fmtDate(new Date(faizBasEff))}` : '', hint: 'Ödeme dekontu tarihi (faiz başlangıcı) gerekli' },
     { label: 'Örnek / mahiyet', ok: !!dosya.brans, okText: dosya.rucuSebebi ?? dosya.brans ?? '', hint: 'Takip mahiyeti (branş/örnek) belirlenmeli' },
     { label: 'İl–ilçe · yetkili icra (kaza yeri)', ok: !!dosya.yetkiliIcra, okText: dosya.yetkiliIcra ?? '', hint: 'Kaza yerine göre yetkili icra dairesi gerekli' },
     { label: 'Gerekli evrak', ok: evrakOk, okText: 'Poliçe, ödeme dekontu ve kaza tutanağı dosyada', hint: 'Poliçe, dekont ve kaza tutanağı eksik olmamalı' },
@@ -141,7 +162,7 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
   const alanlar: [string, string][] = ([
     ['Branş', dosya.brans], ['Sigortalı plaka', dosya.sigortaliPlaka], ['Kaza yeri (yetki)', dosya.kazaYeri || dosya.il],
     ['Kusur durumu', dosya.kusurDurumu], ['Asıl alacak', fmtTRY(anapara)], ['Yetkili icra', dosya.yetkiliIcra],
-    ['Faiz başlangıcı', anaOdeme?.tarih ? fmtDate(anaOdeme.tarih) : null],
+    ['Faiz başlangıcı', faizBasEff ? fmtDate(new Date(faizBasEff)) : null],
   ] as [string, string | null][]).filter((x): x is [string, string] => !!x[1])
 
   // zaman çizelgesi (Aktivite + Not + TakipOlayi)
@@ -316,6 +337,11 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
             <BorclularDuzenle dosyaId={dosya.id} borclular={borclularUi} />
           </Section>
 
+          {/* 4 · FAİZ & DAVA TUTARI */}
+          <Section kicker="4 · FAİZ & DAVA TUTARI" title="Faiz Hesabı" accent="text-kr" sub="Dava tutarı (rücu/kusur payı) ve işlemiş faiz. Dekontlar yüklü evraktan çıkarılır; ekspertiz ücreti anaparaya katılmaz. Birden fazla parçalı ödemede faiz son dekont tarihinden işler. Tutar ve tarihler elle düzenlenebilir.">
+            <FaizPanel dosyaId={dosya.id} init={faizInit} oranlar={faizOranlar} bugun={bugun} />
+          </Section>
+
           {/* 5 · ZAMAN ÇİZELGESİ */}
           <Section kicker="5 · ZAMAN ÇİZELGESİ" title="Geçmiş ve Notlar" sub="Dosyanın tüm olayları: tevdiye, çekim, çıkarım, teyit ve eklenen notlar — kronolojik.">
             <NotForm dosyaId={dosya.id} init={initials(dbUser.ad)} />
@@ -434,18 +460,19 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
           <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
             <div className="border-b border-border-subtle p-[14px_18px]"><div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground">Faiz & Toplam</div><h3 className="font-display text-[15px] font-extrabold">İşlemiş Faiz</h3></div>
             <div className="p-[14px_18px]">
-              {!anaOdeme?.tarih ? (
-                <p className="text-[12px] text-muted-foreground">Faiz başlangıcı (ana ödeme tarihi) yok — ödeme kaydından ya da “Alanları düzenle”den girin.</p>
+              {!faizBasEff ? (
+                <p className="text-[12px] text-muted-foreground">Faiz başlangıcı yok — aşağıdaki <b className="text-foreground">Faiz Hesabı</b> bölümünden dekont ekleyin ya da başlangıcı elle seçin.</p>
               ) : faizAnapara <= 0 ? (
-                <p className="text-[12px] text-muted-foreground">Anapara (rücu tutarı / asıl alacak) gerekli.</p>
+                <p className="text-[12px] text-muted-foreground">Dava tutarı (rücu/kusur payı) gerekli — <b className="text-foreground">Faiz Hesabı</b> bölümünden girin.</p>
               ) : faizOranlar.length === 0 ? (
                 <p className="text-[12px] text-muted-foreground">Faiz oranı tanımlı değil — <Link href="/ayarlar" className="font-semibold text-kr-ink hover:underline">Şirket Bilgileri → Faiz Oranları</Link>'ndan ekleyin.</p>
-              ) : faiz ? (
+              ) : faizEff != null ? (
                 <div className="space-y-2 text-[12.5px]">
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Anapara (rücu)</span><span className="font-mono font-semibold">{fmtTRY(faizAnapara)}</span></div>
-                  <div className="flex items-center justify-between"><span className="text-muted-foreground">İşlemiş faiz · {faiz.gun} gün</span><span className="font-mono font-semibold">{fmtTRY(faiz.faiz)}</span></div>
-                  <div className="flex items-center justify-between border-t border-border-subtle pt-2"><span className="font-bold">Toplam</span><span className="font-mono text-[14px] font-extrabold text-kr-ink">{fmtTRY(faiz.toplam)}</span></div>
-                  <div className="font-mono text-[10px] text-muted-foreground">{fmtDate(anaOdeme.tarih)} → bugün · {faizOranlar.length} dönem</div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">Anapara (dava tutarı)</span><span className="font-mono font-semibold">{fmtTRY(faizAnapara)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-muted-foreground">İşlemiş faiz{faizHesap ? ` · ${faizHesap.gun} gün` : ''}{dosya.faizTutari != null ? ' · elle' : ''}</span><span className="font-mono font-semibold">{fmtTRY(faizEff)}</span></div>
+                  <div className="flex items-center justify-between border-t border-border-subtle pt-2"><span className="font-bold">Toplam</span><span className="font-mono text-[14px] font-extrabold text-kr-ink">{fmtTRY(faizToplam ?? faizAnapara)}</span></div>
+                  <div className="font-mono text-[10px] text-muted-foreground">{fmtDate(new Date(faizBasEff))} → {dosya.faizBitis ? fmtDate(new Date(faizBitEff)) : 'bugün'} · {faizOranlar.length} dönem</div>
+                  {odenenEksHaric > 0 && odenenEksHaric !== faizAnapara && <div className="font-mono text-[10px] text-muted-foreground">Ödenen (eksp. hariç): {fmtTRY(odenenEksHaric)}</div>}
                 </div>
               ) : (
                 <p className="text-[12px] text-muted-foreground">Faiz hesaplanamadı — tarih/oran aralığını kontrol edin.</p>

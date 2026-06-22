@@ -10,6 +10,7 @@ const MODEL = 'claude-haiku-4-5-20251001' // ucuz; kalite için 'claude-sonnet-4
 
 export type BorcluLLM = { adUnvan: string; tcVkn?: string; adres?: string; rol?: string; kaynak?: string; teyit?: string }
 export type TeyitLLM = { not: string; tip: 'oneri' | 'uyari' | 'ok' }
+export type DekontLLM = { tarih?: string; tutar?: number; ekspertizMi?: boolean; aciklama?: string }
 export type AnalizSonuc = {
   yol: 'klasik' | 'idari' | 'belirsiz'
   yolGuven: number
@@ -28,6 +29,7 @@ export type AnalizSonuc = {
   yetkiliIcra?: string
   muhatapOzet?: string
   borclular: BorcluLLM[]
+  dekontlar?: DekontLLM[]
   aciklama: string
   teyit: TeyitLLM[]
 }
@@ -66,6 +68,20 @@ const SCHEMA = {
         required: ['adUnvan', 'rol', 'teyit'],
       },
     },
+    dekontlar: {
+      type: 'array',
+      description: 'Belgelerdeki ÖDEME dekontları/makbuz/havale/EFT kayıtları. Her gerçek ödeme bir kalem. Ekspertiz ücreti ödemesi de kalem olur ama ekspertizMi=true (faiz anaparasına DAHİL EDİLMEZ).',
+      items: {
+        type: 'object',
+        properties: {
+          tarih: { type: 'string', description: 'ödeme/dekont tarihi, YYYY-MM-DD' },
+          tutar: { type: 'number', description: 'ödeme tutarı (TL, sayı)' },
+          ekspertizMi: { type: 'boolean', description: 'true = ekspertiz/eksper ücreti ödemesi → faiz anaparasına dahil etme' },
+          aciklama: { type: 'string', description: 'kısa etiket (ör. "tazminat ödemesi", "ekspertiz ücreti", "2. taksit")' },
+        },
+        required: ['tutar'],
+      },
+    },
     aciklama: { type: 'string', description: 'UYAP takip açıklama metni (sabit kalıp + footer)' },
     teyit: {
       type: 'array',
@@ -92,6 +108,7 @@ KURALLAR:
 - MÜKERRER EVRAK: Aynı poliçe/ekspertiz/dekont farklı adlarla birden çok gelebilir. Tek varlık say; borçluyu/muhatabı TEKRARLAMA, çelişki yoksa birleştir.
 - ★ TUTAR AYRIMI (kısmi kusurda HASARI BÖL): asilAlacak = ÖDENEN tazminat (tam). rucuTutari = RÜCUEN talep edilecek = ödenen × kusur oranı. Ör. %50 kusur + ödeme 71.214,81 → rucuTutari 35.607,41. Lehe formunda RÜCU TUTARI yazılıysa onu rucuTutari yap; yoksa asilAlacak × kusurOranı hesapla. rucuOrani'na yüzdeyi yaz (ör "%50"). Tam kusurda (%100) ikisi eşittir. Birden çok dekont varsa asilAlacak için TOPLA. ÖNEMLİ: rücu < ödeme ise oran RAKAMLARDAN gelir (yarısı → %50); yaya/tam kusur olsa bile rakam bölünmüşse %100 VARSAYMA, kusurDurumu ile rucuOrani tutarlı olsun.
 - AÇIKLAMA (UYAP takip metni) şu sabit kalıpta olsun: "[KAZA TARİHİ] tarihinde Ray Sigorta A.Ş nezdinde sigortalı bulunan [SİG.PLAKA] plakalı araç ile [KARŞI PLAKA] plakalı [araç/motosiklet] arasında meydana gelen trafik kazası neticesinde sigortalıya ödenen tazminatın kusurlu taraftan rücu bedeline ilişkindir." Sonuna footer satırını ekle. DETAY VERME (promil, tazminat türü yazma). Karşı plaka yoksa kalıbı minimal uyarla. Borçlu tartışmalıysa nötr bitir.
+- ★ DEKONTLAR: Belgelerdeki her ödeme/dekont/makbuz/havale/EFT kaydını "dekontlar" dizisine yaz (tarih=YYYY-MM-DD, tutar=sayı). AYNI ödemenin mükerrer/tekrar kopyalarını TEK kalem say. EKSPERTİZ/eksper ücreti ödemesini de yaz ama ekspertizMi=true (faiz anaparasına dahil edilmez). Parçalı/taksitli ödemede her taksit ayrı kalem. asilAlacak = ekspertiz HARİÇ ödemelerin toplamı.
 - TEYİT NOTLARI: bağımsız doğrulayıcı gözüyle eksik/şüpheli noktaları (borçlu-plaka bağı belgesiz, el yazısı beyandan okunan plaka, hasar-ödeme tutar farkı, sürücü≠sahip≠sigortalı karışıklığı) "oneri"/"uyari" olarak yaz; doğrulanmış güçlü noktaları "ok".
 Hepsi Türkçe.`
 

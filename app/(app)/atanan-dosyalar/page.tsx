@@ -29,7 +29,7 @@ function zamanasimiMeta(d: Date | null): { label: string; tone: Tone } {
   return { label, tone: 'steel' }
 }
 
-const COLS = 'grid-cols-[176px_minmax(190px,1fr)_150px_150px_128px_104px_206px_40px]'
+const COLS = 'grid-cols-[168px_minmax(170px,1fr)_minmax(160px,1fr)_140px_146px_120px_100px_168px_40px]'
 
 export default async function AtananDosyalarPage({ searchParams }: { searchParams: SP }) {
   const { aktifMusteriId } = await ctx()
@@ -64,6 +64,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
             { sigortaliUnvan: { contains: q, mode: 'insensitive' } },
             { gonderenBirim: { contains: q, mode: 'insensitive' } },
             { kadroluAvukat: { contains: q, mode: 'insensitive' } },
+            { borclular: { some: { adUnvan: { contains: q, mode: 'insensitive' } } } },
           ],
         }
       : {}),
@@ -91,6 +92,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
         id: true, hukukDosyaNo: true, hasarDosyaNo: true, sigortaliUnvan: true, gonderenBirim: true,
         kadroluAvukat: true, sozlesmeliAvukat: true, atanmaTarihi: true, zamanasimi: true,
         hugoDurum: true, davaMiktari: true, rucuTutari: true, hugodanCekildi: true,
+        borclular: { select: { adUnvan: true, rol: true }, orderBy: { id: 'asc' } },
       },
     }),
   ])
@@ -138,9 +140,10 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
             <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
               <div className="overflow-x-auto">
                 {/* başlık */}
-                <div className={`font-mono grid ${COLS} min-w-[1080px] gap-2 border-b border-border-subtle bg-surface-muted px-5 py-2.5 text-[9.5px] uppercase tracking-[0.06em] text-muted-foreground`}>
+                <div className={`font-mono grid ${COLS} min-w-[1220px] gap-2 border-b border-border-subtle bg-surface-muted px-5 py-2.5 text-[9.5px] uppercase tracking-[0.06em] text-muted-foreground`}>
                   <span>Dosya No</span>
                   <span>Sigortalı / Gönderen Birim</span>
+                  <span>Borçlu</span>
                   <span>Avukat</span>
                   <span>Zaman Aşımı</span>
                   <span className="text-right">Dava Miktarı</span>
@@ -152,10 +155,11 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
                 {rows.map((r) => {
                   const za = zamanasimiMeta(r.zamanasimi)
                   const tutar = r.davaMiktari ?? r.rucuTutari
+                  const borcluFazla = r.borclular.length - 1
                   return (
                     <div
                       key={r.id}
-                      className={`grid ${COLS} min-w-[1080px] items-center gap-2 border-b border-border-subtle px-5 py-3 text-[13px] transition last:border-0 hover:bg-surface-muted/50`}
+                      className={`grid ${COLS} min-w-[1220px] items-center gap-2 border-b border-border-subtle px-5 py-3 text-[13px] transition last:border-0 hover:bg-surface-muted/50`}
                     >
                       {/* dosya no'lar — monospace; hukuk no = detay linki */}
                       <div className="min-w-0">
@@ -171,6 +175,17 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
                       <div className="min-w-0">
                         <div className="truncate font-semibold">{r.sigortaliUnvan ?? '—'}</div>
                         <div className="truncate text-[11px] text-muted-foreground">{r.gonderenBirim ?? '—'}</div>
+                      </div>
+                      {/* borçlu(lar) */}
+                      <div className="min-w-0">
+                        {r.borclular.length ? (
+                          <>
+                            <div className="truncate font-semibold">{r.borclular[0].adUnvan}</div>
+                            <div className="truncate text-[11px] text-muted-foreground">{borcluFazla > 0 ? `+${borcluFazla} borçlu daha` : 'borçlu'}</div>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </div>
                       {/* avukat */}
                       <div className="min-w-0">

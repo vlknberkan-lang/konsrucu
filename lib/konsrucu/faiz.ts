@@ -11,6 +11,23 @@ export type FaizSonuc = { faiz: number; gun: number; toplam: number; detay: Faiz
 const gunFark = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 86_400_000)
 const yuvarla = (n: number) => Math.round(n * 100) / 100
 
+// ─── dekont yardımcıları (ekspertiz = haric → anaparaya/faize dahil değil) ───
+export type DekontGirdi = { tarih: string | null; tutar: number; haricMi: boolean }
+
+/** Ekspertiz hariç ödenen toplam (asıl alacak). */
+export function odenenToplam(dekontlar: DekontGirdi[]): number {
+  return yuvarla(dekontlar.filter((d) => !d.haricMi && Number.isFinite(d.tutar)).reduce((s, d) => s + d.tutar, 0))
+}
+
+/** Ekspertiz hariç EN GEÇ (son) dekont tarihi = faiz başlangıcı (YYYY-MM-DD) ya da null. */
+export function sonDekontTarihi(dekontlar: DekontGirdi[]): string | null {
+  const t = dekontlar
+    .filter((d) => !d.haricMi && d.tarih && /^\d{4}-\d{2}-\d{2}/.test(d.tarih))
+    .map((d) => (d.tarih as string).slice(0, 10))
+    .sort()
+  return t.length ? t[t.length - 1] : null
+}
+
 /** faizJson içinden oran listesini güvenle çıkar. */
 export function oranlariOku(faizJson: unknown): FaizOrani[] {
   const arr = (faizJson as { oranlar?: unknown })?.oranlar

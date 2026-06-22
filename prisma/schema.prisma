@@ -177,6 +177,13 @@ model RucuDosyasi {
   rucuTutari Decimal? @db.Decimal(14, 2)
   asilAlacak Decimal? @db.Decimal(14, 2)
 
+  // faiz (hesap snapshot). tarihler null = OTOMATİK: başlangıç = son (ekspertiz hariç) dekont,
+  // bitiş = bugün (hesap günü). faizTutari null = otomatik hesaplanan; doluysa elle override.
+  faizBaslangic DateTime?
+  faizBitis     DateTime?
+  faizTutari    Decimal?  @db.Decimal(14, 2)
+  faizHesapJson Json? // kaydedilmiş dönemsel kırılım (yasal kayıt)
+
   // taraflar / kaza
   sigortaliPlaka String?
   karsiPlaka     String?
@@ -261,6 +268,7 @@ model Odeme {
   tutar      Decimal?    @db.Decimal(14, 2)
   aciklama   String?
   anaOdemeMi Boolean     @default(false) // ana ödeme = faiz başlangıcı
+  haricMi    Boolean     @default(false) // anaparaya/faize dahil DEĞİL (ör. ekspertiz ücreti)
 
   @@index([dosyaId])
 }

@@ -9,6 +9,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
 import { analizEt } from '@/lib/konsrucu/analiz'
 import { takipOlayKaydet } from '@/lib/konsrucu/takip-olay'
+import { faizHesapla, oranlariOku, sonDekontTarihi, type DekontGirdi } from '@/lib/konsrucu/faiz'
 
 type DosyaPayload = {
   hasarNo?: string
@@ -37,6 +38,26 @@ function guvenliDecimal(v: unknown): Prisma.Decimal | null {
   return Number.isFinite(n) && Math.abs(n) < 1e12 ? new Prisma.Decimal(Math.round(n * 100) / 100) : null
 }
 
+/** LLM dekontlarını Odeme create-data'sına çevir; geçersiz tutarı ele, tarih bozuksa null. */
+function dekontlardanOdemeler(dekontlar: { tarih?: string; tutar?: number; ekspertizMi?: boolean; aciklama?: string }[] | undefined) {
+  if (!Array.isArray(dekontlar)) return []
+  return dekontlar
+    .map((d) => {
+      const tutar = guvenliDecimal(d.tutar)
+      if (!tutar) return null
+      const t = d.tarih ? new Date(d.tarih) : null
+      const tarih = t && !Number.isNaN(t.getTime()) ? t : null
+      return { tutar, tarih, haricMi: !!d.ekspertizMi, aciklama: (d.aciklama ?? '').trim().slice(0, 200) || null }
+    })
+    .filter((x): x is { tutar: Prisma.Decimal; tarih: Date | null; haricMi: boolean; aciklama: string | null } => !!x)
+}
+
+/** Ekspertiz hariç en geç dekont tarihi = faiz başlangıcı. */
+function sonDekontTarihiOdeme(odemeler: { tarih: Date | null; haricMi: boolean }[]): Date | null {
+  const t = odemeler.filter((o) => !o.haricMi && o.tarih).map((o) => (o.tarih as Date).getTime())
+  return t.length ? new Date(Math.max(...t)) : null
+}
+
 /** Giriş yapan kullanıcı + erişebildiği müşteri id'leri. */
 async function ctx() {
   const supabase = createClient()
@@ -62,6 +83,8 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
   const analiz = payload.metin ? await analizEt(payload.metin, ayarlar?.aciklamaFooter ?? undefined) : null
 
   const durum: DosyaDurum = analiz ? (analiz.yol === 'idari' ? DosyaDurum.IDARI_YOL : DosyaDurum.INCELENIYOR) : DosyaDurum.INCELENIYOR
+  const yeniOdemeler = dekontlardanOdemeler(analiz?.dekontlar)
+  const faizBas = sonDekontTarihiOdeme(yeniOdemeler)
 
   const cikarim = {
     alanlar: payload.alanlar,
@@ -92,7 +115,11 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
       olusSekli: analiz?.olusSekli ?? null,
       kusurDurumu: analiz?.kusurDurumu ?? null,
       asilAlacak: guvenliDecimal(analiz?.asilAlacak),
+      rucuTutari: guvenliDecimal(analiz?.rucuTutari),
+      rucuOrani: analiz?.rucuOrani ?? null,
       yetkiliIcra: analiz?.yetkiliIcra ?? null,
+      faizBaslangic: faizBas,
+      odemeler: yeniOdemeler.length ? { create: yeniOdemeler.map((o) => ({ tarih: o.tarih, tutar: o.tutar, haricMi: o.haricMi, aciklama: o.aciklama })) } : undefined,
       cikarimJson: cikarim as unknown as Prisma.InputJsonValue,
       belgeler: {
         create: payload.dosyalar.map((f) => ({
@@ -206,12 +233,21 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
     },
   }
 
+  // dekontlar → Odeme; faiz başlangıcı = ekspertiz hariç en geç dekont tarihi
+  const yeniOdemeler = dekontlardanOdemeler(analiz.dekontlar)
+  const faizBas = sonDekontTarihiOdeme(yeniOdemeler)
+
   try {
     await prisma.$transaction([
       prisma.borclu.deleteMany({ where: { dosyaId } }),
+      prisma.odeme.deleteMany({ where: { dosyaId } }),
       prisma.rucuDosyasi.update({
         where: { id: dosyaId },
         data: {
+          faizBaslangic: faizBas ?? undefined, // dekont yoksa mevcut değeri koru
+          odemeler: yeniOdemeler.length
+            ? { create: yeniOdemeler.map((o) => ({ tarih: o.tarih, tutar: o.tutar, haricMi: o.haricMi, aciklama: o.aciklama })) }
+            : undefined,
           yol: yolDb(analiz.yol),
           yolGuven: analiz.yolGuven ?? null,
           yolNeden: analiz.yolNeden ?? null,
@@ -355,6 +391,78 @@ export async function dosyaGuncelle(dosyaId: string, fd: FormData): Promise<{ ok
     },
   })
   await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: 'Dosya alanları elle güncellendi (onay sıfırlandı)' } })
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
+}
+
+// ───────────────── FAİZ: dava tutarı + dekontlar + tarih/hesap (hepsi düzenlenebilir) ─────────────────
+
+type FaizDekont = { tarih: string | null; tutar: string; haricMi: boolean; aciklama: string | null }
+type FaizPayload = {
+  davaTutari: string | null // = rucuTutari (faiz anaparası / kusur payı)
+  faizBaslangic: string | null // YYYY-MM-DD · null = otomatik (son dekont)
+  faizBitis: string | null // YYYY-MM-DD · null = otomatik (bugün)
+  faizTutari: string | null // elle override · null = otomatik hesaplanan
+  dekontlar: FaizDekont[]
+}
+
+const isoGun = (d: Date) => d.toISOString().slice(0, 10)
+
+/** Faiz panelini kaydet: dekontları (Odeme) tazele, dava tutarı + faiz tarih/override'larını yaz,
+ *  dönemsel hesabı snapshot'la. Takibe-kritik olduğu için avukat onayı sıfırlanır. */
+export async function faizKaydet(dosyaId: string, p: FaizPayload): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true, cikarimJson: true } })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
+
+  // dekontları normalize et (geçersiz tutarı ele)
+  const odemeData = (Array.isArray(p.dekontlar) ? p.dekontlar : [])
+    .map((d) => {
+      const tutar = guvenliDecimal(d.tutar)
+      if (!tutar) return null
+      const t = d.tarih ? new Date(d.tarih) : null
+      return { tarih: t && !Number.isNaN(t.getTime()) ? t : null, tutar, haricMi: !!d.haricMi, aciklama: (d.aciklama ?? '').trim().slice(0, 200) || null }
+    })
+    .filter((x): x is { tarih: Date | null; tutar: Prisma.Decimal; haricMi: boolean; aciklama: string | null } => !!x)
+
+  const davaTutari = guvenliDecimal(p.davaTutari)
+  const fBasGirdi = p.faizBaslangic && /^\d{4}-\d{2}-\d{2}/.test(p.faizBaslangic) ? new Date(p.faizBaslangic) : null
+  const fBitGirdi = p.faizBitis && /^\d{4}-\d{2}-\d{2}/.test(p.faizBitis) ? new Date(p.faizBitis) : null
+  const fTutariGirdi = guvenliDecimal(p.faizTutari)
+
+  // dönemsel hesabı snapshot'la (oranlar Ayarlar'dan)
+  const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { faizJson: true } })
+  const oranlar = oranlariOku(ayarlar?.faizJson)
+  const dekontGirdi: DekontGirdi[] = odemeData.map((o) => ({ tarih: o.tarih ? isoGun(o.tarih) : null, tutar: Number(o.tutar), haricMi: o.haricMi }))
+  const otoBas = sonDekontTarihi(dekontGirdi)
+  const basEt = fBasGirdi ?? (otoBas ? new Date(otoBas) : null)
+  const bitEt = fBitGirdi ?? new Date()
+  const anapara = davaTutari != null ? Number(davaTutari) : 0
+  const hesap = anapara > 0 && basEt ? faizHesapla(anapara, basEt, bitEt, oranlar) : null
+  const faizHesapJson = hesap
+    ? { ...hesap, anapara, baslangic: isoGun(basEt as Date), bitis: isoGun(bitEt), elleTutar: fTutariGirdi != null ? Number(fTutariGirdi) : null, oranSnapshot: oranlar, hesaplamaTarihi: new Date().toISOString() }
+    : null
+
+  try {
+    await prisma.$transaction([
+      prisma.odeme.deleteMany({ where: { dosyaId } }),
+      prisma.rucuDosyasi.update({
+        where: { id: dosyaId },
+        data: {
+          rucuTutari: davaTutari ?? undefined,
+          faizBaslangic: fBasGirdi, // null = otomatik
+          faizBitis: fBitGirdi, // null = otomatik (bugün)
+          faizTutari: fTutariGirdi, // null = otomatik hesaplanan
+          faizHesapJson: (faizHesapJson as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+          odemeler: odemeData.length ? { create: odemeData } : undefined,
+          cikarimJson: cjOnaysiz(dosya.cikarimJson) as Prisma.InputJsonValue,
+        },
+      }),
+      prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `Faiz/dava tutarı güncellendi (${odemeData.length} dekont; onay sıfırlandı)` } }),
+    ])
+  } catch (e) {
+    return { ok: false, error: `Faiz kaydedilemedi: ${(e as Error).message}` }
+  }
   revalidatePath(`/akilli-giris/${dosyaId}`)
   return { ok: true }
 }
