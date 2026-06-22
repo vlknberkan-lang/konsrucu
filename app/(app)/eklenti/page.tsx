@@ -3,11 +3,12 @@
  * "Rücu Takip — UYAP Senkron" eklentisini indir + kur (paketlenmemiş yükle) + kullan.
  * Chrome, web sayfasından sessiz kurulum YAPMAZ → indir + 2 adımda yükle akışı.
  */
+import Link from 'next/link'
 import { Download, Puzzle, ShieldCheck, Info, FolderOpen, Settings2, MousePointerClick, RefreshCw } from 'lucide-react'
 import { Kopyala } from '@/components/akilli-giris/kopyala'
 
-const ZIP = '/uyap-eklenti-v0.4.2.zip'
-const SURUM = '0.4.2'
+const ZIP = '/uyap-eklenti-v0.5.0.zip'
+const SURUM = '0.5.0'
 
 function Adim({ n, baslik, children, icon: Icon }: { n: number; baslik: string; children: React.ReactNode; icon: React.ElementType }) {
   return (
@@ -98,6 +99,23 @@ export default function EklentiPage() {
         <div className="flex items-start gap-2.5 border-t border-border-subtle bg-success-soft/40 p-[12px_18px] text-[12px] text-success">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
           <span><b>Güvenli:</b> eklenti yalnızca UYAP (uyap.gov.tr) sayfalarında, senin oturumunla <b>okuma</b> yapar; hiçbir işlem göndermez, dosya detayına girmez (harç çıkmaz) ve veriyi tarayıcının dışına aktarmaz.</span>
+        </div>
+      </div>
+
+      {/* program senkronu */}
+      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-4">
+          <RefreshCw className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">Programla senkron (yeni · v0.5.0)</h2>
+        </div>
+        <ol className="flex flex-col gap-3 p-5 text-[13px] text-foreground">
+          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">1.</span> <span><Link href="/ayarlar" className="font-semibold text-kr-ink hover:underline">Şirket Bilgileri → UYAP Eklenti Senkron Anahtarı</Link>'ndan <b>anahtar üret</b> ve kopyala.</span></li>
+          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">2.</span> <span>Eklenti panelinde <b>⚙ Program Ayarı</b> → program adresini ve anahtarı yapıştır (bir kez).</span></li>
+          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">3.</span> <span><b>🎯 Programdan Hedef</b> → takibi açık (icra no'lu) dosyalar hedef listene gelir. <b>▶ İcra Sorgula</b> ile tara.</span></li>
+          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">4.</span> <span><b>⇅ Program'a Senkronla</b> → durum (açık/kapalı) ve finansal bilgi icra no ile eşleşen dosyaya yazılır. Tarayıcı açık + UYAP girişliyken <b>~45 dk'da bir otomatik</b> de yapılır.</span></li>
+        </ol>
+        <div className="flex items-start gap-2.5 border-t border-border-subtle bg-surface-muted/40 p-[12px_18px] text-[12px] text-muted-foreground">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>Eşleştirme <b>icra dosya no</b> ile yapılır — programda “Takip Açıldı” ile girdiğin numara, UYAP'taki esas no ile aynı olmalı. Evrak PDF'lerinin programa otomatik aktarımı sonraki sürümde.</span>
         </div>
       </div>
     </div>
