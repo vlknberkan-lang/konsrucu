@@ -209,6 +209,11 @@ model RucuDosyasi {
   takipTarihi DateTime?
   zamanasimi  DateTime?
 
+  // UYAP senkron (eklenti okur-yazar) — açık/kapalı durumu + son tarama anı + finansal snapshot
+  uyapDurum     String?
+  uyapSenkronAt DateTime?
+  uyapHesapJson Json? // UYAP'tan: asıl alacak / işlemiş faiz / tahsilat / bakiye (bilgi amaçlı)
+
   // çıkarım izi (her alan: value + confidence + sourceRef)
   cikarimJson  Json?
   kaynakKlasor String?
@@ -289,11 +294,13 @@ model Belge {
   genislik      Int?
   yukseklik     Int?
   confidence    Float?
+  kaynakRef     String? // dış kaynak referansı (ör. UYAP evrakId) — otomatik içe aktarımda tekrarı önler
   createdAt     DateTime      @default(now())
   ciktiBaglari  CiktiKaynak[]
 
   @@index([dosyaId])
   @@index([kategori])
+  @@index([dosyaId, kaynakRef])
 }
 
 model UretilenCikti {

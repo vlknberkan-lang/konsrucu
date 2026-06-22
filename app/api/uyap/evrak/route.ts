@@ -1,0 +1,63 @@
+/**
+ * KonsRücü — UYAP senkron · POST /api/uyap/evrak
+ * Eklenti, UYAP'ta indirdiği YENİ evrak PDF'ini buraya yükler → Supabase 'evrak' bucket → Belge.
+ * Dedup: kaynakRef (UYAP evrakId) ile aynı evrak tekrar eklenmez. Tenant-kapsamlı (Bearer oturum).
+ *
+ * Gövde: { icraDosyaNo, uyapEvrakId, dosyaAdi, tur?, contentBase64, mime? }
+ */
+import { prisma } from '@/lib/prisma'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { siniflandir } from '@/lib/konsrucu/belge-siniflandir'
+import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
+
+export const dynamic = 'force-dynamic'
+
+const MAX_B64 = 4_400_000 // ~3.3 MB dosya (Vercel gövde sınırı altında kalsın)
+
+export function OPTIONS() {
+  return preflight()
+}
+
+export async function POST(req: Request) {
+  const k = await uyapKimlik(req)
+  if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401)
+
+  let body: { icraDosyaNo?: string; uyapEvrakId?: string; dosyaAdi?: string; tur?: string; contentBase64?: string; mime?: string }
+  try { body = await req.json() } catch { return corsJson({ ok: false, error: 'bad json' }, 400) }
+
+  const icraDosyaNo = String(body?.icraDosyaNo ?? '').trim()
+  const uyapEvrakId = String(body?.uyapEvrakId ?? '').trim()
+  const dosyaAdi = String(body?.dosyaAdi ?? '').trim().slice(0, 255)
+  const b64 = String(body?.contentBase64 ?? '')
+  if (!icraDosyaNo || !uyapEvrakId || !dosyaAdi) return corsJson({ ok: false, error: 'icraDosyaNo + uyapEvrakId + dosyaAdi gerekli' }, 400)
+
+  const dosya = await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true } })
+  if (!dosya) return corsJson({ ok: false, error: 'dosya bulunamadı (icraDosyaNo)' }, 404)
+
+  // dedup — bu evrak daha önce indiyse atla
+  const mevcut = await prisma.belge.findFirst({ where: { dosyaId: dosya.id, kaynakRef: uyapEvrakId }, select: { id: true } })
+  if (mevcut) return corsJson({ ok: true, atlandi: true, sebep: 'zaten var' })
+
+  if (!b64) return corsJson({ ok: false, error: 'contentBase64 gerekli' }, 400)
+  if (b64.length > MAX_B64) return corsJson({ ok: false, atlandi: true, sebep: 'dosya çok büyük (elle ekleyin)' }, 413)
+
+  let bytes: Buffer
+  try { bytes = Buffer.from(b64, 'base64') } catch { return corsJson({ ok: false, error: 'base64 çözülemedi' }, 400) }
+  if (!bytes.length) return corsJson({ ok: false, error: 'boş içerik' }, 400)
+
+  const mime = String(body?.mime ?? 'application/pdf')
+  const safe = dosyaAdi.replace(/[^\w.\-]+/g, '_').slice(0, 80)
+  const sp = `${dosya.id}/uyap-${uyapEvrakId}-${safe}`
+
+  const admin = createAdminClient()
+  const { error: upErr } = await admin.storage.from('evrak').upload(sp, bytes, { contentType: mime, upsert: false })
+  if (upErr && !/already exists/i.test(upErr.message)) return corsJson({ ok: false, error: `yükleme: ${upErr.message}` }, 500)
+
+  const snf = siniflandir({ dosyaAdi: `${dosyaAdi} ${body?.tur ?? ''}`.trim(), metin: null, foto: false })
+  await prisma.belge.create({
+    data: { dosyaId: dosya.id, kategori: snf.kategori as never, confidence: snf.guven, dosyaAdi, storagePath: sp, kaynakRef: uyapEvrakId },
+  })
+  await prisma.aktivite.create({ data: { dosyaId: dosya.id, kullaniciId: k.userId, eylem: `UYAP'tan evrak indi: ${dosyaAdi}` } })
+
+  return corsJson({ ok: true, eklendi: true, kategori: snf.kategori })
+}
