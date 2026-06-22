@@ -19,6 +19,7 @@ import { NotForm } from '@/components/akilli-giris/detay/not-form'
 import { EvrakGruplari } from '@/components/akilli-giris/detay/evrak-gruplari'
 import { BelgeEkle } from '@/components/akilli-giris/detay/belge-ekle'
 import { CikarimDuzenle } from '@/components/akilli-giris/detay/cikarim-duzenle'
+import { AciklamaDuzenle } from '@/components/akilli-giris/detay/aciklama-duzenle'
 import { BorclularDuzenle } from '@/components/akilli-giris/detay/borclular-duzenle'
 import { OnayButonu } from '@/components/akilli-giris/detay/onay-butonu'
 import { TakipSureci } from '@/components/akilli-giris/detay/takip-sureci'
@@ -319,15 +320,22 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
                     </div>
                   </div>
                 )}
-                {(cj.aciklama || footer) && (
-                  <div className="rounded-xl border border-border-subtle bg-surface-muted/50 p-[13px_15px]">
-                    <div className="flex items-center gap-2"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">UYAP Takip Açıklaması</div><span className="ml-auto"><Kopyala metin={aciklamaMetni} /></span></div>
-                    {cj.aciklama && <pre className="mt-2 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-foreground">{cj.aciklama}</pre>}
-                    {footer
-                      ? <pre className="mt-2 whitespace-pre-wrap border-t border-border-subtle pt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">{footer}</pre>
-                      : <div className="mt-1.5 text-[11px] text-muted-foreground">Footer (alacaklı/MERSİS/IBAN) için <b>Şirket Bilgileri</b>'ni doldurun.</div>}
-                  </div>
-                )}
+                <div className="rounded-xl border border-border-subtle bg-surface-muted/50 p-[13px_15px]">
+                  <div className="flex items-center gap-2"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">UYAP Takip Açıklaması</div><span className="ml-auto"><Kopyala metin={aciklamaMetni} /></span></div>
+                  <AciklamaDuzenle
+                    dosyaId={dosya.id}
+                    init={cj.aciklama ?? ''}
+                    alan={{
+                      kazaTarihi: (dosya.kazaTarihi ?? dosya.hasarTarihi)?.toISOString() ?? '',
+                      sigortaliPlaka: dosya.sigortaliPlaka ?? '',
+                      karsiPlaka: dosya.karsiPlaka ?? '',
+                      alacakliUnvan: ayarlar?.alacakliUnvan ?? '',
+                    }}
+                  />
+                  {footer
+                    ? <pre className="mt-2 whitespace-pre-wrap border-t border-border-subtle pt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">{footer}</pre>
+                    : <div className="mt-1.5 text-[11px] text-muted-foreground">Footer (alacaklı/MERSİS/IBAN) için <b>Şirket Bilgileri</b>'ni doldurun.</div>}
+                </div>
               </div>
             )}
           </Section>

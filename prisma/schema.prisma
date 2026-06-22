@@ -129,6 +129,9 @@ model Ayarlar {
   faizJson       Json? // dönemsel kanuni faiz oranları
   vekilBaro      String?
   faizTuru       String?  @default("Yasal faiz")
+  // vekaletname — TÜM dosyalarda ortak tek belge (değişmez); Storage 'evrak' bucket yolu
+  vekaletnamePath String?
+  vekaletnameAd   String?
   updatedAt      DateTime @updatedAt
 }
 

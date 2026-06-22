@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Prisma } from '@prisma/client'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
 
 async function ctx() {
@@ -33,6 +34,39 @@ export async function ayarlarKaydet(fd: FormData): Promise<void> {
   await prisma.ayarlar.upsert({ where: { musteriId }, create: { musteriId, ...veri }, update: veri })
   revalidatePath('/ayarlar')
   redirect('/ayarlar?ok=1')
+}
+
+/** Vekaletname'yi kaydet — tüm dosyalarda ortak tek belge (Storage yolu + ad). */
+export async function vekaletnameKaydet(musteriId: string, path: string, ad: string): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  if (!izinli.includes(musteriId)) return { ok: false, error: 'Yetki yok' }
+  const p = String(path ?? '').trim()
+  if (!p) return { ok: false, error: 'Dosya yolu boş' }
+  const veri = { vekaletnamePath: p, vekaletnameAd: String(ad ?? '').slice(0, 255) || null }
+  await prisma.ayarlar.upsert({ where: { musteriId }, create: { musteriId, ...veri }, update: veri })
+  revalidatePath('/ayarlar')
+  return { ok: true }
+}
+
+/** Vekaletname'yi sil (kaydı boşalt; Storage dosyası kalsa da referans kalkar). */
+export async function vekaletnameSil(musteriId: string): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  if (!izinli.includes(musteriId)) return { ok: false, error: 'Yetki yok' }
+  await prisma.ayarlar.update({ where: { musteriId }, data: { vekaletnamePath: null, vekaletnameAd: null } }).catch(() => null)
+  revalidatePath('/ayarlar')
+  return { ok: true }
+}
+
+/** Vekaletname için kısa ömürlü imzalı URL üret (tenant doğrulanır). */
+export async function vekaletnameAc(musteriId: string): Promise<{ ok: boolean; url?: string; error?: string }> {
+  const { izinli } = await ctx()
+  if (!izinli.includes(musteriId)) return { ok: false, error: 'Yetki yok' }
+  const a = await prisma.ayarlar.findUnique({ where: { musteriId }, select: { vekaletnamePath: true } })
+  if (!a?.vekaletnamePath) return { ok: false, error: 'Vekaletname yüklenmemiş' }
+  const admin = createAdminClient()
+  const { data, error } = await admin.storage.from('evrak').createSignedUrl(a.vekaletnamePath, 120)
+  if (error || !data?.signedUrl) return { ok: false, error: `Bağlantı oluşturulamadı: ${error?.message ?? 'bilinmeyen'}` }
+  return { ok: true, url: data.signedUrl }
 }
 
 /** Dönemsel faiz oranlarını kaydet (faizJson = { oranlar: [...] }). */

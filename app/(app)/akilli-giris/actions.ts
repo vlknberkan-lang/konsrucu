@@ -10,6 +10,7 @@ import { prisma } from '@/lib/prisma'
 import { analizEt } from '@/lib/konsrucu/analiz'
 import { takipOlayKaydet } from '@/lib/konsrucu/takip-olay'
 import { faizHesapla, oranlariOku, sonDekontTarihi, type DekontGirdi } from '@/lib/konsrucu/faiz'
+import { yetkiliIcraOner } from '@/lib/konsrucu/adli-rehber'
 
 type DosyaPayload = {
   hasarNo?: string
@@ -85,6 +86,7 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
   const durum: DosyaDurum = analiz ? (analiz.yol === 'idari' ? DosyaDurum.IDARI_YOL : DosyaDurum.INCELENIYOR) : DosyaDurum.INCELENIYOR
   const yeniOdemeler = dekontlardanOdemeler(analiz?.dekontlar)
   const faizBas = sonDekontTarihiOdeme(yeniOdemeler)
+  const icraOneri = analiz ? yetkiliIcraOner(analiz.kazaYeri || analiz.il, analiz.il) : null
 
   const cikarim = {
     alanlar: payload.alanlar,
@@ -117,7 +119,7 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
       asilAlacak: guvenliDecimal(analiz?.asilAlacak),
       rucuTutari: guvenliDecimal(analiz?.rucuTutari),
       rucuOrani: analiz?.rucuOrani ?? null,
-      yetkiliIcra: analiz?.yetkiliIcra ?? null,
+      yetkiliIcra: icraOneri?.icraDairesi ?? analiz?.yetkiliIcra ?? null,
       faizBaslangic: faizBas,
       odemeler: yeniOdemeler.length ? { create: yeniOdemeler.map((o) => ({ tarih: o.tarih, tutar: o.tutar, haricMi: o.haricMi, aciklama: o.aciklama })) } : undefined,
       cikarimJson: cikarim as unknown as Prisma.InputJsonValue,
@@ -237,6 +239,10 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
   const yeniOdemeler = dekontlardanOdemeler(analiz.dekontlar)
   const faizBas = sonDekontTarihiOdeme(yeniOdemeler)
 
+  // yetkili icra = KAZA YERİ → Adlî Rehber'den bağlı adliye (deterministik; LLM önerisine fallback)
+  const icraOneri = yetkiliIcraOner(analiz.kazaYeri || analiz.il, analiz.il)
+  const yetkiliIcraSon = icraOneri?.icraDairesi || analiz.yetkiliIcra || undefined
+
   try {
     await prisma.$transaction([
       prisma.borclu.deleteMany({ where: { dosyaId } }),
@@ -262,7 +268,7 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
           asilAlacak: guvenliDecimal(analiz.asilAlacak) ?? undefined,
           rucuTutari: guvenliDecimal(analiz.rucuTutari) ?? undefined,
           rucuOrani: rucuOraniSon,
-          yetkiliIcra: analiz.yetkiliIcra || undefined,
+          yetkiliIcra: yetkiliIcraSon,
           muhatapOzet: analiz.muhatapOzet || undefined,
           cikarimJson: cikarim as unknown as Prisma.InputJsonValue,
           durum: dosya.durum === DosyaDurum.HAVUZDA ? DosyaDurum.INCELENIYOR : undefined,
@@ -293,7 +299,7 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
 
 const katDb = (k: string): BelgeKategori => (k && k in BelgeKategori ? (k as BelgeKategori) : BelgeKategori.DIGER)
 
-type EklenecekBelge = { dosyaAdi: string; kategori: string; extractedText: string | null; genislik?: number; yukseklik?: number; kamera?: string; exifTarih?: string; storagePath?: string }
+type EklenecekBelge = { dosyaAdi: string; kategori: string; guven?: number; extractedText: string | null; genislik?: number; yukseklik?: number; kamera?: string; exifTarih?: string; storagePath?: string }
 
 /** Mevcut dosyaya manuel belge ekle (tarayıcıda çıkarılmış metin + meta ile). */
 export async function belgeEkle(dosyaId: string, belgeler: EklenecekBelge[]): Promise<{ ok: boolean; error?: string; eklenen?: number }> {
@@ -307,6 +313,7 @@ export async function belgeEkle(dosyaId: string, belgeler: EklenecekBelge[]): Pr
       data: belgeler.map((b) => ({
         dosyaId,
         kategori: katDb(b.kategori),
+        confidence: b.guven ?? null,
         dosyaAdi: b.dosyaAdi.slice(0, 255),
         storagePath: b.storagePath ?? '', // 'evrak' bucket'taki yol (bayt yüklendiyse)
         extractedText: b.extractedText ? b.extractedText.slice(0, 100000) : null,

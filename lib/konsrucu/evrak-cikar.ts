@@ -5,9 +5,12 @@
  * (ingest-panel.tsx içindeki mantığın paylaşılan, yeniden kullanılabilir hâli.)
  */
 
+import { siniflandir } from './belge-siniflandir'
+
 export type IslenmisBelge = {
   dosyaAdi: string
   kategori: string // BelgeKategori değerleri
+  guven?: number // sınıflandırma güveni (0-1) → confidence
   extractedText: string | null
   genislik?: number
   yukseklik?: number
@@ -24,38 +27,6 @@ function imgDims(file: File): Promise<{ w: number; h: number }> {
     img.onerror = () => { resolve({ w: 0, h: 0 }); URL.revokeObjectURL(url) }
     img.src = url
   })
-}
-
-/** Dosya ADINDAN kategori tahmini (içerik tahmini başarısızsa yedek). */
-function kategoriBul(ad: string, foto: boolean): string {
-  if (foto) return 'HASAR_FOTO'
-  const s = ad.toLowerCase()
-  if (/poli[çc]e|policy|kasko|zmms|trafik/.test(s)) return 'POLICE'
-  if (/dekont|[öo]deme|odeme|makbuz|tahsilat|fatura|havale|eft/.test(s)) return 'DEKONT'
-  if (/tutanak|ifade|kaza.?tespit|tramer/.test(s)) return 'TUTANAK'
-  if (/ekspertiz|eksper|hasar.?rapor/.test(s)) return 'EKSPERTIZ'
-  if (/alkol|promil/.test(s)) return 'ALKOL'
-  if (/ehliyet|s[üu]r[üu]c[üu]/.test(s)) return 'EHLIYET'
-  if (/ruhsat|tescil/.test(s)) return 'RUHSAT'
-  if (/lehe|beyan|devir/.test(s)) return 'LEHE'
-  if (/sbm|sorgu/.test(s)) return 'SBM'
-  return 'DIGER'
-}
-
-/** Çıkarılan METİNDEN kategori — dosya adı sayı/hash olduğunda asıl güvenilir yöntem. */
-function icerikKategori(text: string | null): string | null {
-  if (!text) return null
-  const s = text.toLowerCase().slice(0, 4000)
-  if (/lehe hukuk dev[iı]r|r[üu]cu muhatab|r[üu]cu gerek[çc]es/.test(s)) return 'LEHE'
-  if (/ekspertiz raporu|eksper sic[iı]l|hasar ekspert[iı]z|sbm rapor/.test(s)) return 'EKSPERTIZ'
-  if (/poli[çc]e s[üu]res|s[öo]zle[şs]me taraflar|sigortali ad/.test(s)) return 'POLICE'
-  if (/para transfer dekontu|havale bedel|g[öo]nderilen havale/.test(s)) return 'DEKONT'
-  if (/kdv matrah|[öo]denecek tutar|mal hizmet toplam/.test(s)) return 'DEKONT'
-  if (/kaza tesp[iı]t tutana|trafik kazas.{0,12}tutana|maddi hasarl/.test(s)) return 'TUTANAK'
-  if (/alkol|promil/.test(s)) return 'ALKOL'
-  if (/s[üu]r[üu]c[üu] belges|ehl[iı]yet/.test(s)) return 'EHLIYET'
-  if (/tescil belges/.test(s)) return 'RUHSAT'
-  return null
 }
 
 /** Dosyaları tarayıcıda işle → sunucuya yazılacak normalize belge listesi. */
@@ -112,7 +83,8 @@ export async function evrakCikar(
       }
     } catch { /* tek dosya hatası tüm partiyi düşürmesin */ }
 
-    out.push({ dosyaAdi: f.name, kategori: foto ? 'HASAR_FOTO' : (icerikKategori(text) ?? kategoriBul(f.name, false)), extractedText: text, genislik: w, yukseklik: h, kamera, exifTarih })
+    const snf = siniflandir({ dosyaAdi: f.name, metin: text, foto })
+    out.push({ dosyaAdi: f.name, kategori: snf.kategori, guven: snf.guven, extractedText: text, genislik: w, yukseklik: h, kamera, exifTarih })
     onProgress?.(i + 1, files.length, f.name)
   }
   return out

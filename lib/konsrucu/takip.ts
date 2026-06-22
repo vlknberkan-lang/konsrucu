@@ -32,3 +32,31 @@ export function aciklamaTam(govde: string | null | undefined, footer: string): s
   if (!g) return footer
   return `${g}\n\n${footer}`
 }
+
+/** Tarihi UYAP açıklaması için TR biçimine çevir (GG.AA.YYYY) ya da yer tutucu döndür. */
+function trTarih(d: Date | string | null | undefined): string {
+  if (!d) return '[kaza tarihi]'
+  const dt = typeof d === 'string' ? new Date(d) : d
+  if (Number.isNaN(dt.getTime())) return '[kaza tarihi]'
+  return dt.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+export type AciklamaAlan = {
+  kazaTarihi?: Date | string | null
+  sigortaliPlaka?: string | null
+  karsiPlaka?: string | null
+  alacakliUnvan?: string | null
+}
+
+/**
+ * Standart rücu takip açıklaması GÖVDESİNİ alanlardan deterministik üret (sabit kalıp; footer hariç).
+ * Avukat alanları düzeltince "Şablondan üret" ile yeniden doldurmak için. DETAY VERMEZ (promil/tür yazmaz).
+ */
+export function aciklamaUret(p: AciklamaAlan): string {
+  const tarih = trTarih(p.kazaTarihi)
+  const alacakli = (p.alacakliUnvan ?? '').trim() || '[alacaklı sigorta şirketi]'
+  const sig = (p.sigortaliPlaka ?? '').trim() || '[sigortalı plaka]'
+  const karsi = (p.karsiPlaka ?? '').trim()
+  const arac = karsi ? `${sig} plakalı araç ile ${karsi} plakalı araç arasında` : `${sig} plakalı araç ile`
+  return `${tarih} tarihinde ${alacakli} nezdinde sigortalı bulunan ${arac} meydana gelen trafik kazası neticesinde sigortalıya ödenen tazminatın kusurlu taraftan rücu bedeline ilişkindir.`
+}
