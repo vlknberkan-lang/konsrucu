@@ -23,6 +23,7 @@ import { AciklamaDuzenle } from '@/components/akilli-giris/detay/aciklama-duzenl
 import { BorclularDuzenle } from '@/components/akilli-giris/detay/borclular-duzenle'
 import { OnayButonu } from '@/components/akilli-giris/detay/onay-butonu'
 import { TakipSureci } from '@/components/akilli-giris/detay/takip-sureci'
+import { UyapXmlButon } from '@/components/akilli-giris/detay/uyap-xml-buton'
 
 const fmtTRY = (n: number | null | undefined) =>
   n != null && Number.isFinite(Number(n)) ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)) + ' ₺' : null
@@ -420,6 +421,7 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
               ) : (
                 <>
                   <OnayButonu dosyaId={dosya.id} onayli={onayli} onayKim={onay?.kim} onayTarih={onay?.tarih} />
+                  <UyapXmlButon dosyaId={dosya.id} />
                   {hazir ? (
                     <form action={takipAcildi} className="flex flex-col gap-2.5">
                       <input type="hidden" name="dosyaId" value={dosya.id} />

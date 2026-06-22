@@ -1,0 +1,315 @@
+<!ELEMENT exchangeData ((dosyalar, exchangeHeader?) | (exchangeHeader?, dosyalar))>
+
+<!ELEMENT exchangeHeader EMPTY>
+<!ATTLIST exchangeHeader 
+	versiyon (1.2) "1.2"
+>
+
+<!ELEMENT dosyalar (dosya*)>
+
+<!ELEMENT dosya (cek | senet | taraf | VekilKisi | police | kontratKefil | digerAlacak | evrak | ref | ilam)* >
+<!ATTLIST dosya
+	id							ID #IMPLIED
+	dosyaTipi					CDATA #REQUIRED
+	dosyaTuru					(0) #IMPLIED
+	takipTuru					(0 | 1) "1"
+	takipYolu					(0 | 1 | 2 | 3 | 4 | 5) #IMPLIED
+	takipSekli					(0 | 1 | 2 | 3 | 4 | 5 | 6) #IMPLIED						
+	mahiyetKodu    				(1007 | 1036 | 1045 | 1107 | 1207 | 1307 | 1407 | 2007| 2036 | 2045 | 3007 | 3036 | 3045 | 4007 | 4036 | 4045 | 5007 | 5036 | 5045 | 6007 | 6045 | 7007 | 8008 | 9009 | 9010 | 9011 ) #IMPLIED
+	alacaklininTalepEttigiHak	CDATA #IMPLIED
+	BK84MaddeUygulansin			(E | H) "H"
+	BSMVUygulansin				(E | H) "H"
+	KKDFUygulansin				(E | H) "H"
+	aciklama48e9				CDATA #IMPLIED
+	dosyaBelirleyicisi			CDATA #IMPLIED
+	rehinIpotek15Aciklama		CDATA #IMPLIED
+>
+
+<!ELEMENT evrak (#PCDATA | evrak)*>
+<!ATTLIST evrak	
+	fileName 					CDATA #IMPLIED
+	mimeType					CDATA #IMPLIED
+>
+
+<!ELEMENT ref EMPTY>
+<!ATTLIST ref
+	to 							CDATA	#REQUIRED
+	id							IDREF	#REQUIRED
+>
+
+<!ELEMENT alacakKalemi (taraf | ref | faiz)*>
+<!ATTLIST alacakKalemi
+	id							ID #IMPLIED
+	alacakKalemKod				CDATA #IMPLIED
+	alacakKalemAdi				CDATA #IMPLIED
+	alacakKalemTutar			CDATA #IMPLIED
+	alacakKalemIlkTutar			CDATA #IMPLIED
+	alacakKalemTip				CDATA #IMPLIED
+	tutarTur					CDATA #IMPLIED
+	tutarAdi					CDATA #IMPLIED
+	sabitTaksitTarihi			CDATA #IMPLIED
+	dovizKurCevrimi				CDATA #IMPLIED
+	akdiFaiz					CDATA #IMPLIED
+	alacakKalemKodAciklama		CDATA #IMPLIED
+	aciklama					CDATA #IMPLIED
+	alacakKalemKodTuru			CDATA #IMPLIED
+>
+
+<!ELEMENT faiz EMPTY>
+<!ATTLIST faiz
+	id							ID #IMPLIED
+	baslangicTarihi				CDATA #IMPLIED
+	bitisTarihi					CDATA #IMPLIED
+	faizOran					CDATA #IMPLIED
+	faizTipKod					CDATA #IMPLIED
+	faizTipKodAciklama			CDATA #IMPLIED
+	faizTutar					CDATA #IMPLIED
+	faizTutarTur				CDATA #IMPLIED
+	faizTutarTurAdi				CDATA #IMPLIED
+	faizSureTip					CDATA #IMPLIED
+>
+
+
+<!ELEMENT cek (alacakKalemi | taraf | ref)*>
+<!ATTLIST cek
+	id							ID #IMPLIED
+	islemlerBasladimi			(E | H) "H"
+	kocanNo						CDATA #IMPLIED
+	seriNo						CDATA #IMPLIED	
+	kesideTarihi				CDATA #IMPLIED
+	kesideYeri					CDATA #IMPLIED
+	tutar						CDATA #IMPLIED
+	tutarTur					CDATA #IMPLIED
+	tutarTurAciklama			CDATA #IMPLIED
+	odemeYeri					CDATA #IMPLIED
+	ibrazTarihi					CDATA #IMPLIED
+	bankaID						CDATA #IMPLIED
+	bankaSubeKod				CDATA #IMPLIED
+	bankaAdi					CDATA #IMPLIED
+	bankaSubeAdi				CDATA #IMPLIED
+	bankaSubeIl					CDATA #IMPLIED
+	bankaSubeIlce				CDATA #IMPLIED
+	bankaSubeAdres				CDATA #IMPLIED
+>
+
+<!ELEMENT senet (alacakKalemi | taraf | ref)*>
+<!ATTLIST senet
+	id							ID #IMPLIED
+	islemlerBasladimi			(E | H) "H"
+	tanzimTarihi				CDATA #IMPLIED
+	belgeninTutari				CDATA #IMPLIED
+	tutarTur					CDATA #IMPLIED
+	tutarAdi					CDATA #IMPLIED
+	olmasiGrknPulDegeri			CDATA #IMPLIED
+	uzerindekiPulunDegeri		CDATA #IMPLIED
+	odemeYeri					CDATA #IMPLIED
+	tanzimYeri					CDATA #IMPLIED
+	vadeTarihi					CDATA #IMPLIED
+>
+
+<!ELEMENT police (alacakKalemi | taraf | ref)*>
+<!ATTLIST police
+	id							ID #IMPLIED
+	islemlerBasladimi			(E | H) "H"
+	kesideTarihi				CDATA #IMPLIED
+	belgeninTutari				CDATA #IMPLIED
+	tutarTur					CDATA #IMPLIED
+	tutarAdi					CDATA #IMPLIED
+	vadeTarihi					CDATA #IMPLIED
+	odemeYeri					CDATA #IMPLIED
+	kesideYeri					CDATA #IMPLIED
+	olmasiGrknPulDegeri			CDATA #IMPLIED
+	uzerindekiPulunDegeri		CDATA #IMPLIED
+	lehtarAdSoyad				CDATA #IMPLIED
+	kesideciAdSoyad				CDATA #IMPLIED
+	odeyecekKisiAdSoyad			CDATA #IMPLIED
+>
+
+<!ELEMENT kontrat (alacakKalemi | taraf | ref)*>
+<!ATTLIST kontrat 
+	id							ID #IMPLIED
+	sozlesmeSozluBelgeli		(S | B) "B"
+	belgeninTutari				CDATA #IMPLIED
+	tutarTur					CDATA #IMPLIED
+	gecerlilikBaslangicTarihi	CDATA #IMPLIED
+	gecerlilikSonlanmaTarihi	CDATA #IMPLIED
+	gecerliOlduguSure			CDATA #IMPLIED
+	uzerindekiPulDegeri			CDATA #IMPLIED
+	olmasiGerekenPulDegeri		CDATA #IMPLIED
+	aciklama					CDATA #IMPLIED
+	belgeIslemleriBaslatiliyormu	(E | H) "H"
+	hazirlanisTarihi			CDATA #IMPLIED
+	tutarTurAciklama			CDATA #IMPLIED
+	adresAciklama				CDATA #IMPLIED
+>
+
+<!ELEMENT kontratKefil ( ((kontrat | ref), (adres | ref)?) | ((adres | ref)?, (kontrat | ref)) )>
+<!ATTLIST kontratKefil
+	id		ID #IMPLIED
+>
+
+<!ELEMENT digerAlacak (alacakKalemi | taraf | ref)*>
+<!ATTLIST digerAlacak
+	id							ID #IMPLIED
+	digerAlacakAciklama			CDATA #IMPLIED
+	tarih						CDATA #IMPLIED
+	tutar						CDATA #IMPLIED
+	alacakNo					CDATA #IMPLIED
+	tutarTur					CDATA #IMPLIED
+	tutarAdi					CDATA #IMPLIED
+>
+
+<!ELEMENT adres EMPTY>
+<!ATTLIST adres 
+	id							ID	#IMPLIED
+	adresTuru					CDATA #IMPLIED
+	adresTuruAciklama			CDATA #IMPLIED
+	ilKodu						CDATA #IMPLIED
+	il							CDATA #IMPLIED
+	ilce						CDATA #IMPLIED
+	ilceKodu					CDATA #IMPLIED
+	postaKodu					CDATA #IMPLIED
+	adres						CDATA #IMPLIED
+	telefon						CDATA #IMPLIED
+	cepTelefon					CDATA #IMPLIED
+	fax							CDATA #IMPLIED
+	elektronikPostaAdresi		CDATA #IMPLIED
+>
+
+<!ELEMENT kisiTumBilgileri EMPTY>
+<!ATTLIST kisiTumBilgileri
+	id							ID #IMPLIED
+	adi							CDATA #IMPLIED
+	soyadi						CDATA #IMPLIED
+	oncekiSoyadi				CDATA #IMPLIED
+	babaAdi						CDATA #IMPLIED
+	anaAdi						CDATA #IMPLIED
+	dogumTarihi					CDATA #IMPLIED
+	tcKimlikNo					CDATA #IMPLIED
+	cinsiyeti					(K | E) "E"
+	dogumYeri					CDATA #IMPLIED
+	nufusaKayitIlKodu			CDATA #IMPLIED
+	nufusaKayitIlceKodu			CDATA #IMPLIED
+	mahKoy						CDATA #IMPLIED
+	ciltNo						CDATA #IMPLIED
+	aileSiraNo					CDATA #IMPLIED
+	siraNo						CDATA #IMPLIED
+	cuzdanSeriNo				CDATA #IMPLIED
+	cuzdanNo					CDATA #IMPLIED
+	kayitNo						CDATA #IMPLIED
+	verildigiTarih				CDATA #IMPLIED
+	verildigiIlKodu				CDATA #IMPLIED
+	verildigiIlceKodu			CDATA #IMPLIED
+	verilisNedeni				CDATA #IMPLIED
+	ybnNfsKayitliOldgYer 		CDATA #IMPLIED
+	verildigiIlAdi				CDATA #IMPLIED
+	verildigiIlceAdi			CDATA #IMPLIED
+	vergiNo						CDATA #IMPLIED
+>
+
+<!ELEMENT kurum EMPTY>
+<!ATTLIST kurum
+	id							ID	#IMPLIED
+	kurumAdi					CDATA #IMPLIED
+	vergiNo						CDATA #IMPLIED
+	vergiDairesi				CDATA #IMPLIED
+	ticaretSicilNo				CDATA #IMPLIED
+	ticaretSicilNoVerildigiYer	CDATA #IMPLIED
+	kamuOzel					(O | K) "O"
+	sskIsyeriSicilNo			CDATA #IMPLIED
+	harcDurumu					(0 | 1)  "1"
+     mersisNo               	CDATA #IMPLIED
+>
+
+<!ELEMENT kisiKurumBilgileri (((kurum | kisiTumBilgileri | ref), (adres | ref)?) | ((adres | ref)?, (kurum | kisiTumBilgileri | ref)))>
+<!ATTLIST kisiKurumBilgileri
+	id							ID #IMPLIED
+	ad							CDATA #IMPLIED
+>
+
+<!ELEMENT rolTur EMPTY>
+<!ATTLIST rolTur
+	rolID						CDATA #IMPLIED
+	Rol							CDATA #IMPLIED
+>
+
+<!ELEMENT iban EMPTY>
+<!ATTLIST iban
+	no							CDATA #IMPLIED
+>
+
+<!ELEMENT taraf ( ((kisiKurumBilgileri | ref), rolTur,iban?, ref*) | 
+								  ((kisiKurumBilgileri | ref), ref*, rolTur,iban?) | 
+								  (ref*, (kisiKurumBilgileri | ref), rolTur,iban?) | 
+								  (rolTur ,iban?, (kisiKurumBilgileri | ref), ref*) |
+								  (rolTur ,iban? , ref*, (kisiKurumBilgileri | ref)) |
+								  (ref*, rolTur ,iban?, (kisiKurumBilgileri | ref)) )>
+<!ATTLIST taraf
+	id							ID #IMPLIED
+>
+
+<!ELEMENT VekilKisi ((vekil, kisiTumBilgileri, adres?) | 
+			   (vekil, adres?, kisiTumBilgileri) | 
+			   (adres?, vekil, kisiTumBilgileri) | 
+			   (adres?, kisiTumBilgileri, vekil) | 
+			   (kisiTumBilgileri, adres?, vekil) | 
+			   (kisiTumBilgileri, vekil, adres?))>
+<!ATTLIST VekilKisi
+	id							ID #IMPLIED
+>
+
+<!ELEMENT vekil EMPTY>
+<!ATTLIST vekil
+	id							ID #IMPLIED
+	baroNo						CDATA #IMPLIED
+	tbbNo						CDATA #IMPLIED
+	avukatlikBuroAdi			CDATA #IMPLIED
+	tcKimlikNo					CDATA #IMPLIED
+	adi							CDATA #IMPLIED
+	soyadi						CDATA #IMPLIED
+	vergiNo						CDATA #IMPLIED
+	vekilTipi					(B | K | S) "B"
+	bakanlikDosyaNo				CDATA #IMPLIED
+	kapanmaNedeni				(0 | 1 | 2)  #IMPLIED
+	kurumAvukatiMi				(E | H) "H"
+	sigortaliMi					(E | H) "H"
+	borcluVekiliMi				(E | H) "H"
+>
+
+<!ELEMENT ilam ((paraylaOlculemeyenAlacak | alacakKalemi)*, teminat?, (paraylaOlculemeyenAlacak, alacakKalemi)*)>
+<!ATTLIST ilam
+	id							ID #IMPLIED
+	ilamTarihi					CDATA #IMPLIED
+	ilamKararNoYil				CDATA #IMPLIED
+	ilamKararSira				CDATA #IMPLIED
+	tcKimlikNo					CDATA #IMPLIED
+	ilamDosyaNoYil				CDATA #IMPLIED
+	ilamDosyaSira				CDATA #IMPLIED
+	ilamAciklama				CDATA #IMPLIED
+	ilamiVerenMahkeme			CDATA #IMPLIED
+	davaAcilisTarih				CDATA #IMPLIED
+	kesifTarih					CDATA #IMPLIED
+	kesinlesmeTarih				CDATA #IMPLIED
+	ilamKurumTip				CDATA #IMPLIED
+	ilamKurumAd					CDATA #IMPLIED
+>
+
+<!ELEMENT teminat EMPTY>
+<!ATTLIST teminat
+	id							ID #IMPLIED
+	teminatTutar				CDATA #IMPLIED
+	tutarTur					CDATA #IMPLIED
+	ilamAciklama				CDATA #IMPLIED
+	tahsilatMakbuzNo			CDATA #IMPLIED
+	tahsilatMakbuzTarihi		CDATA #IMPLIED
+	teminatNo					CDATA #IMPLIED
+	teminatiVerenKurum			CDATA #IMPLIED
+	teminatTipi					CDATA #IMPLIED
+	teminatNedeni				CDATA #IMPLIED
+>
+
+<!ELEMENT paraylaOlculemeyenAlacak EMPTY>
+<!ATTLIST paraylaOlculemeyenAlacak
+	id							ID #IMPLIED
+	aciklama					CDATA #IMPLIED
+>
