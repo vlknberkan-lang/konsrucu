@@ -25,9 +25,9 @@ export function AppShell({
     <div className="grid h-screen grid-cols-[72px_1fr] overflow-hidden md:grid-cols-[72px_272px_1fr]">
       <Rail userInit={user.init} />
       <Sidebar tenant={tenant} recentCases={recentCases} />
-      <main className="flex min-w-0 flex-col bg-background">
+      <main className="flex min-h-0 min-w-0 flex-col bg-background">
         <GlobalHeader crumb={crumb} user={user} />
-        <div className="flex-1 overflow-y-auto">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </main>
     </div>
   )

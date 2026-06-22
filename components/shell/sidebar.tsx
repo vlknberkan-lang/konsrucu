@@ -2,11 +2,12 @@
 
 /**
  * KonsRücü — bağlam paneli (sidebar) · components/shell/sidebar.tsx
- * Akıllı Giriş yığını + Çalışma Alanı + Son Dosyalar + altta tenant switcher (→ /dashboard).
+ * Aktif destinasyonlar (rail ile aynı: Atanan Dosyalar + Hugo İçe Aktar) + Son Dosyalar
+ * + altta tenant switcher (→ /dashboard).
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { UploadCloud, Files, ChevronsUpDown } from 'lucide-react'
+import { ChevronsUpDown } from 'lucide-react'
 import { RAIL_NAV, DURUM, type ShellTenant, type RecentCase } from '@/lib/konsrucu/nav'
 import { KonsRucuWordmark } from '@/components/brand/konsrucu-mark'
 
@@ -16,7 +17,6 @@ function GLabel({ children }: { children: React.ReactNode }) {
 
 export function Sidebar({ tenant, recentCases }: { tenant: ShellTenant | null; recentCases: RecentCase[] }) {
   const pathname = usePathname()
-  const onInbox = pathname.startsWith('/akilli-giris')
   const item = 'flex w-full items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-[13.5px] font-medium transition'
   const off = 'text-foreground hover:bg-surface-muted'
   const on = 'bg-kr/10 font-semibold text-kr'
@@ -29,23 +29,13 @@ export function Sidebar({ tenant, recentCases }: { tenant: ShellTenant | null; r
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        <GLabel>Akıllı Giriş</GLabel>
-        <Link href="/akilli-giris?yukle=1" className={`${item} ${off}`}>
-          <UploadCloud className="h-[17px] w-[17px] text-muted-foreground" /> Yeni dosya yükle
-        </Link>
-        <Link href="/akilli-giris" className={`${item} ${onInbox ? on : off}`}>
-          <Files className={`h-[17px] w-[17px] ${onInbox ? 'text-kr' : 'text-muted-foreground'}`} /> Dosyaları görüntüle
-          {recentCases.length > 0 && (
-            <span className="font-mono ml-auto grid h-[18px] min-w-[18px] place-items-center rounded-full bg-kr px-1.5 text-[10px] font-semibold text-white">{recentCases.length}</span>
-          )}
-        </Link>
-
-        <GLabel>Çalışma Alanı</GLabel>
-        {RAIL_NAV.filter((n) => n.id !== 'inbox').map((n) => {
+        <GLabel>Menü</GLabel>
+        {RAIL_NAV.map((n) => {
           const Icon = n.icon
+          const aktif = pathname.startsWith(n.href)
           return (
-            <Link key={n.id} href={n.ready ? n.href : '#'} className={`${item} ${off} ${!n.ready ? 'opacity-60' : ''}`}>
-              <Icon className="h-[17px] w-[17px] text-muted-foreground" /> {n.label}
+            <Link key={n.id} href={n.href} className={`${item} ${aktif ? on : off}`}>
+              <Icon className={`h-[17px] w-[17px] ${aktif ? 'text-kr' : 'text-muted-foreground'}`} /> {n.label}
             </Link>
           )
         })}
@@ -80,7 +70,7 @@ export function Sidebar({ tenant, recentCases }: { tenant: ShellTenant | null; r
           ) : (
             <>
               <div className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[9px] bg-surface text-muted-foreground"><ChevronsUpDown className="h-[15px] w-[15px]" /></div>
-              <div className="min-w-0 flex-1 text-[13px] font-medium text-muted-foreground">Müşteri seç</div>
+              <div className="min-w-0 flex-1 text-[13px] font-medium text-muted-foreground">Müvekkil seç</div>
             </>
           )}
         </Link>

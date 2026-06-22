@@ -78,6 +78,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
   const [pct, setPct] = useState(0)
   const [saving, setSaving] = useState(false)
   const [hasarNo, setHasarNo] = useState('')
+  const [metin, setMetin] = useState('')
   const router = useRouter()
 
   // "Yeni dosya yükle"den gelindiyse dosya seçiciyi aç (otomatik SAHTE işlem YOK).
@@ -149,6 +150,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
     const labeled = allText.match(/hasar\s*(?:dosya)?\s*(?:no|nu)?\s*[:\-]?\s*(\d{8,13})/i)
     const fnum = fnames.match(/\b(\d{10,13})\b/)
     setHasarNo((labeled?.[1] || fnum?.[1] || '').trim())
+    setMetin(allText.trim())
     setAlanlar({
       plaka: [...acc.plaka], tc: [...acc.tc], tarih: [...acc.tarih], tutar: [...acc.tutar], iban: [...acc.iban],
     })
@@ -156,7 +158,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
   }
 
   function reset() {
-    setFiles([]); setRows([]); setAlanlar(null); setPct(0); setPhase('idle'); setHasarNo('')
+    setFiles([]); setRows([]); setAlanlar(null); setPct(0); setPhase('idle'); setHasarNo(''); setMetin('')
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -165,6 +167,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
     try {
       const payload = {
         hasarNo: hasarNo || undefined,
+        metin: metin.slice(0, 60000) || undefined,
         alanlar: alanlar ?? { plaka: [], tc: [], tarih: [], tutar: [], iban: [] },
         dosyalar: rows.map((r) => ({ name: r.name, kind: r.kind, w: r.w, h: r.h, exifDate: r.exifDate, kamera: r.kamera, textLen: r.textLen })),
       }
@@ -314,9 +317,9 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
           {phase === 'done' && (
             <div className="flex flex-wrap items-center gap-3 border-t border-border-subtle bg-surface-muted/40 px-5 py-4">
               <button onClick={kaydet} disabled={saving} className="inline-flex items-center gap-2 rounded-[10px] bg-kr px-4 py-2.5 text-[13.5px] font-semibold text-kr-foreground shadow-[0_2px_8px_hsl(var(--kr)/0.32)] transition hover:bg-kr/90 disabled:opacity-60">
-                {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Dosya oluşturuluyor…</> : <><FolderCheck className="h-4 w-4" /> Dosyayı oluştur &amp; aç</>}
+                {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Oluşturuluyor + asistan analiz ediyor…</> : <><FolderCheck className="h-4 w-4" /> Dosyayı oluştur &amp; aç</>}
               </button>
-              <span className="text-[11.5px] text-muted-foreground">Kayıt + belgeler DB'ye yazılır → Dosya Detay açılır. (Kusur/oluş için LLM · Katman 3 sıradaki.)</span>
+              <span className="text-[11.5px] text-muted-foreground">Kayıt + belgeler DB'ye yazılır, asistan (Katman 3) triyaj · borçlular · açıklama · teyit üretir → Dosya Detay açılır.</span>
             </div>
           )}
         </div>

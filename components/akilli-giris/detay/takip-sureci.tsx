@@ -1,0 +1,119 @@
+'use client'
+
+/** KonsRücü — Dosya Detay · takip sonrası izleme (tebliğ/itiraz/tahsilat/bakiye) + manuel olay. */
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { Plus, Trash2, Check, Loader2, AlertTriangle, Banknote, Gavel, Scale, FileCheck } from 'lucide-react'
+import { olayEkle, olaySil } from '@/app/(app)/akilli-giris/actions'
+
+const TIPLER: [string, string][] = [['TEBLIG', 'Tebliğ edildi'], ['ITIRAZ', 'İtiraz'], ['KESINLESTI', 'Kesinleşti'], ['TAHSILAT', 'Tahsilat'], ['HACIZ', 'Haciz'], ['KAPANDI', 'Kapandı'], ['DURUM', 'Durum / not']]
+const ETIKET: Record<string, string> = Object.fromEntries(TIPLER)
+const SURE_PIPE: [string, string][] = [['TAKIP_ACILDI', 'Takip Açıldı'], ['TEBLIG_EDILDI', 'Tebliğ'], ['KESINLESTI', 'Kesinleşti'], ['TAHSIL', 'Tahsilat'], ['KAPANDI', 'Kapandı']]
+const STEP: Record<string, number> = { TAKIP_ACILDI: 0, TEBLIG_EDILDI: 1, ITIRAZ: 1, KESINLESTI: 2, TAHSIL: 3, KAPANDI: 4 }
+
+export type OlayUI = { id: string; tip: string; tarih: string | null; tutar: number | null; aciklama: string | null }
+
+const money = (n: number) => '₺ ' + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+export function TakipSureci({ dosyaId, durum, olaylar, bakiye }: { dosyaId: string; durum: string; olaylar: OlayUI[]; bakiye: { toplam: number; tahsil: number; kalan: number } }) {
+  const [pending, start] = useTransition()
+  const [err, setErr] = useState<string | null>(null)
+  const [silen, setSilen] = useState<string | null>(null)
+  const [tip, setTip] = useState('TEBLIG')
+  const router = useRouter()
+  const step = STEP[durum] ?? 0
+  const itiraz = durum === 'ITIRAZ'
+
+  function ekle(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = e.currentTarget
+    const fd = new FormData(form)
+    setErr(null)
+    start(async () => { const r = await olayEkle(fd); if (r.ok) { form.reset(); setTip('TEBLIG'); router.refresh() } else setErr(r.error ?? 'Eklenemedi') })
+  }
+  async function sil(id: string) {
+    if (!window.confirm('Olay silinsin mi?')) return
+    setSilen(id); const r = await olaySil(id); setSilen(null); if (r.ok) router.refresh()
+  }
+
+  const sirali = [...olaylar].sort((a, b) => (b.tarih ?? '').localeCompare(a.tarih ?? ''))
+  const INP = 'rounded-[9px] border border-border bg-surface px-3 py-2 text-[13px] outline-none transition focus:border-kr focus:ring-4 focus:ring-kr/15'
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+      <div className="flex items-start gap-[14px] border-b border-border-subtle px-5 py-4">
+        <div className="min-w-0 flex-1">
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground">4 · TAKİP SÜRECİ</div>
+          <h2 className="font-display mt-1 text-[17px] font-extrabold tracking-[-0.025em]">İcra Takibi İzleme</h2>
+        </div>
+        {itiraz && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-[3px] text-[11px] font-semibold text-warning"><AlertTriangle className="h-3 w-3" />İtiraz var</span>}
+      </div>
+      <div className="px-5 py-[18px]">
+        {/* süreç pipeline */}
+        <div className="mb-4 flex items-center overflow-x-auto">
+          {SURE_PIPE.map(([k, l], i) => {
+            const done = i < step, now = i === step
+            return (
+              <span key={k} className="flex items-center">
+                {i > 0 && <span className={`h-[2px] w-6 ${i <= step ? 'bg-success' : 'bg-border'}`} />}
+                <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-[5px] ${now ? 'bg-kr-soft' : ''}`}>
+                  <span className={`font-mono grid h-[20px] w-[20px] place-items-center rounded-full border text-[10px] font-semibold ${done ? 'border-success bg-success text-white' : now ? 'border-kr bg-kr text-white' : 'border-border bg-surface-muted text-muted-foreground'}`}>{done ? <Check className="h-3 w-3" /> : i + 1}</span>
+                  <span className={`text-[12px] font-semibold ${done ? 'text-foreground' : now ? 'text-kr-ink' : 'text-muted-foreground'}`}>{l}</span>
+                </span>
+              </span>
+            )
+          })}
+        </div>
+
+        {/* bakiye */}
+        <div className="mb-4 grid grid-cols-3 gap-3">
+          {([['Toplam talep', bakiye.toplam, 'text-foreground'], ['Tahsil edilen', bakiye.tahsil, 'text-success'], ['Kalan bakiye', bakiye.kalan, bakiye.kalan > 0 ? 'text-kr-ink' : 'text-success']] as [string, number, string][]).map(([lbl, v, cls]) => (
+            <div key={lbl} className="rounded-xl border border-border-subtle bg-surface-muted/40 p-3">
+              <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">{lbl}</div>
+              <div className={`font-mono mt-1 text-[15px] font-bold ${cls}`}>{money(v)}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* olay ekle */}
+        <form onSubmit={ekle} className="mb-4 rounded-xl border border-border-subtle bg-surface-muted/30 p-3">
+          <input type="hidden" name="dosyaId" value={dosyaId} />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <select name="tip" value={tip} onChange={(e) => setTip(e.target.value)} className={INP}>{TIPLER.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <input name="tarih" type="date" className={INP} />
+            <input name="tutar" type="number" step="0.01" placeholder="Tutar ₺ (tahsilat)" disabled={tip !== 'TAHSILAT'} className={`${INP} font-mono disabled:opacity-50`} />
+            <input name="aciklama" placeholder="Açıklama (ops.)" className={INP} />
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <button type="submit" disabled={pending} className="inline-flex items-center gap-1.5 rounded-[9px] bg-kr px-3 py-1.5 text-[12.5px] font-semibold text-kr-foreground transition hover:bg-kr/90 disabled:opacity-60">{pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Olay ekle</button>
+            {err && <span className="text-[11.5px] text-danger">{err}</span>}
+          </div>
+        </form>
+
+        {/* zaman çizelgesi */}
+        {sirali.length === 0 ? (
+          <div className="text-[13px] text-muted-foreground">Henüz takip olayı yok. Tebliğ / itiraz / tahsilat eklendikçe burada görünür (manuel ya da UYAP senkronu).</div>
+        ) : (
+          <ol className="space-y-2.5">
+            {sirali.map((o) => (
+              <li key={o.id} className="flex items-start gap-3 rounded-[11px] border border-border-subtle bg-surface p-[10px_12px]">
+                <span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-[8px] ${o.tip === 'TAHSILAT' ? 'bg-success-soft text-success' : o.tip === 'ITIRAZ' ? 'bg-warning-soft text-warning' : o.tip === 'KAPANDI' ? 'bg-muted text-muted-foreground' : 'bg-kr-soft text-kr-ink'}`}>
+                  {o.tip === 'TAHSILAT' ? <Banknote className="h-4 w-4" /> : o.tip === 'ITIRAZ' ? <AlertTriangle className="h-4 w-4" /> : o.tip === 'KESINLESTI' ? <Scale className="h-4 w-4" /> : o.tip === 'HACIZ' ? <Gavel className="h-4 w-4" /> : <FileCheck className="h-4 w-4" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-[13px] font-bold">{ETIKET[o.tip] ?? o.tip}</span>
+                    {o.tutar != null && <span className="font-mono text-[12px] font-semibold text-success">{money(o.tutar)}</span>}
+                    <span className="font-mono ml-auto text-[10.5px] text-muted-foreground">{o.tarih ? new Date(o.tarih).toLocaleDateString('tr-TR') : ''}</span>
+                  </div>
+                  {o.aciklama && <div className="mt-0.5 text-[12px] text-muted-foreground">{o.aciklama}</div>}
+                </div>
+                <button onClick={() => sil(o.id)} disabled={silen === o.id} aria-label="Sil" className="grid h-7 w-7 shrink-0 place-items-center rounded-[7px] text-muted-foreground transition hover:text-danger disabled:opacity-60">{silen === o.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}</button>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </section>
+  )
+}

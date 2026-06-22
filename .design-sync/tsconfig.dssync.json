@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "baseUrl": "..",
+    "jsx": "react-jsx",
+    "paths": {
+      "@/app/actions/auth": ["./.design-sync/shims/auth.ts"],
+      "next/link": ["./.design-sync/shims/next-link.tsx"],
+      "next/navigation": ["./.design-sync/shims/next-navigation.ts"],
+      "@/*": ["./*"]
+    }
+  }
+}

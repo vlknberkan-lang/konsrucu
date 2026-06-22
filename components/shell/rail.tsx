@@ -14,7 +14,7 @@ export function Rail({ userInit }: { userInit: string }) {
   const pathname = usePathname()
   return (
     <aside className="relative flex flex-col items-center gap-1.5 bg-[#0a1628] py-4 after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-white/[.06]">
-      <Link href="/akilli-giris" className="mb-2.5 grid h-[42px] w-[42px] place-items-center" aria-label="KonsRücü">
+      <Link href="/atanan-dosyalar" className="mb-2.5 grid h-[42px] w-[42px] place-items-center" aria-label="KonsRücü">
         <KonsRucuMark size={26} />
       </Link>
 

@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 
-/** Müşteri (tenant) seç → güvenlik için atama doğrulanır → cookie + kabuğa (Akıllı Giriş) geç. */
+/** Müşteri (tenant) seç → güvenlik için atama doğrulanır → cookie + kabuğa (Atanan Dosyalar) geç. */
 export async function secMusteri(formData: FormData) {
   const musteriId = String(formData.get('musteriId') ?? '')
   if (!musteriId) redirect('/dashboard')
@@ -28,5 +28,5 @@ export async function secMusteri(formData: FormData) {
     path: '/',
     maxAge: 60 * 60 * 24 * 30,
   })
-  redirect('/akilli-giris')
+  redirect('/atanan-dosyalar')
 }

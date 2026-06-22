@@ -1,0 +1,36 @@
+{
+  "projectId": "4c7310ff-2b00-46ef-ba8c-5a1b37a2c392",
+  "shape": "package",
+  "pkg": "konsrucu",
+  "globalName": "KonsRucu",
+  "srcDir": "components",
+  "tsconfig": ".design-sync/tsconfig.dssync.json",
+  "cssEntry": ".design-sync/ds-styles.css",
+  "buildCmd": "node_modules/.bin/tailwindcss -c .design-sync/tailwind.dssync.ts -i app/globals.css -o .design-sync/ds-styles.css --minify",
+  "componentSrcMap": {
+    "Badge": "components/konsrucu/ui.tsx",
+    "PageHeader": "components/konsrucu/ui.tsx",
+    "Conf": "components/konsrucu/ui.tsx",
+    "ConfBar": "components/konsrucu/ui.tsx",
+    "FlowStrip": "components/konsrucu/ui.tsx",
+    "KonsRucuMark": "components/brand/konsrucu-mark.tsx",
+    "KonsRucuWordmark": "components/brand/konsrucu-mark.tsx",
+    "AppShell": "components/shell/app-shell.tsx",
+    "GlobalHeader": "components/shell/global-header.tsx",
+    "Rail": "components/shell/rail.tsx",
+    "Sidebar": "components/shell/sidebar.tsx"
+  },
+  "overrides": {
+    "AppShell": { "cardMode": "single", "viewport": "1280x780" },
+    "Sidebar": { "viewport": "300x700" },
+    "Rail": { "viewport": "112x640" },
+    "GlobalHeader": { "viewport": "1080x300" },
+    "Badge": { "viewport": "640x240" },
+    "PageHeader": { "viewport": "780x300" },
+    "Conf": { "viewport": "480x200" },
+    "ConfBar": { "viewport": "340x320" },
+    "FlowStrip": { "viewport": "820x320" },
+    "KonsRucuMark": { "viewport": "460x240" },
+    "KonsRucuWordmark": { "viewport": "520x220" }
+  }
+}

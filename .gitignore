@@ -9,6 +9,7 @@
 /build
 /dist
 /coverage
+*.tsbuildinfo
 
 # ─── ortam / SECRETS — ASLA commit'leme ───
 .env
@@ -30,6 +31,17 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# ─── design-sync (claude.ai/design) ───
+# Durable, committed: .design-sync/config.json, NOTES.md, previews/, overrides/,
+# shims/, ds-entry.tsx, tsconfig.dssync.json, tailwind.dssync.ts.
+# Generated / machine-state — ignored:
+/.ds-sync/
+/ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+.design-sync/ds-styles.css
 
 # ─── deploy ───
 .vercel

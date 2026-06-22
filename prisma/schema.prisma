@@ -87,6 +87,7 @@ model Musteri {
   createdAt    DateTime           @default(now())
   ayarlar      Ayarlar?
   dosyalar     RucuDosyasi[]
+  projeler     Proje[]
   kullanicilar MusteriKullanici[]
 }
 
@@ -131,71 +132,108 @@ model Ayarlar {
   updatedAt      DateTime @updatedAt
 }
 
+// ─────────────────── proje (müşteri altı; alacaklı/faiz override'ı) ───────────────────
+model Proje {
+  id            String        @id @default(cuid())
+  musteriId     String
+  ad            String // "Ray Sigorta"
+  alacakliUnvan String? // "Ray Sigorta A.Ş."
+  mersis        String?
+  vergiNo       String?
+  iban          String?
+  kep           String?
+  faizTuru      String?       @default("Yasal faiz")
+  faizJson      Json?
+  aktif         Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  musteri       Musteri       @relation(fields: [musteriId], references: [id])
+  dosyalar      RucuDosyasi[]
+
+  @@index([musteriId])
+}
+
 // ─────────────────── rücu dosyası (kalıcı tam kayıt = hub) ───────────────────
 model RucuDosyasi {
-  id                String          @id @default(uuid())
-  musteriId         String
-  musteri           Musteri         @relation(fields: [musteriId], references: [id])
+  id        String  @id @default(uuid())
+  musteriId String
+  musteri   Musteri @relation(fields: [musteriId], references: [id])
+
+  // proje (opsiyonel — müşteri altı gruplama)
+  projeId String?
+  proje   Proje?  @relation(fields: [projeId], references: [id])
 
   // kimlik
-  hukukDosyaNo      String?
-  hasarDosyaNo      String?
-  hasarTarihi       DateTime?
-  sigortaliUnvan    String?
-  il                String?
-  muhatapOzet       String?
+  hukukDosyaNo   String?
+  hasarDosyaNo   String?
+  hasarTarihi    DateTime?
+  sigortaliUnvan String?
+  il             String?
+  muhatapOzet    String?
 
   // rücu
-  brans             Brans?
-  rucuSebebi        String?
-  rucuOrani         String?
-  rucuTutari        Decimal?        @db.Decimal(14, 2)
-  asilAlacak        Decimal?        @db.Decimal(14, 2)
+  brans      Brans?
+  rucuSebebi String?
+  rucuOrani  String?
+  rucuTutari Decimal? @db.Decimal(14, 2)
+  asilAlacak Decimal? @db.Decimal(14, 2)
 
   // taraflar / kaza
-  sigortaliPlaka    String?
-  karsiPlaka        String?
-  kazaYeri          String? // = yetkili icra yeri (HMK m.16)
-  kazaTarihi        DateTime?
-  istikamet         String?
-  olusSekli         String?         @db.Text
-  kusurDurumu       String?
+  sigortaliPlaka String?
+  karsiPlaka     String?
+  kazaYeri       String? // = yetkili icra yeri (HMK m.16)
+  kazaTarihi     DateTime?
+  istikamet      String?
+  olusSekli      String?   @db.Text
+  kusurDurumu    String?
 
   // triyaj + durum
-  yol               Yol?
-  yolGuven          Float?
-  yolNeden          String?         @db.Text
-  durum             DosyaDurum      @default(HAVUZDA)
+  yol      Yol?
+  yolGuven Float?
+  yolNeden String?    @db.Text
+  durum    DosyaDurum @default(HAVUZDA)
 
   // icra
-  yetkiliIcra       String?
-  icraDairesi       String?
-  icraDosyaNo       String?
-  takipTarihi       DateTime?
-  zamanasimi        DateTime?
+  yetkiliIcra String?
+  icraDairesi String?
+  icraDosyaNo String?
+  takipTarihi DateTime?
+  zamanasimi  DateTime?
 
   // çıkarım izi (her alan: value + confidence + sourceRef)
-  cikarimJson       Json?
-  kaynakKlasor      String?
+  cikarimJson  Json?
+  kaynakKlasor String?
 
   // atama
   atananKullaniciId String?
-  atanan            Kullanici?      @relation("AtananKullanici", fields: [atananKullaniciId], references: [id])
+  atanan            Kullanici? @relation("AtananKullanici", fields: [atananKullaniciId], references: [id])
+
+  // HUGO / avukat atama-akış (komut: prisma-alan — tümü opsiyonel/default, mevcut satırları bozmaz)
+  kadroluAvukat    String?
+  sozlesmeliAvukat String?
+  islemYapanYrd    String?
+  gonderenBirim    String?
+  atanmaTarihi     DateTime?
+  bitisTarihi      DateTime?
+  hugoDurum        String?
+  davaMiktari      Decimal?  @db.Decimal(14, 2)
+  hugodanCekildi   Boolean   @default(false)
+  kaynakJson       Json?
 
   // meta
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // ilişkiler
-  borclular         Borclu[]
-  odemeler          Odeme[]
-  belgeler          Belge[]
-  ciktilar          UretilenCikti[]
-  olaylar           TakipOlayi[]
-  notlar            Not[]
-  aktiviteler       Aktivite[]
+  borclular   Borclu[]
+  odemeler    Odeme[]
+  belgeler    Belge[]
+  ciktilar    UretilenCikti[]
+  olaylar     TakipOlayi[]
+  notlar      Not[]
+  aktiviteler Aktivite[]
 
   @@index([musteriId])
+  @@index([projeId])
   @@index([durum])
   @@index([yol])
 }

@@ -43,18 +43,18 @@ export default async function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-8 py-12">
-        <div className="font-mono text-[11px] uppercase tracking-label text-kr-ink">Müşteri Seçimi</div>
+        <div className="font-mono text-[11px] uppercase tracking-label text-kr-ink">Müvekkil Seçimi</div>
         <h1 className="font-display mt-2 text-3xl font-extrabold tracking-brand-tight text-foreground">
-          Hangi müşteriyle çalışacaksınız?
+          Hangi müvekkil ile çalışacaksınız?
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Yalnızca size atanmış sigortacıların dosyalarını görürsünüz.
+          Hukuk büronuzun rücu işlerini yürüttüğü sigorta şirketini (müvekkil) seçin — yalnızca size atanmış müvekkillerin dosyalarını görürsünüz.
         </p>
 
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {musteriler.length === 0 && (
             <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-              Henüz size atanmış müşteri yok.
+              Henüz size atanmış müvekkil yok.
             </div>
           )}
           {musteriler.map((m) => (

@@ -30,7 +30,8 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const path = request.nextUrl.pathname
-  const isPublic = path.startsWith('/login') || path.startsWith('/auth')
+  // /api kendi kimlik doğrulamasını yapar (ör. UYAP senkron token'ı) → /login'e yönlendirme
+  const isPublic = path.startsWith('/login') || path.startsWith('/auth') || path.startsWith('/api')
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()

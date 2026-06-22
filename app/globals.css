@@ -57,6 +57,7 @@
     --success-soft: 160 76% 95%;
     --warning: 38 92% 48%;
     --warning-foreground: 26 83% 14%;
+    --warning-fg: 38 92% 38%; /* koyu kehribar — düşük güven / gözden geçir metinleri */
     --warning-soft: 48 96% 93%;
     --danger: 0 72% 50%;
     --danger-foreground: 0 0% 100%;
@@ -117,6 +118,7 @@
     --success-soft: 160 50% 16%;
     --warning: 38 90% 55%;
     --warning-foreground: 26 83% 8%;
+    --warning-fg: 38 90% 62%;
     --warning-soft: 38 50% 18%;
     --danger: 0 72% 60%;
     --danger-foreground: 0 0% 100%;
@@ -145,4 +147,34 @@
     letter-spacing: -0.03em;
     line-height: 1.2;
   }
+}
+
+/* ── Dosya Detay ekranı — iki kolonlu yerleşim (sağ rail "kuzey yıldızı" yapışkan) ── */
+.dd-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 372px;
+  gap: 18px;
+  align-items: start;
+}
+.dd-rail {
+  position: sticky;
+  top: 16px;
+}
+@media (max-width: 1080px) {
+  .dd-grid { grid-template-columns: 1fr; }
+  .dd-rail { position: static; order: -1; }
+}
+
+/* iskelet (shimmer) + dönen yükleyici */
+@keyframes ddShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.dd-skel {
+  background: linear-gradient(90deg, hsl(var(--surface-muted)) 25%, hsl(var(--border-subtle)) 37%, hsl(var(--surface-muted)) 63%);
+  background-size: 200% 100%;
+  animation: ddShimmer 1.4s ease-in-out infinite;
+}
+@keyframes ddSpin { to { transform: rotate(360deg); } }
+.dd-spin { animation: ddSpin 0.8s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dd-skel, .dd-spin { animation-duration: 0.001ms; animation-iteration-count: 1; }
 }
