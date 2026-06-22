@@ -69,6 +69,27 @@ export async function vekaletnameAc(musteriId: string): Promise<{ ok: boolean; u
   return { ok: true, url: data.signedUrl }
 }
 
+/** UYAP eklenti senkron anahtarı üret/yenile (eskisi geçersiz olur). */
+export async function senkronTokenUret(musteriId: string): Promise<{ ok: boolean; token?: string; error?: string }> {
+  const { izinli } = await ctx()
+  if (!izinli.includes(musteriId)) return { ok: false, error: 'Yetki yok' }
+  const b = new Uint8Array(24)
+  crypto.getRandomValues(b)
+  const token = 'kr_' + Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
+  await prisma.ayarlar.upsert({ where: { musteriId }, create: { musteriId, senkronToken: token }, update: { senkronToken: token } })
+  revalidatePath('/ayarlar')
+  return { ok: true, token }
+}
+
+/** Senkron anahtarını kaldır (eklenti erişimini kapatır). */
+export async function senkronTokenSil(musteriId: string): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  if (!izinli.includes(musteriId)) return { ok: false, error: 'Yetki yok' }
+  await prisma.ayarlar.update({ where: { musteriId }, data: { senkronToken: null } }).catch(() => null)
+  revalidatePath('/ayarlar')
+  return { ok: true }
+}
+
 /** Dönemsel faiz oranlarını kaydet (faizJson = { oranlar: [...] }). */
 export async function faizOranlariKaydet(musteriId: string, oranlar: { baslangic: string; oran: number }[]): Promise<{ ok: boolean; error?: string }> {
   const { izinli } = await ctx()

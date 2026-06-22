@@ -1,27 +1,19 @@
 /**
  * KonsRücü — UYAP eklenti API kimliği · lib/konsrucu/uyap-auth.ts (server-only)
- * Eklenti, programa (konsrucu) giriş yapmış Supabase oturumunun access token'ını Bearer gönderir.
- * Burada token Supabase ile doğrulanıp kullanıcı + erişebildiği tenant'lara (musteriId) bağlanır.
- * Token yapıştırma yok: eklenti token'ı chrome.cookies ile programın çerezinden okur.
+ * Eklenti, Şirket Bilgileri'nde üretilen tenant'a özel SENKRON ANAHTARINI Bearer gönderir.
+ * Burada anahtar Ayarlar.senkronToken ile doğrulanıp tenant'a (musteriId) bağlanır.
  */
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-export type UyapKimlik = { userId: string; ad: string; izinli: string[] }
+export type UyapKimlik = { userId: string | null; izinli: string[] }
 
 export async function uyapKimlik(req: Request): Promise<UyapKimlik | null> {
   const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
-  if (!token) return null
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !anon) return null
-  const sb = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } })
-  const { data, error } = await sb.auth.getUser(token)
-  if (error || !data?.user) return null
-  const dbUser = await prisma.kullanici.findUnique({ where: { id: data.user.id }, include: { musteriler: true } })
-  if (!dbUser) return null
-  return { userId: dbUser.id, ad: dbUser.ad, izinli: dbUser.musteriler.map((m) => m.musteriId) }
+  if (!token || token.length < 20) return null
+  const ay = await prisma.ayarlar.findFirst({ where: { senkronToken: token }, select: { musteriId: true } })
+  if (!ay) return null
+  return { userId: null, izinli: [ay.musteriId] }
 }
 
 // MV3 eklenti (host izinli) için CORS şart değil; yine de content-script/çağrı esnekliği için açık.

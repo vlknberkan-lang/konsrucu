@@ -2,13 +2,16 @@
  * KonsRücü — Şirket Bilgileri (Ayarlar) · app/(app)/ayarlar/page.tsx
  * Alacaklı / MERSİS / IBAN / vekil / faiz — takip açıklaması ve dilekçeler bunları kullanır.
  */
-import { Check, Building2, Percent, FileSignature } from 'lucide-react'
+import { Check, Building2, Percent, FileSignature, Puzzle } from 'lucide-react'
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { oranlariOku } from '@/lib/konsrucu/faiz'
 import { FaizOranlari } from '@/components/ayarlar/faiz-oranlari'
 import { Vekaletname } from '@/components/ayarlar/vekaletname'
+import { SenkronAnahtar } from '@/components/ayarlar/senkron-anahtar'
 import { ayarlarKaydet } from './actions'
+
+const PROGRAM_URL = 'https://konsrucu.vercel.app'
 
 const ALAN = 'w-full rounded-[10px] border border-border bg-surface px-3.5 py-2.5 text-[13px] text-foreground outline-none transition focus:border-kr focus:ring-4 focus:ring-kr/15'
 const LABEL = 'font-mono mb-1 block text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground'
@@ -83,6 +86,13 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
           <span className="ml-auto text-[11.5px] text-muted-foreground">Tüm dosyalarda ortak · bir kez yüklenir</span>
         </div>
         <div className="p-5"><Vekaletname musteriId={aktifMusteriId} init={{ ad: ayarlar?.vekaletnameAd ?? null, yuklu: !!ayarlar?.vekaletnamePath }} /></div>
+      </div>
+
+      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-4">
+          <Puzzle className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">UYAP Eklenti Senkron Anahtarı</h2>
+        </div>
+        <div className="p-5"><SenkronAnahtar musteriId={aktifMusteriId} init={{ yuklu: !!ayarlar?.senkronToken }} programUrl={PROGRAM_URL} /></div>
       </div>
 
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">

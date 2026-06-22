@@ -132,6 +132,8 @@ model Ayarlar {
   // vekaletname — TÜM dosyalarda ortak tek belge (değişmez); Storage 'evrak' bucket yolu
   vekaletnamePath String?
   vekaletnameAd   String?
+  // UYAP eklenti senkron anahtarı (Bearer) — eklentiye bir kez yapıştırılır, tenant'a bağlar
+  senkronToken   String?  @unique
   updatedAt      DateTime @updatedAt
 }
 
