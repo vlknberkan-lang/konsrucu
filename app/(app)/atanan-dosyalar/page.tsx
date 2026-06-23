@@ -111,8 +111,9 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
       take: 300,
       select: {
         id: true, hukukDosyaNo: true, hasarDosyaNo: true, sigortaliUnvan: true, sigortaliTelefon: true,
-        gonderenBirim: true, zamanasimi: true, davaMiktari: true, rucuTutari: true, durum: true, hugodanCekildi: true,
+        gonderenBirim: true, zamanasimi: true, davaMiktari: true, rucuTutari: true, durum: true, hugodanCekildi: true, icraDosyaNo: true,
         borclular: { select: { adUnvan: true, telefon: true }, orderBy: { id: 'asc' } },
+        asamalar: { select: { tur: true, durum: true, kimlikNo: true, sira: true }, orderBy: { sira: 'asc' } },
       },
     }),
   ])
@@ -190,6 +191,9 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
                   const borcluFazla = r.borclular.length - 1
                   const ilk = r.borclular[0]
                   const am = ASAMA_META[durumAsama(r.durum)]
+                  // güncel aşamanın esas/dosya no'su (DEVAM eden aşama; yoksa son; icra fallback)
+                  const guncelAsama = [...r.asamalar].reverse().find((a) => a.durum === 'DEVAM') ?? r.asamalar[r.asamalar.length - 1] ?? null
+                  const esasNo = guncelAsama?.kimlikNo ?? r.icraDosyaNo ?? null
                   return (
                     <div
                       key={r.id}
@@ -225,8 +229,11 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
                       </div>
                       {/* borçlu telefon (ilk borçlu) */}
                       <div className="min-w-0"><Tel value={ilk?.telefon} /></div>
-                      {/* aşama — durum'dan türetilmiş */}
-                      <div><Badge tone={am.tone} dot>{am.label}</Badge></div>
+                      {/* aşama — durum'dan türetilmiş + güncel aşamanın esas no'su */}
+                      <div className="min-w-0">
+                        <Badge tone={am.tone} dot>{am.label}</Badge>
+                        {esasNo && <div className="font-mono mt-1 truncate text-[10.5px] text-muted-foreground" title={esasNo}>{esasNo}</div>}
+                      </div>
                       {/* zaman aşımı — renk kodlu */}
                       <div>
                         <Badge tone={za.tone} dot={za.tone === 'danger' || za.tone === 'warning'}>
