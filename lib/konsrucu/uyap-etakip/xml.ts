@@ -6,8 +6,8 @@
  */
 import { TAKIP_PRESET, ROL, ALACAK_KALEM, ADRES_TURU, faizTipKodFromTuru, FAIZ_TIP_ADI } from './kodlar'
 
-export type XmlAlacakli = { unvan: string; vergiNo?: string | null; mersis?: string | null; iban?: string | null }
-export type XmlVekil = { ad?: string | null; soyad?: string | null; tcKimlikNo?: string | null; baroNo?: string | null; tbbNo?: string | null }
+export type XmlAlacakli = { unvan: string; vergiNo?: string | null; mersis?: string | null; iban?: string | null; adres?: string | null }
+export type XmlVekil = { ad?: string | null; soyad?: string | null; tcKimlikNo?: string | null; baroNo?: string | null; tbbNo?: string | null; adres?: string | null }
 export type XmlBorcluAdres = { il?: string | null; ilce?: string | null; acik?: string | null }
 export type XmlBorclu = { adUnvan: string; tcVkn?: string | null; kurumMu?: boolean; adres?: XmlBorcluAdres | null }
 export type XmlFaiz = { baslangic?: string | null; bitis?: string | null; oran?: string | number | null; tutar?: string | number | null; faizTuru?: string | null }
@@ -52,13 +52,19 @@ function adSoyad(tam: string): { adi: string; soyadi: string } {
 const attrs = (pairs: Array<[string, string | null | undefined]>) =>
   pairs.filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}="${esc(v)}"`).join(' ')
 
+/** `<adres>` elemanı — açık adres / il verilmişse üret, yoksa boş (borçluda boş = MERNİS). */
+function adresEl(adresTuru: string, a?: { il?: string | null; ilce?: string | null; acik?: string | null } | null): string {
+  if (!a || (!a.acik && !a.il)) return ''
+  return `<adres ${attrs([['adresTuru', adresTuru], ['il', a.il], ['ilce', a.ilce], ['adres', a.acik]])}/>`
+}
+
 function tarafAlacakli(a: XmlAlacakli): string {
   const kurum = attrs([
     ['kurumAdi', a.unvan], ['vergiNo', a.vergiNo], ['mersisNo', a.mersis], ['kamuOzel', 'O'], ['harcDurumu', '1'],
   ])
   return [
     `  <taraf>`,
-    `    <kisiKurumBilgileri ad="${esc(a.unvan)}"><kurum ${kurum}/></kisiKurumBilgileri>`,
+    `    <kisiKurumBilgileri ad="${esc(a.unvan)}"><kurum ${kurum}/>${adresEl(ADRES_TURU.ISYERI, { acik: a.adres })}</kisiKurumBilgileri>`,
     `    <rolTur rolID="${ROL.ALACAKLI.rolID}" Rol="${esc(ROL.ALACAKLI.Rol)}"/>`,
     a.iban ? `    <iban no="${esc(a.iban)}"/>` : '',
     `  </taraf>`,
@@ -74,9 +80,7 @@ function tarafBorclu(b: XmlBorclu): string {
     inner = `<kisiTumBilgileri ${attrs([['adi', adi], ['soyadi', soyadi], ['tcKimlikNo', b.tcVkn]])}/>`
   }
   // Adres MERNİS'e bırakılır; yalnız elimizde açık adres varsa eklenir (İkametgah/yerleşim yeri türü).
-  const adres = b.adres && (b.adres.acik || b.adres.il)
-    ? `<adres ${attrs([['adresTuru', ADRES_TURU.IKAMETGAH], ['il', b.adres.il], ['ilce', b.adres.ilce], ['adres', b.adres.acik]])}/>`
-    : ''
+  const adres = adresEl(ADRES_TURU.IKAMETGAH, b.adres)
   return [
     `  <taraf>`,
     `    <kisiKurumBilgileri ad="${esc(b.adUnvan)}">${inner}${adres}</kisiKurumBilgileri>`,
@@ -91,12 +95,14 @@ function vekilBlok(v: XmlVekil): string {
     ['vekilTipi', 'S'], ['borcluVekiliMi', 'H'],
   ])
   const kisi = attrs([['adi', v.ad], ['soyadi', v.soyad], ['tcKimlikNo', v.tcKimlikNo]])
+  const adres = adresEl(ADRES_TURU.ISYERI, { acik: v.adres })
   return [
     `  <VekilKisi>`,
     `    <vekil ${vekilAttr}/>`,
     `    <kisiTumBilgileri ${kisi}/>`,
+    adres ? `    ${adres}` : '',
     `  </VekilKisi>`,
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 }
 
 function alacakBlok(asil: string | number, faiz?: XmlFaiz | null): string {

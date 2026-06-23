@@ -491,6 +491,7 @@ export async function takipXmlOlustur(
   const uyarilar: string[] = []
   const alacakliUnvan = (ayarlar?.alacakliUnvan ?? dosya.sigortaliUnvan ?? '').trim()
   if (!alacakliUnvan) uyarilar.push('Alacaklı ünvanı yok — Şirket Bilgileri’nden girin.')
+  if (!ayarlar?.vekilAdres) uyarilar.push('Alacaklı/vekil adresi yok — UYAP alacaklı adresini zorunlu tutuyor; Şirket Bilgileri’nden girin.')
 
   const borclular = dosya.borclular.map((b) => {
     const tc = (b.tcVkn ?? '').replace(/\D/g, '')
@@ -513,10 +514,10 @@ export async function takipXmlOlustur(
 
   const vekilTam = (ayarlar?.vekilAd ?? '').trim()
   const vekilParca = vekilTam ? vekilTam.split(/\s+/) : []
-  const vekil = vekilTam ? { ad: vekilParca.slice(0, -1).join(' ') || vekilParca[0], soyad: vekilParca.length > 1 ? vekilParca[vekilParca.length - 1] : '' } : null
+  const vekil = vekilTam ? { ad: vekilParca.slice(0, -1).join(' ') || vekilParca[0], soyad: vekilParca.length > 1 ? vekilParca[vekilParca.length - 1] : '', adres: ayarlar?.vekilAdres ?? null } : null
 
   const girdi: TakipXmlGirdi = {
-    alacakli: { unvan: alacakliUnvan, mersis: ayarlar?.mersis ?? null, iban: ayarlar?.iban ?? null },
+    alacakli: { unvan: alacakliUnvan, mersis: ayarlar?.mersis ?? null, iban: ayarlar?.iban ?? null, adres: ayarlar?.vekilAdres ?? null },
     vekil,
     borclular,
     asilAlacak: asil,

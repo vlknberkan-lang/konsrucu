@@ -5,6 +5,7 @@
  * Çekildi sekmeleri + arama + sıralama → tümü URL parametrelerine yazılır (server yeniden sorgular).
  */
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 
 const CEKILDI = [
@@ -45,6 +46,15 @@ export function FiltreBar({
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }
 
+  // arama: yazdıkça filtrele (debounce). Enter da anında uygular.
+  const [val, setVal] = useState(q)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function araDegis(v: string) {
+    setVal(v)
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => guncelle({ q: v.trim() || null }), 350)
+  }
+
   return (
     <div className="mb-4 flex flex-wrap items-center gap-3">
       {/* çekildi sekmeleri */}
@@ -68,29 +78,33 @@ export function FiltreBar({
         })}
       </div>
 
-      {/* arama (Enter ile uygula) */}
+      {/* arama (yazdıkça filtreler; Enter anında uygular) */}
       <form
         className="relative min-w-[230px] flex-1"
         onSubmit={(e) => {
           e.preventDefault()
-          const v = ((new FormData(e.currentTarget).get('q') as string) ?? '').trim()
-          guncelle({ q: v || null })
+          if (timer.current) clearTimeout(timer.current)
+          guncelle({ q: val.trim() || null })
         }}
       >
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
-          key={q}
           name="q"
-          defaultValue={q}
+          value={val}
+          onChange={(e) => araDegis(e.target.value)}
           aria-label="Dosyalarda ara"
           placeholder="Hukuk no · hasar no · sigortalı · birim · avukat…"
           className="w-full rounded-[10px] border border-border bg-surface py-2.5 pl-9 pr-9 text-[13px] outline-none transition focus-visible:border-kr/50 focus-visible:ring-2 focus-visible:ring-kr/30 motion-reduce:transition-none"
         />
-        {q && (
+        {val && (
           <button
             type="button"
             aria-label="Aramayı temizle"
-            onClick={() => guncelle({ q: null })}
+            onClick={() => {
+              if (timer.current) clearTimeout(timer.current)
+              setVal('')
+              guncelle({ q: null })
+            }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50"
           >
             <X className="h-4 w-4" />

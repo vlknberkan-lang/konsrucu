@@ -64,6 +64,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
             { sigortaliUnvan: { contains: q, mode: 'insensitive' } },
             { gonderenBirim: { contains: q, mode: 'insensitive' } },
             { kadroluAvukat: { contains: q, mode: 'insensitive' } },
+            { sozlesmeliAvukat: { contains: q, mode: 'insensitive' } },
             { borclular: { some: { adUnvan: { contains: q, mode: 'insensitive' } } } },
           ],
         }
