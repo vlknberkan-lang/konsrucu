@@ -1,0 +1,154 @@
+{
+  "_aciklama": "KonsRücü prototip fixtures — 5 aşamayı kapsayan örnek veri. Bugün referansı: 2026-06-23. Tutarlar TRY (sayı).",
+  "bugun": "2026-06-23",
+  "dosyalar": [
+    {
+      "id": "f-a", "hukukDosyaNo": "161428", "hasarDosyaNo": "10402500306",
+      "sigortaliUnvan": "ÖMER AKSOY", "sigortaliPlaka": "34 ABC 12", "karsiPlaka": "06 XYZ 34",
+      "borclular": [{ "adUnvan": "TEMEL ÖZTÜRK", "tcVkn": "12345678901", "rol": "SURUCU" }],
+      "asilAlacak": 34264.63, "islemisFaiz": 10724.36, "toplam": 44988.99, "kusur": "%100",
+      "avukat": "İrem Selin Kıraç", "guncelAsama": "ICRA_TAKIBI", "durum": "TAKIP_ACILDI",
+      "zamanasimi": "2027-01-26",
+      "asamalar": [
+        { "tur": "ICRA_TAKIBI", "durum": "DEVAM", "kimlikNo": "2026/32147", "birim": "Gaziosmanpaşa İcra Dairesi", "baslangic": "2026-06-14" }
+      ],
+      "tebligatlar": [
+        { "tur": "ODEME_EMRI", "pttBarkod": "RR123456785TR", "muhatap": "TEMEL ÖZTÜRK", "gonderim": "2026-06-20", "durum": "YOLDA", "teslimTarihi": null, "itirazSonTarihi": null }
+      ],
+      "sonOlaylar": [
+        { "tip": "TAKIP_ACILDI", "tarih": "2026-06-14", "metin": "İcra takibi açıldı · 2026/32147" },
+        { "tip": "TEBLIG", "tarih": "2026-06-20", "metin": "Ödeme emri PTT'ye verildi (yolda)" }
+      ],
+      "siradakiAdim": { "aksiyon": null, "oncelik": "BILGI", "metin": "Tebliğ teslimini bekliyoruz (PTT)" }
+    },
+    {
+      "id": "f-b", "hukukDosyaNo": "159013", "hasarDosyaNo": "10202502346",
+      "sigortaliUnvan": "KAYSERİ İNCESU ORG.", "sigortaliPlaka": "38 K 1903", "karsiPlaka": "34 CAF 07",
+      "borclular": [{ "adUnvan": "CAFER AKTAŞ", "tcVkn": "22345678902", "rol": "RUHSAT_SAHIBI" }],
+      "asilAlacak": 30000.00, "islemisFaiz": 4120.00, "toplam": 34120.00, "kusur": "%75",
+      "avukat": "İrem Selin Kıraç", "guncelAsama": "ICRA_TAKIBI", "durum": "TEBLIG_EDILDI",
+      "zamanasimi": "2027-02-21",
+      "asamalar": [
+        { "tur": "ICRA_TAKIBI", "durum": "DEVAM", "kimlikNo": "2025/39428", "birim": "İstanbul 23. İcra Dairesi", "baslangic": "2026-05-30" }
+      ],
+      "tebligatlar": [
+        { "tur": "ODEME_EMRI", "pttBarkod": "RR223456786TR", "muhatap": "CAFER AKTAŞ", "gonderim": "2026-06-14", "durum": "TESLIM", "teslimTarihi": "2026-06-21", "itirazSonTarihi": "2026-06-28" }
+      ],
+      "sonOlaylar": [
+        { "tip": "TEBLIG", "tarih": "2026-06-21", "metin": "Ödeme emri tebliğ edildi (teslim)" }
+      ],
+      "siradakiAdim": { "aksiyon": "sure_onayla", "oncelik": "UYARI", "metin": "İtiraz süresi son günü 28.06.2026 — 5 gün kaldı" }
+    },
+    {
+      "id": "f-c", "hukukDosyaNo": "161411", "hasarDosyaNo": "10132502009",
+      "sigortaliUnvan": "KADIR ERGİŞİ", "sigortaliPlaka": "35 KDR 11", "karsiPlaka": "34 YEG 55",
+      "borclular": [
+        { "adUnvan": "Yunus Emre GENCER", "tcVkn": "32345678903", "rol": "SURUCU" },
+        { "adUnvan": "Hatice GENCER", "tcVkn": "42345678904", "rol": "RUHSAT_SAHIBI" }
+      ],
+      "asilAlacak": 58200.00, "islemisFaiz": 9130.00, "toplam": 67330.00, "kusur": "%50",
+      "avukat": "İrem Selin Kıraç", "guncelAsama": "ITIRAZ", "durum": "ITIRAZ",
+      "zamanasimi": "2026-12-20",
+      "asamalar": [
+        { "tur": "ICRA_TAKIBI", "durum": "SONUCLANDI", "sonuc": "itiraz", "kimlikNo": "2026/4724", "birim": "İstanbul Anadolu 11. İcra Dairesi", "baslangic": "2026-05-10", "bitis": "2026-06-22" }
+      ],
+      "tebligatlar": [
+        { "tur": "ODEME_EMRI", "pttBarkod": "RR323456787TR", "muhatap": "Yunus Emre GENCER", "gonderim": "2026-05-28", "durum": "TESLIM", "teslimTarihi": "2026-06-02", "itirazSonTarihi": "2026-06-09" }
+      ],
+      "sonOlaylar": [
+        { "tip": "TEBLIG", "tarih": "2026-06-02", "metin": "Ödeme emri tebliğ edildi" },
+        { "tip": "ITIRAZ", "tarih": "2026-06-22", "metin": "Borçlu ödeme emrine itiraz etti — takip durdu" }
+      ],
+      "siradakiAdim": { "aksiyon": "arabuluculuk_baslat", "oncelik": "KRITIK", "metin": "İtiraz geldi — dava şartı arabuluculuk başlatılmalı" }
+    },
+    {
+      "id": "f-d", "hukukDosyaNo": "160877", "hasarDosyaNo": "10212500266",
+      "sigortaliUnvan": "YUSUF BATUR", "sigortaliPlaka": "34 YSF 26", "karsiPlaka": "16 SZR 41",
+      "borclular": [{ "adUnvan": "SÜZER LOJİSTİK NAKLİYAT A.Ş.", "tcVkn": "5234567890", "rol": "ISVEREN" }],
+      "asilAlacak": 122500.00, "islemisFaiz": 18300.00, "toplam": 140800.00, "kusur": "%100",
+      "avukat": "İrem Selin Kıraç", "guncelAsama": "ARABULUCULUK", "durum": "ARABULUCULUK",
+      "zamanasimi": "2027-01-30",
+      "asamalar": [
+        { "tur": "ICRA_TAKIBI", "durum": "SONUCLANDI", "sonuc": "itiraz", "kimlikNo": "2026/19449", "birim": "Balıkesir İcra Dairesi", "baslangic": "2026-04-02", "bitis": "2026-05-18" },
+        { "tur": "ARABULUCULUK", "durum": "DEVAM", "kimlikNo": "2026/1234", "birim": "İstanbul Arabuluculuk Bürosu", "baslangic": "2026-06-10", "detay": { "arabulucu": "Av. Selçuk Demirtaş", "iletisim": "0532 000 00 00" } }
+      ],
+      "tebligatlar": [],
+      "etkinlikler": [
+        { "tur": "ARABULUCULUK_TOPLANTISI", "baslik": "1. Arabuluculuk toplantısı", "baslar": "2026-06-24T14:00:00", "yer": "İstanbul Arabuluculuk Bürosu, Kadıköy", "online": false, "durum": "PLANLANDI", "sorumlu": "İrem Selin Kıraç" }
+      ],
+      "sonOlaylar": [
+        { "tip": "ARABULUCULUK", "tarih": "2026-06-10", "metin": "Arabuluculuk dosyası açıldı · 2026/1234" },
+        { "tip": "TOPLANTI", "tarih": "2026-06-18", "metin": "1. toplantı 24.06 14:00'a planlandı" }
+      ],
+      "siradakiAdim": { "aksiyon": "toplanti_hazirlik", "oncelik": "UYARI", "metin": "Yarın 14:00 arabuluculuk toplantısı — dosya özeti hazır" }
+    },
+    {
+      "id": "f-e", "hukukDosyaNo": "160544", "hasarDosyaNo": "10102500317",
+      "sigortaliUnvan": "İSMİHAN TOPALBEKİROĞLU", "sigortaliPlaka": "34 IST 90", "karsiPlaka": "34 MHD 12",
+      "borclular": [{ "adUnvan": "MUHAMMED HAMİD ÖZ", "tcVkn": "62345678905", "rol": "SURUCU" }],
+      "asilAlacak": 47800.00, "islemisFaiz": 8650.00, "toplam": 56450.00, "kusur": "%80",
+      "avukat": "İrem Selin Kıraç", "guncelAsama": "DAVA", "durum": "DAVA",
+      "zamanasimi": "2027-02-02",
+      "asamalar": [
+        { "tur": "ICRA_TAKIBI", "durum": "SONUCLANDI", "sonuc": "itiraz", "kimlikNo": "2026/10678", "birim": "İstanbul Anadolu 10. İcra Dairesi", "baslangic": "2026-03-15", "bitis": "2026-04-20" },
+        { "tur": "ARABULUCULUK", "durum": "SONUCLANDI", "sonuc": "anlasilmadi", "kimlikNo": "2026/0988", "birim": "İstanbul Arabuluculuk Bürosu", "baslangic": "2026-04-25", "bitis": "2026-05-20" },
+        { "tur": "DAVA", "durum": "DEVAM", "kimlikNo": "2026/415", "birim": "İstanbul Anadolu 7. Tüketici Mahkemesi", "baslangic": "2026-06-01" }
+      ],
+      "tebligatlar": [],
+      "etkinlikler": [
+        { "tur": "DURUSMA", "baslik": "1. duruşma", "baslar": "2026-07-07T09:30:00", "yer": "İst. Anadolu Adliyesi, Salon 7", "online": false, "durum": "PLANLANDI", "sorumlu": "İrem Selin Kıraç" }
+      ],
+      "sonOlaylar": [
+        { "tip": "ARABULUCULUK", "tarih": "2026-05-20", "metin": "Arabuluculuk anlaşmazlıkla kapandı" },
+        { "tip": "DAVA", "tarih": "2026-06-01", "metin": "Tüketici Mahkemesinde dava açıldı · 2026/415" },
+        { "tip": "DURUSMA", "tarih": "2026-06-05", "metin": "Duruşma 07.07 09:30 (UYAP'tan çekildi)" }
+      ],
+      "siradakiAdim": { "aksiyon": null, "oncelik": "BILGI", "metin": "Duruşma 07.07.2026 — bilirkişi raporu bekleniyor" }
+    },
+    {
+      "id": "f-f", "hukukDosyaNo": "159740", "hasarDosyaNo": "10132502111",
+      "sigortaliUnvan": "MEHMET SAVAŞ ÇELİKOL", "sigortaliPlaka": "34 MSC 11", "karsiPlaka": "34 ALC 90",
+      "borclular": [{ "adUnvan": "ALİ ÇAY", "tcVkn": "72345678906", "rol": "SURUCU" }],
+      "asilAlacak": 21500.00, "islemisFaiz": 3010.00, "toplam": 24510.00, "kusur": "%100",
+      "avukat": "İrem Selin Kıraç", "guncelAsama": "TAHSIL", "durum": "TAHSIL",
+      "zamanasimi": "2027-02-03",
+      "asamalar": [
+        { "tur": "ICRA_TAKIBI", "durum": "SONUCLANDI", "sonuc": "itiraz", "kimlikNo": "2026/4186", "birim": "İzmir 3. İcra Dairesi", "baslangic": "2026-02-10", "bitis": "2026-03-12" },
+        { "tur": "ARABULUCULUK", "durum": "SONUCLANDI", "sonuc": "anlasildi", "kimlikNo": "2026/0640", "birim": "İzmir Arabuluculuk Bürosu", "baslangic": "2026-03-20", "bitis": "2026-04-15", "tutar": 22000.00 }
+      ],
+      "tebligatlar": [],
+      "sonOlaylar": [
+        { "tip": "ARABULUCULUK", "tarih": "2026-04-15", "metin": "Arabuluculukta anlaşıldı · 22.000,00 TL" },
+        { "tip": "TAHSILAT", "tarih": "2026-05-02", "metin": "22.000,00 TL tahsil edildi — dosya kapandı" }
+      ],
+      "siradakiAdim": { "aksiyon": null, "oncelik": "BILGI", "metin": "Tahsil edildi, dosya kapalı" }
+    }
+  ],
+  "etkinlikler": [
+    { "dosyaId": "f-d", "dosyaNo": "160877", "borclu": "SÜZER LOJİSTİK", "tur": "ARABULUCULUK_TOPLANTISI", "baslik": "1. Arabuluculuk toplantısı", "baslar": "2026-06-24T14:00:00", "yer": "Kadıköy Arabuluculuk Bürosu", "durum": "PLANLANDI", "sorumlu": "İrem Selin Kıraç" },
+    { "dosyaId": "f-x1", "dosyaNo": "160233", "borclu": "RAMAZAN YILDIZ", "tur": "ARABULUCULUK_TOPLANTISI", "baslik": "2. Arabuluculuk toplantısı", "baslar": "2026-06-26T11:00:00", "yer": "Online (Zoom)", "online": true, "durum": "PLANLANDI", "sorumlu": "İrem Selin Kıraç" },
+    { "dosyaId": "f-e", "dosyaNo": "160544", "borclu": "MUHAMMED HAMİD ÖZ", "tur": "DURUSMA", "baslik": "1. duruşma", "baslar": "2026-07-07T09:30:00", "yer": "İst. Anadolu Adliyesi, Salon 7", "durum": "PLANLANDI", "sorumlu": "İrem Selin Kıraç" },
+    { "dosyaId": "f-x2", "dosyaNo": "159988", "borclu": "OSMAN DURAK", "tur": "DURUSMA", "baslik": "2. duruşma", "baslar": "2026-07-15T10:00:00", "yer": "Bakırköy Adliyesi, Salon 3", "durum": "PLANLANDI", "sorumlu": "İrem Selin Kıraç" },
+    { "dosyaId": "f-b", "dosyaNo": "159013", "borclu": "CAFER AKTAŞ", "tur": "SURE", "baslik": "İtiraz süresi son günü", "baslar": "2026-06-28T23:59:00", "tumGun": true, "durum": "PLANLANDI" }
+  ],
+  "bildirimler": [
+    { "tur": "ITIRAZ_GELDI", "oncelik": "KRITIK", "baslik": "İtiraz geldi — arabuluculuk başlat?", "mesaj": "161411 · Yunus Emre GENCER ödeme emrine itiraz etti.", "aksiyon": "arabuluculuk_baslat", "dosyaId": "f-c", "okundu": false, "cozuldu": false, "zaman": "2026-06-22T16:40:00" },
+    { "tur": "ITIRAZ_SURESI_YAKLASIYOR", "oncelik": "UYARI", "baslik": "İtiraz süresi 5 gün kaldı", "mesaj": "159013 · CAFER AKTAŞ · son gün 28.06.2026.", "aksiyon": "sure_onayla", "dosyaId": "f-b", "okundu": false, "cozuldu": false, "zaman": "2026-06-23T08:00:00" },
+    { "tur": "TOPLANTI_YAKLASIYOR", "oncelik": "UYARI", "baslik": "Yarın arabuluculuk toplantısı", "mesaj": "160877 · SÜZER LOJİSTİK · 24.06 14:00 Kadıköy.", "aksiyon": null, "dosyaId": "f-d", "okundu": false, "cozuldu": false, "zaman": "2026-06-23T09:00:00" },
+    { "tur": "TEBLIG_ULASTI", "oncelik": "BILGI", "baslik": "Ödeme emri tebliğ edildi", "mesaj": "159013 · CAFER AKTAŞ · 21.06.2026 teslim — 7 gün başladı.", "aksiyon": null, "dosyaId": "f-b", "okundu": true, "cozuldu": true, "zaman": "2026-06-21T14:10:00" },
+    { "tur": "DURUSMA_YAKLASIYOR", "oncelik": "BILGI", "baslik": "Duruşma 7 Temmuz", "mesaj": "160544 · Tüketici Mah. · 07.07 09:30.", "aksiyon": null, "dosyaId": "f-e", "okundu": true, "cozuldu": false, "zaman": "2026-06-20T10:00:00" }
+  ],
+  "komutaMerkezi": {
+    "kararBekleyen": ["f-c", "f-b"],
+    "buHafta": [
+      { "gun": "2026-06-24", "tur": "ARABULUCULUK_TOPLANTISI", "saat": "14:00", "dosyaNo": "160877", "borclu": "SÜZER LOJİSTİK" },
+      { "gun": "2026-06-26", "tur": "ARABULUCULUK_TOPLANTISI", "saat": "11:00", "dosyaNo": "160233", "borclu": "RAMAZAN YILDIZ" }
+    ],
+    "yaklasanSureler": [
+      { "dosyaNo": "159013", "tur": "İtiraz süresi", "tarih": "2026-06-28", "kalanGun": 5, "renk": "warning" },
+      { "dosyaNo": "161411", "tur": "Zamanaşımı", "tarih": "2026-12-20", "kalanGun": 180, "renk": "steel" }
+    ],
+    "yeniGelismeler": ["f-c", "f-b"],
+    "asamaDagilimi": { "ICRA_TAKIBI": 2, "ITIRAZ": 1, "ARABULUCULUK": 1, "DAVA": 1, "TAHSIL": 1 }
+  }
+}
