@@ -13,6 +13,7 @@ import { faizHesapla, oranlariOku, sonDekontTarihi, type DekontGirdi } from '@/l
 import { yetkiliIcraOner } from '@/lib/konsrucu/adli-rehber'
 import { aciklamaUret } from '@/lib/konsrucu/takip'
 import { takipXmlUret, type TakipXmlGirdi } from '@/lib/konsrucu/uyap-etakip/xml'
+import { kanonik, paraTR, tarihTR } from '@/lib/import/hugo'
 
 type DosyaPayload = {
   hasarNo?: string
@@ -592,10 +593,19 @@ export async function etkinlikKaydet(formData: FormData): Promise<void> {
   const yer = String(formData.get('yer') ?? '').trim() || null
   const baslarStr = String(formData.get('baslar') ?? '')
   const baslar = baslarStr ? new Date(baslarStr) : null
+  const biterStr = String(formData.get('biter') ?? '')
+  const biterRaw = biterStr ? new Date(biterStr) : null
+  const biter = biterRaw && !Number.isNaN(biterRaw.getTime()) && (!baslar || biterRaw > baslar) ? biterRaw : null
+  const hatirlatmaDkRaw = Number(formData.get('hatirlatmaDk'))
+  const hatirlatmaDk = Number.isFinite(hatirlatmaDkRaw) && hatirlatmaDkRaw > 0 ? Math.round(hatirlatmaDkRaw) : null
+  const onlineRaw = String(formData.get('online') ?? '')
+  const online = onlineRaw === 'on' || onlineRaw === 'true'
+  const turGecerli = ['ARABULUCULUK_TOPLANTISI', 'DURUSMA', 'SURE', 'HATIRLATMA', 'GORUSME'].includes(tur)
   const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true } })
-  if (!dosya || !izinli.includes(dosya.musteriId) || !baslik || !baslar || Number.isNaN(baslar.getTime())) return
-  await prisma.etkinlik.create({ data: { dosyaId, asamaId, tur, baslik, baslar, yer } })
+  if (!dosya || !izinli.includes(dosya.musteriId) || !turGecerli || !baslik || !baslar || Number.isNaN(baslar.getTime())) return
+  await prisma.etkinlik.create({ data: { dosyaId, asamaId, tur, baslik, baslar, biter, yer, online, hatirlatmaDk } })
   revalidatePath(`/akilli-giris/${dosyaId}`)
+  revalidatePath('/takvim')
 }
 
 /** Excel ile toplu icra eşleştir (hukuk no → icra no + daire). Atanan Dosyalar'dan. */
@@ -641,6 +651,97 @@ export async function icraEslestir(formData: FormData): Promise<{ ok: boolean; e
   await prisma.aktivite.create({ data: { kullaniciId: dbUser.id, eylem: `Excel ile icra eşleştirme: ${eslesen}/${rows.length} dosya güncellendi` } })
   revalidatePath('/atanan-dosyalar')
   return { ok: true, eslesen, bulunamayan, toplam: rows.length }
+}
+
+/** Master Excel'den toplu BACKFILL: hukuk no eşleşip BOŞ alanları doldurur + borçlusu olmayana RÜCU MUHATABI'ndan borçlu ekler. AI çıkarımını EZMEZ. */
+export async function masterEslestir(formData: FormData): Promise<{ ok: boolean; eslesen: number; borcluEklenen: number; bulunamayan: string[]; toplam: number; hata?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const file = formData.get('file')
+  const bos = { ok: false as const, eslesen: 0, borcluEklenen: 0, bulunamayan: [] as string[], toplam: 0 }
+  if (!(file instanceof File)) return { ...bos, hata: 'Dosya seçilmedi' }
+  let rows: Record<string, unknown>[]
+  try {
+    const XLSX = await import('xlsx')
+    const buf = new Uint8Array(await file.arrayBuffer())
+    const wb = XLSX.read(buf, { type: 'array' })
+    const ws = wb.Sheets[wb.SheetNames[0]] // ilk sayfa (YASAL TAKİP)
+    rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+  } catch (e) {
+    return { ...bos, hata: 'Excel okunamadı: ' + (e as Error).message }
+  }
+
+  const KOLON: Record<string, string> = {
+    hukukdosyano: 'hukukNo', hasardosyano: 'hasarDosyaNo', hasartarihi: 'hasarTarihi', zamanasimi: 'zamanasimi',
+    rucusebebi: 'rucuSebebi', rucuorani: 'rucuOrani', rucututari: 'rucuTutari', davamiktari: 'davaMiktari',
+    kadroluavukat: 'kadroluAvukat', sozlesmeliavukat: 'sozlesmeliAvukat', islemyapanavukatyard: 'islemYapanYrd',
+    atamatarihi: 'atanmaTarihi', icramudurlugu: 'icraDairesi', icraesas: 'icraDosyaNo', takiptarihi: 'takipTarihi',
+    rucumuhatabi: 'muhatap', rucumuhatabitelno: 'muhatapTel',
+  }
+  const norm = (row: Record<string, unknown>) => {
+    const o: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(row)) { const f = KOLON[kanonik(k)]; if (f && (o[f] == null || o[f] === '')) o[f] = v }
+    return o
+  }
+  const txt = (v: unknown) => { const s = String(v ?? '').trim(); return s || null }
+  const dec = (v: unknown) => { const n = paraTR(v); return n != null ? new Prisma.Decimal(n) : null }
+  const esas = (v: unknown) => { const s = txt(v); if (!s) return null; const m = s.match(/((?:19|20)\d{2})\s*\/\s*(\d{1,7})/); return m ? `${m[1]}/${m[2]}` : s }
+  const tel = (v: unknown) => { const s = String(v ?? ''); const d = s.replace(/\D/g, ''); return d.length >= 10 && d.length <= 12 ? s.trim().slice(0, 40) : null }
+
+  let eslesen = 0, borcluEklenen = 0
+  const bulunamayan: string[] = []
+  for (const row of rows) {
+    const r = norm(row)
+    const hukukNo = txt(r.hukukNo)
+    if (!hukukNo) continue
+    const dosya = await prisma.rucuDosyasi.findFirst({
+      where: { hukukDosyaNo: hukukNo, musteriId: { in: izinli } },
+      select: { id: true, durum: true, hasarDosyaNo: true, hasarTarihi: true, zamanasimi: true, rucuSebebi: true, rucuOrani: true, rucuTutari: true, davaMiktari: true, kadroluAvukat: true, sozlesmeliAvukat: true, islemYapanYrd: true, atanmaTarihi: true, icraDairesi: true, icraDosyaNo: true, takipTarihi: true, _count: { select: { borclular: true } } },
+    })
+    if (!dosya) { bulunamayan.push(hukukNo); continue }
+
+    const data: Record<string, unknown> = {}
+    const setIf = (f: string, cur: unknown, val: unknown) => { if ((cur == null || cur === '') && val != null) data[f] = val }
+    setIf('hasarDosyaNo', dosya.hasarDosyaNo, txt(r.hasarDosyaNo))
+    setIf('hasarTarihi', dosya.hasarTarihi, tarihTR(r.hasarTarihi))
+    setIf('zamanasimi', dosya.zamanasimi, tarihTR(r.zamanasimi))
+    setIf('rucuSebebi', dosya.rucuSebebi, txt(r.rucuSebebi))
+    setIf('rucuOrani', dosya.rucuOrani, txt(r.rucuOrani))
+    setIf('rucuTutari', dosya.rucuTutari, dec(r.rucuTutari))
+    setIf('davaMiktari', dosya.davaMiktari, dec(r.davaMiktari))
+    setIf('kadroluAvukat', dosya.kadroluAvukat, txt(r.kadroluAvukat))
+    setIf('sozlesmeliAvukat', dosya.sozlesmeliAvukat, txt(r.sozlesmeliAvukat))
+    setIf('islemYapanYrd', dosya.islemYapanYrd, txt(r.islemYapanYrd))
+    setIf('atanmaTarihi', dosya.atanmaTarihi, tarihTR(r.atanmaTarihi))
+    setIf('icraDairesi', dosya.icraDairesi, txt(r.icraDairesi))
+    setIf('icraDosyaNo', dosya.icraDosyaNo, esas(r.icraDosyaNo))
+    setIf('takipTarihi', dosya.takipTarihi, tarihTR(r.takipTarihi))
+    if (data.icraDosyaNo && (['HAVUZDA', 'INCELENIYOR', 'TAKIBE_HAZIR'] as string[]).includes(dosya.durum)) data.durum = DosyaDurum.TAKIP_ACILDI
+
+    if (Object.keys(data).length) await prisma.rucuDosyasi.update({ where: { id: dosya.id }, data: data as Prisma.RucuDosyasiUpdateInput })
+
+    if (dosya._count.borclular === 0) {
+      const muhatap = txt(r.muhatap)
+      if (muhatap) {
+        const isimler = muhatap.split(/\s*[+\n;]\s*|\s+\/\s+/).map((s) => s.trim()).filter(Boolean).slice(0, 5)
+        const t = tel(r.muhatapTel)
+        for (let i = 0; i < isimler.length; i++) {
+          await prisma.borclu.create({ data: { dosyaId: dosya.id, adUnvan: isimler[i].slice(0, 200), telefon: i === 0 ? t : null, rol: BorcluRol.DIGER, kaynak: 'Excel master', teyitDurumu: TeyitDurum.TEYIT_GEREK } })
+          borcluEklenen++
+        }
+      }
+    }
+
+    const icraNo = (data.icraDosyaNo as string | undefined) ?? dosya.icraDosyaNo
+    const icraDaire = (data.icraDairesi as string | undefined) ?? dosya.icraDairesi
+    if (icraNo || icraDaire) {
+      const mevcut = await prisma.asama.findFirst({ where: { dosyaId: dosya.id, tur: 'ICRA_TAKIBI' } })
+      if (!mevcut) { const max = await prisma.asama.aggregate({ where: { dosyaId: dosya.id }, _max: { sira: true } }); await prisma.asama.create({ data: { dosyaId: dosya.id, tur: 'ICRA_TAKIBI', kimlikNo: icraNo ?? null, birim: icraDaire ?? null, sira: (max._max.sira ?? 0) + 1 } }) }
+    }
+    eslesen++
+  }
+  await prisma.aktivite.create({ data: { kullaniciId: dbUser.id, eylem: `Master Excel eşleştirme: ${eslesen}/${rows.length} dosya dolduruldu, ${borcluEklenen} borçlu eklendi` } })
+  revalidatePath('/atanan-dosyalar')
+  return { ok: true, eslesen, borcluEklenen, bulunamayan, toplam: rows.length }
 }
 
 /** Borçlu ekle veya düzelt (borcluId varsa düzelt). Onay sıfırlanır. */

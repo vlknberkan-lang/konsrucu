@@ -27,6 +27,7 @@ import { UyapXmlButon } from '@/components/akilli-giris/detay/uyap-xml-buton'
 import { AsamaPanel } from '@/components/akilli-giris/detay/asama-panel'
 import { SurecSerit } from '@/components/akilli-giris/detay/surec-serit'
 import { DosyaSor } from '@/components/akilli-giris/detay/dosya-sor'
+import { DosyaOzet, ozetKur } from '@/components/konsrucu/dosya-ozet'
 
 const fmtTRY = (n: number | null | undefined) =>
   n != null && Number.isFinite(Number(n)) ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)) + ' ₺' : null
@@ -137,11 +138,27 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const guncelSekme: SekmeKey = guncelAsamaRec ? TUR_SEKME[guncelAsamaRec.tur] : dosya.icraDosyaNo ? 'icra' : 'oncesi'
   const serit = asamalar.map((a) => ({ tur: a.tur as string, durum: a.durum as string, sonuc: a.sonuc, kimlikNo: a.kimlikNo }))
   const aktifAsama = aktifSekme === 'oncesi' ? null : asamalar.find((a) => a.tur === SEKME_TUR[aktifSekme as keyof typeof SEKME_TUR]) ?? null
-  const aktifEtkinlikler = aktifAsama ? dosya.etkinlikler.filter((e) => e.asamaId === aktifAsama.id) : []
+  // aşama kaydı varsa o aşamanın etkinlikleri; yoksa dosya-seviyesi (asamaId boş) etkinlikler
+  const aktifEtkinlikler = aktifAsama ? dosya.etkinlikler.filter((e) => e.asamaId === aktifAsama.id) : dosya.etkinlikler.filter((e) => e.asamaId === null)
 
   const tahsilEdilen = dosya.olaylar.filter((o) => o.tip === 'TAHSILAT').reduce((s, o) => s + (o.tutar != null ? Number(o.tutar) : 0), 0)
   const bakiye = { toplam: toplamTalep, tahsil: tahsilEdilen, kalan: Math.max(0, toplamTalep - tahsilEdilen) }
   const olaylarUi = dosya.olaylar.map((o) => ({ id: o.id, tip: o.tip, tarih: o.tarih ? o.tarih.toISOString() : null, tutar: o.tutar != null ? Number(o.tutar) : null, aciklama: o.aciklama }))
+
+  // UYAP izleme çizelgesi: durum + finansal snapshot + gelen evrak feed (Belge.kaynakRef = UYAP evrakId)
+  const sayi = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : null }
+  const uyapHesapRaw = (dosya.uyapHesapJson ?? null) as Record<string, unknown> | null
+  const uyapBilgi = {
+    durum: dosya.uyapDurum ?? null,
+    sonSenkron: dosya.uyapSenkronAt ? dosya.uyapSenkronAt.toISOString() : null,
+    hesap: uyapHesapRaw
+      ? { asilAlacak: sayi(uyapHesapRaw.asilAlacak), islemisFaiz: sayi(uyapHesapRaw.islemisFaiz), tahsilat: sayi(uyapHesapRaw.tahsilat), bakiye: sayi(uyapHesapRaw.bakiye) }
+      : null,
+  }
+  const evraklarUyap = dosya.belgeler
+    .filter((b) => b.kaynakRef)
+    .map((b) => ({ id: b.id, dosyaAdi: b.dosyaAdi, kategori: b.kategori as string, t: b.createdAt.toISOString(), acilabilir: !!b.storagePath }))
+  const takipProp = { durum: dosya.durum, olaylar: olaylarUi, bakiye, uyap: uyapBilgi, evraklar: evraklarUyap }
 
   const evrakVar = dosya.belgeler.length > 0
   const cikarimVar = !!dosya.yol || dosya.borclular.length > 0 || !!cj.aciklama
@@ -265,6 +282,9 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
         </div>
       </div>
 
+      <div className="sticky top-0 z-20 mt-[14px] rounded-2xl border border-border bg-surface/95 px-5 py-3 shadow-card backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+        <DosyaOzet data={ozetKur(dosya)} bugun={bugun} />
+      </div>
       <SurecSerit asamalar={serit} aktif={aktifSekme} guncelSekme={guncelSekme} icraNo={dosya.icraDosyaNo} />
       <DosyaSor dosyaId={dosya.id} />
       {aktifSekme !== 'oncesi' ? (
@@ -274,6 +294,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
           asama={aktifAsama}
           etkinlikler={aktifEtkinlikler}
           prefill={aktifSekme === 'icra' ? { no: dosya.icraDosyaNo, birim: dosya.icraDairesi ?? dosya.yetkiliIcra } : undefined}
+          takip={takipProp}
         />
       ) : (
         <>
