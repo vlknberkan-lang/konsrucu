@@ -7,8 +7,8 @@ import Link from 'next/link'
 import { Download, Puzzle, ShieldCheck, Info, FolderOpen, Settings2, MousePointerClick, RefreshCw } from 'lucide-react'
 import { Kopyala } from '@/components/akilli-giris/kopyala'
 
-const ZIP = '/uyap-eklenti-v0.5.0.zip'
-const SURUM = '0.5.0'
+const ZIP = '/uyap-eklenti-v0.6.0.zip'
+const SURUM = '0.6.0'
 
 function Adim({ n, baslik, children, icon: Icon }: { n: number; baslik: string; children: React.ReactNode; icon: React.ElementType }) {
   return (
@@ -43,7 +43,7 @@ export default function EklentiPage() {
             <Download className="h-[18px] w-[18px]" /> Eklentiyi indir (.zip)
           </a>
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-bold text-foreground">uyap-eklenti-v{SURUM}.zip · ~27 KB</div>
+            <div className="text-[13px] font-bold text-foreground">uyap-eklenti-v{SURUM}.zip · ~30 KB</div>
             <div className="text-[12px] text-muted-foreground">İndirdikten sonra aşağıdaki 4 adımı bir kez uygula.</div>
           </div>
         </div>
@@ -105,17 +105,21 @@ export default function EklentiPage() {
       {/* program senkronu */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
         <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-4">
-          <RefreshCw className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">Programla senkron (yeni · v0.5.0)</h2>
+          <RefreshCw className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">Programla senkron (v0.6.0 · otomatik)</h2>
         </div>
         <ol className="flex flex-col gap-3 p-5 text-[13px] text-foreground">
           <li className="flex gap-2.5"><span className="font-mono text-kr-ink">1.</span> <span><Link href="/ayarlar" className="font-semibold text-kr-ink hover:underline">Şirket Bilgileri → UYAP Eklenti Senkron Anahtarı</Link>'ndan <b>anahtar üret</b> ve kopyala.</span></li>
           <li className="flex gap-2.5"><span className="font-mono text-kr-ink">2.</span> <span>Eklenti panelinde <b>⚙ Program Ayarı</b> → program adresini ve anahtarı yapıştır (bir kez).</span></li>
           <li className="flex gap-2.5"><span className="font-mono text-kr-ink">3.</span> <span><b>🎯 Programdan Hedef</b> → takibi açık (icra no'lu) dosyalar hedef listene gelir. <b>▶ İcra Sorgula</b> ile tara.</span></li>
-          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">4.</span> <span><b>⇅ Program'a Senkronla</b> → durum (açık/kapalı) ve finansal bilgi icra no ile eşleşen dosyaya yazılır. Tarayıcı açık + UYAP girişliyken <b>~45 dk'da bir otomatik</b> de yapılır.</span></li>
+          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">4.</span> <span><b>⇅ Program'a Senkronla</b> → durum (açık/kapalı), finansal bilgi, <b>olaylar</b> (tebliğ/itiraz/haciz/tahsilat) ve <b>evrak PDF'leri</b> icra no ile eşleşen dosyaya yazılır.</span></li>
         </ol>
+        <div className="flex items-start gap-2.5 border-t border-border-subtle bg-success-soft/40 p-[12px_18px] text-[12px] text-success">
+          <RefreshCw className="mt-0.5 h-4 w-4 shrink-0" />
+          <span><b>Tam otomatik:</b> <b>⚙ Program Ayarı</b>'nı bir kez yaptıktan sonra, tarayıcı açık + UYAP girişliyken eklenti <b>~30 dk'da bir ve her UYAP açılışında</b> kendi tarar ve durumu/olayları/evrakı programa yazar — başka tıklama gerekmez.</span>
+        </div>
         <div className="flex items-start gap-2.5 border-t border-border-subtle bg-surface-muted/40 p-[12px_18px] text-[12px] text-muted-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>Eşleştirme <b>icra dosya no</b> ile yapılır — programda “Takip Açıldı” ile girdiğin numara, UYAP'taki esas no ile aynı olmalı. Evrak PDF'lerinin programa otomatik aktarımı sonraki sürümde.</span>
+          <span>Eşleştirme <b>icra dosya no</b> ile yapılır — programda “Takip Açıldı” ile girdiğin numara, UYAP'taki esas no ile aynı olmalı. Evrak ve olaylar çift-dedup'lıdır (aynısı iki kez yazılmaz).</span>
         </div>
       </div>
     </div>
