@@ -8,7 +8,7 @@ import { useState, useTransition } from 'react'
 import { Loader2, Download, Undo2, AlertTriangle } from 'lucide-react'
 import { cekildiDegistir } from '@/app/(app)/atanan-dosyalar/actions'
 
-export function CekildiButton({ dosyaId, cekildi }: { dosyaId: string; cekildi: boolean }) {
+export function CekildiButton({ dosyaId, cekildi, compact }: { dosyaId: string; cekildi: boolean; compact?: boolean }) {
   const [pending, start] = useTransition()
   const [err, setErr] = useState<string | null>(null)
 
@@ -18,6 +18,29 @@ export function CekildiButton({ dosyaId, cekildi }: { dosyaId: string; cekildi: 
       const r = await cekildiDegistir({ dosyaId, hedef: !cekildi })
       if (!r.ok) setErr(r.error ?? 'İşlem tamamlanamadı')
     })
+  }
+
+  // kompakt: yalnız ikon-tık (durum metni gizli); ikon zaten çekildi/bekliyor'u söyler.
+  if (compact) {
+    const baslik = err ?? (cekildi ? 'Çekildi — geri al' : 'Hugo’dan çekildi olarak işaretle')
+    return (
+      <button
+        type="button"
+        onClick={tikla}
+        disabled={pending}
+        aria-label={baslik}
+        title={baslik}
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50 disabled:opacity-60 motion-reduce:transition-none ${
+          err
+            ? 'border-danger/40 text-danger'
+            : cekildi
+              ? 'border-transparent text-success hover:bg-success-soft'
+              : 'border-transparent bg-kr text-kr-foreground shadow-[0_1px_5px_hsl(var(--kr)/0.3)] hover:bg-kr/90'
+        }`}
+      >
+        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : err ? <AlertTriangle className="h-4 w-4" /> : cekildi ? <Undo2 className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+      </button>
+    )
   }
 
   return (

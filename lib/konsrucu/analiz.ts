@@ -8,7 +8,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const MODEL = 'claude-haiku-4-5-20251001' // ucuz; kalite için 'claude-sonnet-4-6'
 
-export type BorcluLLM = { adUnvan: string; tcVkn?: string; adres?: string; rol?: string; kaynak?: string; teyit?: string }
+export type BorcluLLM = { adUnvan: string; tcVkn?: string; telefon?: string; adres?: string; rol?: string; kaynak?: string; teyit?: string }
 export type TeyitLLM = { not: string; tip: 'oneri' | 'uyari' | 'ok' }
 export type DekontLLM = { tarih?: string; tutar?: number; ekspertizMi?: boolean; aciklama?: string }
 export type AnalizSonuc = {
@@ -17,6 +17,7 @@ export type AnalizSonuc = {
   yolNeden?: string
   brans?: string
   sigortaliUnvan?: string
+  sigortaliTelefon?: string
   sigortaliPlaka?: string
   karsiPlaka?: string
   il?: string
@@ -42,6 +43,7 @@ const SCHEMA = {
     yolNeden: { type: 'string', description: 'kısa gerekçe' },
     brans: { type: 'string', enum: ['KASKO', 'ZMMS', 'OTO_DISI', ''], description: 'poliçe branşı' },
     sigortaliUnvan: { type: 'string' },
+    sigortaliTelefon: { type: 'string', description: 'sigortalının iletişim telefonu (varsa; poliçe/Lehe/başvuru formundan). Yoksa boş bırak.' },
     sigortaliPlaka: { type: 'string' },
     karsiPlaka: { type: 'string' },
     il: { type: 'string', description: 'kaza ili' },
@@ -60,6 +62,7 @@ const SCHEMA = {
         properties: {
           adUnvan: { type: 'string' },
           tcVkn: { type: 'string' },
+          telefon: { type: 'string', description: 'borçlunun telefonu (varsa; tutanak/beyan/Lehe formundan). Yoksa boş bırak.' },
           adres: { type: 'string' },
           rol: { type: 'string', enum: ['RUHSAT_SAHIBI', 'SURUCU', 'ISVEREN', 'KAT_MALIKI', 'YONETIM', 'DIGER'] },
           kaynak: { type: 'string', description: 'Lehe/ekspertiz/tutanak/tescil' },
@@ -109,6 +112,7 @@ KURALLAR:
 - ★ TUTAR AYRIMI (kısmi kusurda HASARI BÖL): asilAlacak = ÖDENEN tazminat (tam). rucuTutari = RÜCUEN talep edilecek = ödenen × kusur oranı. Ör. %50 kusur + ödeme 71.214,81 → rucuTutari 35.607,41. Lehe formunda RÜCU TUTARI yazılıysa onu rucuTutari yap; yoksa asilAlacak × kusurOranı hesapla. rucuOrani'na yüzdeyi yaz (ör "%50"). Tam kusurda (%100) ikisi eşittir. Birden çok dekont varsa asilAlacak için TOPLA. ÖNEMLİ: rücu < ödeme ise oran RAKAMLARDAN gelir (yarısı → %50); yaya/tam kusur olsa bile rakam bölünmüşse %100 VARSAYMA, kusurDurumu ile rucuOrani tutarlı olsun.
 - AÇIKLAMA (UYAP takip metni) şu sabit kalıpta olsun: "[KAZA TARİHİ] tarihinde Ray Sigorta A.Ş nezdinde sigortalı bulunan [SİG.PLAKA] plakalı araç ile [KARŞI PLAKA] plakalı [araç/motosiklet] arasında meydana gelen trafik kazası neticesinde sigortalıya ödenen tazminatın kusurlu taraftan rücu bedeline ilişkindir." Sonuna footer satırını ekle. DETAY VERME (promil, tazminat türü yazma). Karşı plaka yoksa kalıbı minimal uyarla. Borçlu tartışmalıysa nötr bitir.
 - ★ DEKONTLAR: Belgelerdeki her ödeme/dekont/makbuz/havale/EFT kaydını "dekontlar" dizisine yaz (tarih=YYYY-MM-DD, tutar=sayı). AYNI ödemenin mükerrer/tekrar kopyalarını TEK kalem say. EKSPERTİZ/eksper ücreti ödemesini de yaz ama ekspertizMi=true (faiz anaparasına dahil edilmez). Parçalı/taksitli ödemede her taksit ayrı kalem. asilAlacak = ekspertiz HARİÇ ödemelerin toplamı.
+- TELEFON: Metinde sigortalının veya borçlunun iletişim telefonu (cep/sabit) geçiyorsa sigortaliTelefon / borçlunun telefon alanına yaz (rakamları olduğu gibi, varsa başında 0/+90). Yoksa boş bırak — UYDURMA. Plaka, poliçe no, TCKN gibi sayıları telefon SANMA.
 - TEYİT NOTLARI: bağımsız doğrulayıcı gözüyle eksik/şüpheli noktaları (borçlu-plaka bağı belgesiz, el yazısı beyandan okunan plaka, hasar-ödeme tutar farkı, sürücü≠sahip≠sigortalı karışıklığı) "oneri"/"uyari" olarak yaz; doğrulanmış güçlü noktaları "ok".
 Hepsi Türkçe.`
 

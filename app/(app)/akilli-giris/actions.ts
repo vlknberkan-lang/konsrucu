@@ -110,6 +110,7 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
       yolNeden: analiz?.yolNeden ?? null,
       // kimlik / kaza
       sigortaliUnvan: analiz?.sigortaliUnvan ?? null,
+      sigortaliTelefon: analiz?.sigortaliTelefon ?? null,
       il: analiz?.il ?? null,
       muhatapOzet: analiz?.muhatapOzet ?? null,
       brans: analiz ? bransDb(analiz.brans) : null,
@@ -140,6 +141,7 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
             create: analiz.borclular.map((b) => ({
               adUnvan: b.adUnvan,
               tcVkn: b.tcVkn || null,
+              telefon: b.telefon || null,
               adres: b.adres || null,
               rol: rolDb(b.rol),
               kaynak: b.kaynak || null,
@@ -261,6 +263,7 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
           yolNeden: analiz.yolNeden ?? null,
           brans: bransDb(analiz.brans),
           sigortaliUnvan: analiz.sigortaliUnvan || undefined,
+          sigortaliTelefon: analiz.sigortaliTelefon || undefined,
           sigortaliPlaka: analiz.sigortaliPlaka || undefined,
           karsiPlaka: analiz.karsiPlaka || undefined,
           il: analiz.il || undefined,
@@ -277,7 +280,7 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
           borclular: analiz.borclular?.length
             ? {
                 create: analiz.borclular.map((b) => ({
-                  adUnvan: b.adUnvan, tcVkn: b.tcVkn || null, adres: b.adres || null,
+                  adUnvan: b.adUnvan, tcVkn: b.tcVkn || null, telefon: b.telefon || null, adres: b.adres || null,
                   rol: rolDb(b.rol), kaynak: b.kaynak || null, teyitDurumu: teyitDb(b.teyit),
                 })),
               }
@@ -389,7 +392,7 @@ export async function dosyaGuncelle(dosyaId: string, fd: FormData): Promise<{ ok
     data: {
       yol: yol && yol in Yol ? (yol as Yol) : null,
       brans: brans && brans in Brans ? (brans as Brans) : null,
-      sigortaliUnvan: str('sigortaliUnvan'), sigortaliPlaka: str('sigortaliPlaka'), karsiPlaka: str('karsiPlaka'),
+      sigortaliUnvan: str('sigortaliUnvan'), sigortaliTelefon: str('sigortaliTelefon'), sigortaliPlaka: str('sigortaliPlaka'), karsiPlaka: str('karsiPlaka'),
       rucuSebebi: str('rucuSebebi'), muhatapOzet: str('muhatapOzet'),
       kazaYeri: str('kazaYeri'), il: str('il'), yetkiliIcra: str('yetkiliIcra'),
       kusurDurumu: str('kusurDurumu'), olusSekli: str('olusSekli'),
@@ -530,6 +533,116 @@ export async function takipXmlOlustur(
   return { ok: true, xml, fileName: `takip_${no}.xml`, uyarilar }
 }
 
+/** Aşama kaydet (İcra/Arabuluculuk/Dava/İnfaz) — form action. Yoksa oluşturur, varsa günceller; dosya durumunu senkronlar. */
+export async function asamaKaydet(formData: FormData): Promise<void> {
+  const { dbUser, izinli } = await ctx()
+  const dosyaId = String(formData.get('dosyaId') ?? '')
+  const tur = String(formData.get('tur') ?? '') as 'ICRA_TAKIBI' | 'ARABULUCULUK' | 'DAVA' | 'INFAZ'
+  if (!['ICRA_TAKIBI', 'ARABULUCULUK', 'DAVA', 'INFAZ'].includes(tur)) return
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true } })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return
+
+  const kimlikNo = String(formData.get('kimlikNo') ?? '').trim() || null
+  const birim = String(formData.get('birim') ?? '').trim() || null
+  const tarihStr = String(formData.get('tarih') ?? '')
+  const baslangic = /^\d{4}-\d{2}-\d{2}/.test(tarihStr) ? new Date(tarihStr) : null
+  const ozet = String(formData.get('ozet') ?? '').trim().slice(0, 2000) || null
+
+  const mevcut = await prisma.asama.findFirst({ where: { dosyaId, tur } })
+  if (mevcut) {
+    await prisma.asama.update({ where: { id: mevcut.id }, data: { kimlikNo, birim, baslangic, ozet } })
+  } else {
+    const max = await prisma.asama.aggregate({ where: { dosyaId }, _max: { sira: true } })
+    await prisma.asama.create({ data: { dosyaId, tur, kimlikNo, birim, baslangic, ozet, sira: (max._max.sira ?? 0) + 1 } })
+  }
+
+  // Dosya durumunu + (icra ise) mevcut alanları senkronla
+  if (tur === 'ICRA_TAKIBI') {
+    await prisma.rucuDosyasi.update({
+      where: { id: dosyaId },
+      data: { icraDosyaNo: kimlikNo ?? undefined, icraDairesi: birim ?? undefined, takipTarihi: baslangic ?? undefined, durum: DosyaDurum.TAKIP_ACILDI },
+    })
+  } else {
+    const durumMap = { ARABULUCULUK: DosyaDurum.ARABULUCULUK, DAVA: DosyaDurum.DAVA, INFAZ: DosyaDurum.INFAZ } as const
+    await prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { durum: durumMap[tur] } })
+  }
+  await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `${tur} aşaması kaydedildi${kimlikNo ? ' · ' + kimlikNo : ''}` } })
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+}
+
+/** Aşamayı sonuçlandır (durum=SONUCLANDI + sonuç) — form action. */
+export async function asamaSonuclandir(formData: FormData): Promise<void> {
+  const { dbUser, izinli } = await ctx()
+  const asamaId = String(formData.get('asamaId') ?? '')
+  const sonuc = String(formData.get('sonuc') ?? '').trim() || null
+  const asama = await prisma.asama.findUnique({ where: { id: asamaId }, include: { dosya: { select: { musteriId: true } } } })
+  if (!asama || !izinli.includes(asama.dosya.musteriId)) return
+  await prisma.asama.update({ where: { id: asamaId }, data: { durum: 'SONUCLANDI', sonuc, bitis: new Date() } })
+  await prisma.aktivite.create({ data: { dosyaId: asama.dosyaId, kullaniciId: dbUser.id, eylem: `${asama.tur} sonuçlandı${sonuc ? ' · ' + sonuc : ''}` } })
+  revalidatePath(`/akilli-giris/${asama.dosyaId}`)
+}
+
+/** Etkinlik (toplantı/duruşma/süre) ekle — form action. */
+export async function etkinlikKaydet(formData: FormData): Promise<void> {
+  const { izinli } = await ctx()
+  const dosyaId = String(formData.get('dosyaId') ?? '')
+  const asamaId = String(formData.get('asamaId') ?? '') || null
+  const tur = String(formData.get('tur') ?? '') as 'ARABULUCULUK_TOPLANTISI' | 'DURUSMA' | 'SURE' | 'HATIRLATMA' | 'GORUSME'
+  const baslik = String(formData.get('baslik') ?? '').trim()
+  const yer = String(formData.get('yer') ?? '').trim() || null
+  const baslarStr = String(formData.get('baslar') ?? '')
+  const baslar = baslarStr ? new Date(baslarStr) : null
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true } })
+  if (!dosya || !izinli.includes(dosya.musteriId) || !baslik || !baslar || Number.isNaN(baslar.getTime())) return
+  await prisma.etkinlik.create({ data: { dosyaId, asamaId, tur, baslik, baslar, yer } })
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+}
+
+/** Excel ile toplu icra eşleştir (hukuk no → icra no + daire). Atanan Dosyalar'dan. */
+export async function icraEslestir(formData: FormData): Promise<{ ok: boolean; eslesen: number; bulunamayan: string[]; toplam: number; hata?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const file = formData.get('file')
+  if (!(file instanceof File)) return { ok: false, eslesen: 0, bulunamayan: [], toplam: 0, hata: 'Dosya seçilmedi' }
+  let rows: Record<string, unknown>[]
+  try {
+    const XLSX = await import('xlsx')
+    const buf = new Uint8Array(await file.arrayBuffer())
+    const wb = XLSX.read(buf, { type: 'array' })
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+  } catch (e) {
+    return { ok: false, eslesen: 0, bulunamayan: [], toplam: 0, hata: 'Excel okunamadı: ' + (e as Error).message }
+  }
+
+  const norm = (s: string) => s.toLocaleLowerCase('tr').replace(/[\s.]/g, '')
+  const kolon = (row: Record<string, unknown>, anahtarlar: string[]) => {
+    for (const k of Object.keys(row)) if (anahtarlar.some((a) => norm(k).includes(a))) { const v = String(row[k] ?? '').trim(); if (v) return v }
+    return ''
+  }
+  const esasNo = (s: string) => { const m = s.match(/((?:19|20)\d{2})\s*\/\s*(\d{1,7})/); return m ? `${m[1]}/${m[2]}` : s.trim() }
+
+  let eslesen = 0
+  const bulunamayan: string[] = []
+  for (const row of rows) {
+    const hukukNo = kolon(row, ['hukuk', 'dosyano', 'dosya'])
+    const icraNo = esasNo(kolon(row, ['icrano', 'icradosya', 'esas', 'takipno']))
+    const daire = kolon(row, ['daire', 'icradairesi', 'birim', 'mudurluk', 'müdürlük'])
+    if (!hukukNo) continue
+    const dosya = await prisma.rucuDosyasi.findFirst({ where: { hukukDosyaNo: hukukNo, musteriId: { in: izinli } }, select: { id: true } })
+    if (!dosya) { bulunamayan.push(hukukNo); continue }
+    await prisma.rucuDosyasi.update({ where: { id: dosya.id }, data: { icraDosyaNo: icraNo || undefined, icraDairesi: daire || undefined, durum: icraNo ? DosyaDurum.TAKIP_ACILDI : undefined } })
+    if (icraNo || daire) {
+      const mevcut = await prisma.asama.findFirst({ where: { dosyaId: dosya.id, tur: 'ICRA_TAKIBI' } })
+      if (mevcut) await prisma.asama.update({ where: { id: mevcut.id }, data: { kimlikNo: icraNo || mevcut.kimlikNo, birim: daire || mevcut.birim } })
+      else { const max = await prisma.asama.aggregate({ where: { dosyaId: dosya.id }, _max: { sira: true } }); await prisma.asama.create({ data: { dosyaId: dosya.id, tur: 'ICRA_TAKIBI', kimlikNo: icraNo || null, birim: daire || null, sira: (max._max.sira ?? 0) + 1 } }) }
+    }
+    eslesen++
+  }
+  await prisma.aktivite.create({ data: { kullaniciId: dbUser.id, eylem: `Excel ile icra eşleştirme: ${eslesen}/${rows.length} dosya güncellendi` } })
+  revalidatePath('/atanan-dosyalar')
+  return { ok: true, eslesen, bulunamayan, toplam: rows.length }
+}
+
 /** Borçlu ekle veya düzelt (borcluId varsa düzelt). Onay sıfırlanır. */
 export async function borcluKaydet(fd: FormData): Promise<{ ok: boolean; error?: string }> {
   const { izinli } = await ctx()
@@ -540,7 +653,7 @@ export async function borcluKaydet(fd: FormData): Promise<{ ok: boolean; error?:
   const adUnvan = String(fd.get('adUnvan') ?? '').trim()
   if (!adUnvan) return { ok: false, error: 'Ad / Unvan zorunlu' }
   const data = {
-    adUnvan, tcVkn: String(fd.get('tcVkn') ?? '').trim() || null, adres: String(fd.get('adres') ?? '').trim() || null,
+    adUnvan, tcVkn: String(fd.get('tcVkn') ?? '').trim() || null, telefon: String(fd.get('telefon') ?? '').trim() || null, adres: String(fd.get('adres') ?? '').trim() || null,
     rol: rolDb(String(fd.get('rol') ?? '')), kaynak: String(fd.get('kaynak') ?? '').trim() || null, teyitDurumu: teyitDb(String(fd.get('teyit') ?? '')),
   }
   if (borcluId) {

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Pencil, Check, X, Trash2, Plus, Loader2 } from 'lucide-react'
 import { borcluKaydet, borcluSil } from '@/app/(app)/akilli-giris/actions'
 
-export type BorcluUI = { id: string; adUnvan: string; tcVkn: string; adres: string; rol: string; kaynak: string; teyit: string }
+export type BorcluUI = { id: string; adUnvan: string; tcVkn: string; telefon: string; adres: string; rol: string; kaynak: string; teyit: string }
 
 const ROL: string[][] = [['RUHSAT_SAHIBI', 'Ruhsat sahibi / İşleten'], ['SURUCU', 'Sürücü'], ['ISVEREN', 'İşveren'], ['KAT_MALIKI', 'Kat maliki'], ['YONETIM', 'Yönetim'], ['DIGER', 'Diğer']]
 const TEYIT: string[][] = [['TEYIT_EDILDI', 'Teyitli'], ['TEYIT_GEREK', 'Teyit gerek'], ['SUPHE', 'Şüphe']]
@@ -29,7 +29,8 @@ function BorcluForm({ dosyaId, b, onDone }: { dosyaId: string; b?: BorcluUI; onD
       <div className="grid grid-cols-2 gap-2">
         <input name="adUnvan" required defaultValue={b?.adUnvan} placeholder="Ad / Unvan" className={`${INP} col-span-2 font-semibold`} />
         <input name="tcVkn" defaultValue={b?.tcVkn} placeholder="TC / VKN" className={`${INP} font-mono`} />
-        <input name="kaynak" defaultValue={b?.kaynak} placeholder="Kaynak (Lehe / tutanak…)" className={INP} />
+        <input name="telefon" defaultValue={b?.telefon} placeholder="Telefon" className={`${INP} font-mono`} />
+        <input name="kaynak" defaultValue={b?.kaynak} placeholder="Kaynak (Lehe / tutanak…)" className={`${INP} col-span-2`} />
         <select name="rol" defaultValue={b?.rol ?? 'DIGER'} className={INP}>{ROL.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         <select name="teyit" defaultValue={b?.teyit ?? 'TEYIT_GEREK'} className={INP}>{TEYIT.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         <input name="adres" defaultValue={b?.adres} placeholder="Adres" className={`${INP} col-span-2`} />
@@ -75,7 +76,7 @@ export function BorclularDuzenle({ dosyaId, borclular }: { dosyaId: string; borc
             <span className="font-mono rounded-full bg-surface-muted px-2 py-[2px] text-[10px] font-semibold uppercase text-muted-foreground">{ROL_LBL[b.rol] ?? b.rol}</span>
             <span className={`ml-auto rounded-full px-2 py-[2px] text-[10.5px] font-semibold ${(TEYIT_LBL[b.teyit] ?? ['', 'bg-muted text-muted-foreground'])[1]}`}>{(TEYIT_LBL[b.teyit] ?? [b.teyit])[0]}</span>
           </div>
-          <div className="font-mono mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">{b.tcVkn && <span>TC/VKN: {b.tcVkn}</span>}{b.kaynak && <span>Kaynak: {b.kaynak}</span>}</div>
+          <div className="font-mono mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">{b.tcVkn && <span>TC/VKN: {b.tcVkn}</span>}{b.telefon && <span>Tel: {b.telefon}</span>}{b.kaynak && <span>Kaynak: {b.kaynak}</span>}</div>
           {b.adres && <div className="mt-1 text-[11.5px] text-muted-foreground">{b.adres}</div>}
           <div className="mt-2 flex gap-2">
             <button onClick={() => setDuzenle(b.id)} className="inline-flex items-center gap-1 rounded-[8px] border border-border px-2.5 py-1 text-[11.5px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-foreground"><Pencil className="h-3 w-3" /> Düzelt</button>

@@ -8,7 +8,7 @@ import { dosyaGuncelle } from '@/app/(app)/akilli-giris/actions'
 
 export type DosyaAlanlar = {
   yol: string; brans: string; hukukDosyaNo: string; hasarDosyaNo: string
-  sigortaliUnvan: string; sigortaliPlaka: string; karsiPlaka: string
+  sigortaliUnvan: string; sigortaliTelefon: string; sigortaliPlaka: string; karsiPlaka: string
   rucuSebebi: string; rucuOrani: string; asilAlacak: string; rucuTutari: string
   kazaYeri: string; il: string; kazaTarihi: string; hasarTarihi: string; zamanasimi: string; yetkiliIcra: string
   kusurDurumu: string; olusSekli: string; muhatapOzet: string
@@ -70,6 +70,7 @@ export function CikarimDuzenle({ dosyaId, v }: { dosyaId: string; v: DosyaAlanla
         {T('hukukDosyaNo', 'Hukuk dosya no', { mono: true })}
         {T('hasarDosyaNo', 'Hasar dosya no', { mono: true })}
         {T('sigortaliUnvan', 'Sigortalı')}
+        {T('sigortaliTelefon', 'Sigortalı telefon', { mono: true })}
         {T('rucuSebebi', 'Rücu sebebi')}
         {T('sigortaliPlaka', 'Sigortalı plaka', { mono: true })}
         {T('karsiPlaka', 'Karşı plaka', { mono: true })}

@@ -24,6 +24,9 @@ import { BorclularDuzenle } from '@/components/akilli-giris/detay/borclular-duze
 import { OnayButonu } from '@/components/akilli-giris/detay/onay-butonu'
 import { TakipSureci } from '@/components/akilli-giris/detay/takip-sureci'
 import { UyapXmlButon } from '@/components/akilli-giris/detay/uyap-xml-buton'
+import { AsamaPanel } from '@/components/akilli-giris/detay/asama-panel'
+import { SurecSerit } from '@/components/akilli-giris/detay/surec-serit'
+import { DosyaSor } from '@/components/akilli-giris/detay/dosya-sor'
 
 const fmtTRY = (n: number | null | undefined) =>
   n != null && Number.isFinite(Number(n)) ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)) + ' ₺' : null
@@ -64,7 +67,7 @@ function Kv({ label, value, mono, strong }: { label: string; value: React.ReactN
   )
 }
 
-export default async function DosyaDetayPage({ params }: { params: { id: string } }) {
+export default async function DosyaDetayPage({ params, searchParams }: { params: { id: string }; searchParams: { asama?: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -82,6 +85,8 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
       aktiviteler: { include: { kullanici: true } },
       notlar: { include: { kullanici: true } },
       olaylar: true,
+      asamalar: { orderBy: { sira: 'asc' } },
+      etkinlikler: { orderBy: { baslar: 'asc' } },
     },
   })
   if (!dosya) notFound()
@@ -122,6 +127,18 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
 
   // takip süreci: bakiye + olaylar
   const toplamTalep = faizToplam ?? faizAnapara
+  // ── 5-AŞAMA SEKMELERİ (İcra Öncesi · İcra · Arabuluculuk · Dava · İnfaz) ──
+  const SEKME_TUR = { icra: 'ICRA_TAKIBI', arabuluculuk: 'ARABULUCULUK', dava: 'DAVA', infaz: 'INFAZ' } as const
+  type SekmeKey = 'oncesi' | keyof typeof SEKME_TUR
+  const aktifSekme = (['icra', 'arabuluculuk', 'dava', 'infaz'].includes(searchParams.asama ?? '') ? searchParams.asama : 'oncesi') as SekmeKey
+  const asamalar = dosya.asamalar
+  const TUR_SEKME: Record<string, SekmeKey> = { ICRA_TAKIBI: 'icra', ARABULUCULUK: 'arabuluculuk', DAVA: 'dava', INFAZ: 'infaz' }
+  const guncelAsamaRec = [...asamalar].reverse().find((a) => a.durum === 'DEVAM') ?? asamalar[asamalar.length - 1] ?? null
+  const guncelSekme: SekmeKey = guncelAsamaRec ? TUR_SEKME[guncelAsamaRec.tur] : dosya.icraDosyaNo ? 'icra' : 'oncesi'
+  const serit = asamalar.map((a) => ({ tur: a.tur as string, durum: a.durum as string, sonuc: a.sonuc, kimlikNo: a.kimlikNo }))
+  const aktifAsama = aktifSekme === 'oncesi' ? null : asamalar.find((a) => a.tur === SEKME_TUR[aktifSekme as keyof typeof SEKME_TUR]) ?? null
+  const aktifEtkinlikler = aktifAsama ? dosya.etkinlikler.filter((e) => e.asamaId === aktifAsama.id) : []
+
   const tahsilEdilen = dosya.olaylar.filter((o) => o.tip === 'TAHSILAT').reduce((s, o) => s + (o.tutar != null ? Number(o.tutar) : 0), 0)
   const bakiye = { toplam: toplamTalep, tahsil: tahsilEdilen, kalan: Math.max(0, toplamTalep - tahsilEdilen) }
   const olaylarUi = dosya.olaylar.map((o) => ({ id: o.id, tip: o.tip, tarih: o.tarih ? o.tarih.toISOString() : null, tutar: o.tutar != null ? Number(o.tutar) : null, aciklama: o.aciklama }))
@@ -182,14 +199,14 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
   const fmtInput = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : '')
   const alanlarV = {
     yol: dosya.yol ?? '', brans: dosya.brans ?? '', hukukDosyaNo: dosya.hukukDosyaNo ?? '', hasarDosyaNo: dosya.hasarDosyaNo ?? '',
-    sigortaliUnvan: dosya.sigortaliUnvan ?? '', sigortaliPlaka: dosya.sigortaliPlaka ?? '', karsiPlaka: dosya.karsiPlaka ?? '',
+    sigortaliUnvan: dosya.sigortaliUnvan ?? '', sigortaliTelefon: dosya.sigortaliTelefon ?? '', sigortaliPlaka: dosya.sigortaliPlaka ?? '', karsiPlaka: dosya.karsiPlaka ?? '',
     rucuSebebi: dosya.rucuSebebi ?? '', rucuOrani: dosya.rucuOrani ?? '',
     asilAlacak: dosya.asilAlacak != null ? String(Number(dosya.asilAlacak)) : '', rucuTutari: dosya.rucuTutari != null ? String(Number(dosya.rucuTutari)) : '',
     kazaYeri: dosya.kazaYeri ?? '', il: dosya.il ?? '', yetkiliIcra: dosya.yetkiliIcra ?? '',
     kazaTarihi: fmtInput(dosya.kazaTarihi), hasarTarihi: fmtInput(dosya.hasarTarihi), zamanasimi: fmtInput(dosya.zamanasimi),
     kusurDurumu: dosya.kusurDurumu ?? '', olusSekli: dosya.olusSekli ?? '', muhatapOzet: dosya.muhatapOzet ?? '',
   }
-  const borclularUi = dosya.borclular.map((b) => ({ id: b.id, adUnvan: b.adUnvan, tcVkn: b.tcVkn ?? '', adres: b.adres ?? '', rol: b.rol as string, kaynak: b.kaynak ?? '', teyit: b.teyitDurumu as string }))
+  const borclularUi = dosya.borclular.map((b) => ({ id: b.id, adUnvan: b.adUnvan, tcVkn: b.tcVkn ?? '', telefon: b.telefon ?? '', adres: b.adres ?? '', rol: b.rol as string, kaynak: b.kaynak ?? '', teyit: b.teyitDurumu as string }))
 
   const TIP_META: Record<TL['tip'], { icon: typeof Clock; cls: string }> = {
     not: { icon: StickyNote, cls: 'bg-kr-soft text-kr-ink' },
@@ -248,6 +265,18 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
         </div>
       </div>
 
+      <SurecSerit asamalar={serit} aktif={aktifSekme} guncelSekme={guncelSekme} icraNo={dosya.icraDosyaNo} />
+      <DosyaSor dosyaId={dosya.id} />
+      {aktifSekme !== 'oncesi' ? (
+        <AsamaPanel
+          sekme={aktifSekme}
+          dosyaId={dosya.id}
+          asama={aktifAsama}
+          etkinlikler={aktifEtkinlikler}
+          prefill={aktifSekme === 'icra' ? { no: dosya.icraDosyaNo, birim: dosya.icraDairesi ?? dosya.yetkiliIcra } : undefined}
+        />
+      ) : (
+        <>
       {/* durum pipeline */}
       <div className="mt-[14px] flex items-center overflow-x-auto rounded-[14px] border border-border bg-surface p-[12px_18px]">
         {pipeline.map((label, i) => {
@@ -451,6 +480,7 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
               {([
                 ['Hasar tarihi', fmtDate(dosya.hasarTarihi), true],
                 ['Zamanaşımı', fmtDate(dosya.zamanasimi), true],
+                ['Sigortalı tel', dosya.sigortaliTelefon, true],
                 ['Sigortalı plaka', dosya.sigortaliPlaka, true],
                 ['Kaza yeri', dosya.kazaYeri || dosya.il, false],
                 ['Yetkili icra', dosya.yetkiliIcra, false],
@@ -493,6 +523,8 @@ export default async function DosyaDetayPage({ params }: { params: { id: string 
           </div>
         </aside>
       </div>
+        </>
+      )}
     </div>
   )
 }

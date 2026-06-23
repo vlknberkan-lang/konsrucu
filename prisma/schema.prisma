@@ -32,7 +32,10 @@ enum DosyaDurum {
   TAKIP_ACILDI
   TEBLIG_EDILDI
   ITIRAZ
+  ARABULUCULUK
+  DAVA
   KESINLESTI
+  INFAZ
   TAHSIL
   KAPANDI
   IDARI_YOL
@@ -77,6 +80,35 @@ enum CiktiTip {
   TAKIP_BLOGU
   DILEKCE
   BILGILER_JSON
+}
+
+// aşama omurgası — 5 sekme: İcra Öncesi (asama yok) · İcra · Arabuluculuk · Dava · İnfaz (ilamlı, aynı esas)
+enum AsamaTur {
+  ICRA_TAKIBI
+  ARABULUCULUK
+  DAVA
+  INFAZ
+}
+
+enum AsamaDurum {
+  DEVAM
+  SONUCLANDI
+  IPTAL
+}
+
+enum EtkinlikTur {
+  ARABULUCULUK_TOPLANTISI
+  DURUSMA
+  SURE
+  HATIRLATMA
+  GORUSME
+}
+
+enum EtkinlikDurum {
+  PLANLANDI
+  YAPILDI
+  ERTELENDI
+  IPTAL
 }
 
 // ─────────────────── tenant / kullanıcı ───────────────────
@@ -172,6 +204,7 @@ model RucuDosyasi {
   hasarDosyaNo   String?
   hasarTarihi    DateTime?
   sigortaliUnvan String?
+  sigortaliTelefon String?
   il             String?
   muhatapOzet    String?
 
@@ -246,6 +279,8 @@ model RucuDosyasi {
   belgeler    Belge[]
   ciktilar    UretilenCikti[]
   olaylar     TakipOlayi[]
+  asamalar    Asama[]
+  etkinlikler Etkinlik[]
   notlar      Not[]
   aktiviteler Aktivite[]
 
@@ -261,6 +296,7 @@ model Borclu {
   dosya       RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
   adUnvan     String
   tcVkn       String?
+  telefon     String?
   adres       String?     @db.Text
   rol         BorcluRol   @default(DIGER)
   kaynak      String? // Lehe / ekspertiz / tutanak / tescil
@@ -342,6 +378,58 @@ model TakipOlayi {
   createdAt DateTime    @default(now())
 
   @@index([dosyaId])
+}
+
+// aşama omurgası — dosyaya biriken evreler (İcra → Arabuluculuk → Dava → İnfaz). Aynı dosya, biriken kayıt.
+model Asama {
+  id          String      @id @default(uuid())
+  dosyaId     String
+  dosya       RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  tur         AsamaTur
+  durum       AsamaDurum  @default(DEVAM)
+  sonuc       String? // anlasildi | anlasilmadi | itiraz | kabul | ret | kesinlesti...
+  kimlikNo    String? // icra no / arabuluculuk no / dava esas no
+  birim       String? // icra dairesi / arabuluculuk bürosu / mahkeme
+  baslangic   DateTime?
+  bitis       DateTime?
+  tutar       Decimal?    @db.Decimal(14, 2)
+  ozet        String?     @db.Text
+  detayJson   Json? // türe özel alanlar (arabulucu, bilirkişi, hakim…)
+  sira        Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  etkinlikler Etkinlik[]
+
+  @@index([dosyaId])
+  @@index([tur])
+  @@index([durum])
+}
+
+// takvim olayı — toplantı / duruşma / süre / hatırlatma (dosyaya + aşamaya bağlı)
+model Etkinlik {
+  id           String        @id @default(uuid())
+  dosyaId      String
+  dosya        RucuDosyasi   @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  asamaId      String?
+  asama        Asama?        @relation(fields: [asamaId], references: [id], onDelete: SetNull)
+  tur          EtkinlikTur
+  baslik       String
+  baslar       DateTime
+  biter        DateTime?
+  tumGun       Boolean       @default(false)
+  yer          String?
+  online       Boolean       @default(false)
+  durum        EtkinlikDurum @default(PLANLANDI)
+  sonucNot     String?       @db.Text
+  sorumluId    String? // atanan avukat (Kullanici.id)
+  hatirlatmaDk Int?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([dosyaId])
+  @@index([tur])
+  @@index([baslar])
+  @@index([durum])
 }
 
 model Not {
