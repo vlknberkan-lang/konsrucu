@@ -8,14 +8,14 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronsUpDown } from 'lucide-react'
-import { RAIL_NAV, DURUM, type ShellTenant, type RecentCase } from '@/lib/konsrucu/nav'
+import { RAIL_NAV, type ShellTenant } from '@/lib/konsrucu/nav'
 import { KonsRucuWordmark } from '@/components/brand/konsrucu-mark'
 
 function GLabel({ children }: { children: React.ReactNode }) {
   return <div className="font-mono px-2.5 pb-1.5 pt-3 text-[9px] uppercase tracking-[0.14em] text-muted-foreground">{children}</div>
 }
 
-export function Sidebar({ tenant, recentCases }: { tenant: ShellTenant | null; recentCases: RecentCase[] }) {
+export function Sidebar({ tenant }: { tenant: ShellTenant | null }) {
   const pathname = usePathname()
   const item = 'flex w-full items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-[13.5px] font-medium transition'
   const off = 'text-foreground hover:bg-surface-muted'
@@ -36,21 +36,6 @@ export function Sidebar({ tenant, recentCases }: { tenant: ShellTenant | null; r
           return (
             <Link key={n.id} href={n.href} className={`${item} ${aktif ? on : off}`}>
               <Icon className={`h-[17px] w-[17px] ${aktif ? 'text-kr' : 'text-muted-foreground'}`} /> {n.label}
-            </Link>
-          )
-        })}
-
-        <GLabel>Son Dosyalar</GLabel>
-        {recentCases.length === 0 && (
-          <div className="px-2.5 py-2 text-[12px] text-muted-foreground">Henüz dosya yok.</div>
-        )}
-        {recentCases.map((c) => {
-          const d = DURUM[c.durum]
-          return (
-            <Link key={c.hasarNo} href={`/akilli-giris/${c.hasarNo}`} className={`${item} ${off} gap-2.5`}>
-              <span className={`h-2 w-2 shrink-0 rounded-full ${d.dot}`} />
-              <span className="font-mono min-w-0 flex-1 truncate text-xs">{c.hasarNo}</span>
-              {c.dusuk > 0 && <span className="font-mono text-[10px] text-warning">{c.dusuk}</span>}
             </Link>
           )
         })}

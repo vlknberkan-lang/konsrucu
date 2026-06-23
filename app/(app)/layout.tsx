@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { AppShell } from '@/components/shell/app-shell'
 import { signOutAction } from '@/app/actions/auth'
-import type { Durum, RecentCase } from '@/lib/konsrucu/nav'
 
 const ROL_ETIKET: Record<string, string> = {
   ADMIN: 'Yönetici',
@@ -15,25 +14,6 @@ const ROL_ETIKET: Record<string, string> = {
 
 const initials = (ad: string) =>
   ad.split(/\s+/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase()
-
-function mapDurum(d: string): Durum {
-  switch (d) {
-    case 'INCELENIYOR':
-      return 'gozden'
-    case 'IDARI_YOL':
-      return 'idariBekl'
-    case 'TAKIBE_HAZIR':
-      return 'takibeHazir'
-    case 'TAKIP_ACILDI':
-    case 'TEBLIG_EDILDI':
-    case 'KESINLESTI':
-    case 'TAHSIL':
-    case 'KAPANDI':
-      return 'gonderildi'
-    default:
-      return 'isleniyor'
-  }
-}
 
 export default async function AppGroupLayout({ children }: { children: React.ReactNode }) {
   // 1) Oturum guard (middleware'e ek savunma derinliği)
@@ -75,28 +55,12 @@ export default async function AppGroupLayout({ children }: { children: React.Rea
   const aktifId = cookies().get('aktif_musteri')?.value
   const aktif = musteriler.find((m) => m.id === aktifId) ?? musteriler[0] ?? null
 
-  // 4) Aktif müşterinin son dosyaları (şimdilik boş olabilir)
-  const recent = aktif
-    ? await prisma.rucuDosyasi.findMany({
-        where: { musteriId: aktif.id },
-        orderBy: { updatedAt: 'desc' },
-        take: 8,
-        select: { id: true, hasarDosyaNo: true, durum: true },
-      })
-    : []
-
   const init = initials(dbUser.ad)
-  const recentCases: RecentCase[] = recent.map((d) => ({
-    hasarNo: d.hasarDosyaNo ?? d.id.slice(0, 8),
-    durum: mapDurum(d.durum),
-    dusuk: 0,
-  }))
 
   return (
     <AppShell
       user={{ ad: dbUser.ad, rol: ROL_ETIKET[dbUser.rol] ?? dbUser.rol, init }}
       tenant={aktif ? { musteri: aktif.ad, ofis: 'Küçükislamoğlu Hukuk Bürosu', init } : null}
-      recentCases={recentCases}
     >
       {children}
     </AppShell>

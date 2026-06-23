@@ -18,7 +18,7 @@ export function Rail({ userInit }: { userInit: string }) {
         <KonsRucuMark size={26} />
       </Link>
 
-      <div className="flex w-full flex-1 flex-col items-center gap-1 overflow-y-auto py-1">
+      <div className="flex w-full flex-1 flex-col items-center gap-1 py-1">
         {RAIL_NAV.map((n) => {
           const active = pathname.startsWith(n.href)
           const Icon = n.icon
