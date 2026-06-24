@@ -153,7 +153,7 @@ export function dilekceMetni(g: DilekceGirdi): string {
   const tur = turBelirle(g.olayTuru, g.brans)
   const mTur = mahkemeTuru(g, tur)
   const mahkemeAd = mTur === 'ASLIYE' ? 'ASLİYE HUKUK MAHKEMESİNE' : 'TÜKETİCİ MAHKEMESİNE'
-  const yer = buyuk(g.mahkemeYeri) || Y('MAHKEME YERİ')
+  const yer = buyuk(icraDaireYer(g.icraDairesi) ?? g.mahkemeYeri) || Y('MAHKEME YERİ')
   const oran = (g.icraInkarOrani || '20').replace(/%/g, '')
   const L: string[] = []
   const ekle = (s = '') => L.push(s)

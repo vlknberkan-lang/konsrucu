@@ -7,7 +7,7 @@
  */
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, Loader2, Copy, Check, Save, Sparkles } from 'lucide-react'
+import { FileText, Loader2, Copy, Check, Save, Sparkles, FileDown } from 'lucide-react'
 import { dilekceUret, dilekceKaydet } from '@/app/(app)/akilli-giris/actions'
 
 export type DilekceCikti = { id: string; icerik: string | null; durum: string | null }
@@ -23,6 +23,7 @@ export function DilekcePanel({ dosyaId, cikti }: { dosyaId: string; cikti: Dilek
   const [err, setErr] = useState<string | null>(null)
   const [kopyalandi, setKopyalandi] = useState(false)
   const [kayitOk, setKayitOk] = useState(false)
+  const [wordPending, setWordPending] = useState(false)
 
   function uret() {
     setErr(null)
@@ -34,6 +35,18 @@ export function DilekcePanel({ dosyaId, cikti }: { dosyaId: string; cikti: Dilek
   }
   async function kopyala() {
     try { await navigator.clipboard.writeText(metin); setKopyalandi(true); setTimeout(() => setKopyalandi(false), 2000) } catch { setErr('Kopyalanamadı') }
+  }
+  async function wordIndir() {
+    setWordPending(true); setErr(null)
+    try {
+      const r = await fetch('/api/dilekce/docx', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ metin, ad: 'dava-dilekcesi' }) })
+      if (!r.ok) throw new Error('Word üretilemedi')
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = 'dava-dilekcesi.docx'; document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) { setErr((e as Error).message) }
+    setWordPending(false)
   }
   function kaydet(yeniDurum?: string) {
     if (!ciktiId) return
@@ -76,6 +89,7 @@ export function DilekcePanel({ dosyaId, cikti }: { dosyaId: string; cikti: Dilek
               className="w-full resize-y rounded-[12px] border border-border bg-surface-muted/40 p-4 font-mono text-[12.5px] leading-[1.6] text-foreground outline-none transition focus:border-kr focus:bg-surface focus:ring-4 focus:ring-kr/15" />
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button type="button" onClick={kopyala} className="inline-flex items-center gap-1.5 rounded-[10px] border border-border px-3.5 py-2 text-[13px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr">{kopyalandi ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />} {kopyalandi ? 'Kopyalandı' : "UYAP'a kopyala"}</button>
+              <button type="button" onClick={wordIndir} disabled={wordPending} className="inline-flex items-center gap-1.5 rounded-[10px] border border-border px-3.5 py-2 text-[13px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr disabled:opacity-60">{wordPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />} Word indir</button>
               <button type="button" onClick={() => kaydet()} disabled={pending || !ciktiId} className="inline-flex items-center gap-1.5 rounded-[10px] border border-border px-3.5 py-2 text-[13px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr disabled:opacity-60">{kayitOk ? <Check className="h-4 w-4 text-success" /> : <Save className="h-4 w-4" />} {kayitOk ? 'Kaydedildi' : 'Kaydet'}</button>
               <span className="mx-1 h-5 w-px bg-border" />
               <label className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-foreground">Durum</label>
