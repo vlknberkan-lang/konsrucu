@@ -52,6 +52,16 @@ const tarihTR = (s: string | null) => {
   return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 const buyuk = (s: string | null | undefined) => (s ? s.toLocaleUpperCase('tr') : '')
+// "İstanbul 18. İcra Dairesi" / "Küçükçekmece İcra Dairesi" → mahkeme yeri ("İstanbul" / "Küçükçekmece")
+export function icraDaireYer(daire: string | null | undefined): string | null {
+  if (!daire) return null
+  const y = String(daire)
+    .replace(/\b[İiIı]cra\s+(dairesi|müdürlüğü|mudurlugu|md\.?)\b/i, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/\s*\d+\s*\.?\s*$/, '')
+    .trim()
+  return y || null
+}
 
 type TurKey = 'alkol' | 'terk' | 'carpip_kacma' | 'genel'
 export function turBelirle(olayTuru: string | null, brans: string | null): TurKey {

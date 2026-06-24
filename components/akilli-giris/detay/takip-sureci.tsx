@@ -8,7 +8,7 @@
  */
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Check, Loader2, AlertTriangle, Banknote, Gavel, Scale, FileCheck, FileText, Eye, RefreshCw, CircleDot } from 'lucide-react'
+import { Plus, Trash2, Check, Loader2, AlertTriangle, Banknote, Gavel, Scale, FileCheck, FileText, Eye, Mail, Receipt, FileSignature, RefreshCw, CircleDot } from 'lucide-react'
 import { olayEkle, olaySil } from '@/app/(app)/akilli-giris/actions'
 import { BelgeOnizleme, type OnizlemeBelge } from '@/components/akilli-giris/detay/belge-onizleme'
 
@@ -35,9 +35,21 @@ function acikKapali(d: string | null): { label: string; tone: 'success' | 'dange
   return { label: d, tone: 'steel' }
 }
 
-type Feed =
-  | { kind: 'olay'; id: string; t: number; tarih: string | null; tip: string; tutar: number | null; aciklama: string | null }
-  | { kind: 'evrak'; id: string; t: number; tarih: string; dosyaAdi: string; kategori: string; acilabilir: boolean }
+type Feed = { kind: 'olay'; id: string; t: number; tarih: string | null; tip: string; tutar: number | null; aciklama: string | null }
+
+// UYAP evrakını adından türe ayır (icra/takip evrakları) — kullanıcı dostu gruplama
+const EVRAK_TUR: { key: string; label: string; Icon: typeof FileText; cls: string; re: RegExp }[] = [
+  { key: 'tebligat', label: 'Tebligat', Icon: Mail, cls: 'bg-info-soft text-info', re: /tebli|mazbata|ptt|tebligat/i },
+  { key: 'itiraz', label: 'İtiraz', Icon: AlertTriangle, cls: 'bg-warning-soft text-warning', re: /itiraz/i },
+  { key: 'haciz', label: 'Haciz', Icon: Gavel, cls: 'bg-warning-soft text-[hsl(var(--warning-fg))]', re: /haciz/i },
+  { key: 'odeme', label: 'Ödeme / Makbuz', Icon: Receipt, cls: 'bg-success-soft text-success', re: /makbuz|harç|harc|tahsil|reddiyat|ödeme|odeme|dekont|alınd|alind/i },
+  { key: 'karar', label: 'Karar / Tutanak', Icon: FileCheck, cls: 'bg-kr-soft text-kr-ink', re: /tensip|zapıt|zapt|zabıt|zabit|tutanak|karar|müzekkere|muzekkere/i },
+  { key: 'vekalet', label: 'Vekaletname', Icon: FileSignature, cls: 'bg-surface-muted text-foreground', re: /vekalet/i },
+  { key: 'talep', label: 'Talep / Dilekçe', Icon: FileText, cls: 'bg-kr-soft text-kr-ink', re: /talep|dilekçe|dilekce|başvuru|basvuru/i },
+  { key: 'rapor', label: 'Bilirkişi / Rapor', Icon: Scale, cls: 'bg-info-soft text-info', re: /bilirkiş|bilirkis|rapor|ekspertiz/i },
+]
+const EVRAK_DIGER = { key: 'diger', label: 'Diğer', Icon: FileText, cls: 'bg-surface-muted text-muted-foreground' }
+function evrakTuru(ad: string) { for (const t of EVRAK_TUR) if (t.re.test(ad)) return t; return EVRAK_DIGER }
 
 export function TakipSureci({
   dosyaId,
@@ -77,11 +89,22 @@ export function TakipSureci({
     setSilen(id); const r = await olaySil(id); setSilen(null); if (r.ok) router.refresh()
   }
 
-  // takip olayları + UYAP evrakları → tek kronolojik akış (yeni → eski)
-  const feed: Feed[] = [
-    ...olaylar.map((o): Feed => ({ kind: 'olay', id: o.id, t: o.tarih ? new Date(o.tarih).getTime() : 0, tarih: o.tarih, tip: o.tip, tutar: o.tutar, aciklama: o.aciklama })),
-    ...evraklar.map((e): Feed => ({ kind: 'evrak', id: e.id, t: new Date(e.t).getTime(), tarih: e.t, dosyaAdi: e.dosyaAdi, kategori: e.kategori, acilabilir: e.acilabilir })),
-  ].sort((a, b) => b.t - a.t)
+  // takip olayları → kronolojik akış (yeni → eski). UYAP evrakları ayrı, türüne göre gruplu.
+  const feed: Feed[] = olaylar
+    .map((o): Feed => ({ kind: 'olay', id: o.id, t: o.tarih ? new Date(o.tarih).getTime() : 0, tarih: o.tarih, tip: o.tip, tutar: o.tutar, aciklama: o.aciklama }))
+    .sort((a, b) => b.t - a.t)
+
+  const evrakGruplari = (() => {
+    const m = new Map<string, { key: string; label: string; Icon: typeof FileText; cls: string; items: EvrakUI[] }>()
+    for (const e of evraklar) {
+      const t = evrakTuru(e.dosyaAdi)
+      if (!m.has(t.key)) m.set(t.key, { key: t.key, label: t.label, Icon: t.Icon, cls: t.cls, items: [] })
+      m.get(t.key)!.items.push(e)
+    }
+    for (const g of m.values()) g.items.sort((a, b) => new Date(b.t).getTime() - new Date(a.t).getTime())
+    const sira = [...EVRAK_TUR.map((t) => t.key), 'diger']
+    return [...m.values()].sort((a, b) => sira.indexOf(a.key) - sira.indexOf(b.key))
+  })()
 
   const durumEt = acikKapali(uyap?.durum ?? null)
   const h = uyap?.hesap ?? null
@@ -156,6 +179,40 @@ export function TakipSureci({
           ))}
         </div>
 
+        {/* UYAP evrakları — türüne göre gruplu */}
+        {evraklar.length > 0 && (
+          <div className="mb-4">
+            <div className="mb-2 flex items-center gap-2">
+              <FileText className="h-3.5 w-3.5 text-kr" />
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">UYAP Evrakları · türüne göre</span>
+              <span className="font-mono text-[10.5px] text-muted-foreground">{evraklar.length}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {evrakGruplari.map((g) => (
+                <div key={g.key} className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
+                  <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-muted/50 px-3 py-2">
+                    <span className={`grid h-6 w-6 place-items-center rounded-[7px] ${g.cls}`}><g.Icon className="h-3.5 w-3.5" /></span>
+                    <span className="text-[12.5px] font-bold">{g.label}</span>
+                    <span className="font-mono rounded-full border border-border bg-surface px-1.5 py-[1px] text-[10px] text-muted-foreground">{g.items.length}</span>
+                  </div>
+                  <div className="flex flex-col divide-y divide-border-subtle">
+                    {g.items.map((b) => (
+                      <div key={b.id} className="flex items-center gap-2.5 px-3 py-2">
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate text-[12px]" title={b.dosyaAdi}>{b.dosyaAdi}</span>
+                        <span className="font-mono shrink-0 text-[10px] text-muted-foreground">{fmtDate(b.t)}</span>
+                        {b.acilabilir
+                          ? <button onClick={() => setOnizle({ id: b.id, dosyaAdi: b.dosyaAdi })} aria-label="Evrağı aç" className="inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-border px-2 py-1 text-[10.5px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr-ink"><Eye className="h-3 w-3" /> Aç</button>
+                          : <span className="shrink-0 font-mono text-[9.5px] text-muted-foreground" title="Storage'sız (eski) kayıt">—</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* olay ekle */}
         <form onSubmit={ekle} className="mb-4 rounded-xl border border-border-subtle bg-surface-muted/30 p-3">
           <input type="hidden" name="dosyaId" value={dosyaId} />
@@ -171,27 +228,12 @@ export function TakipSureci({
           </div>
         </form>
 
-        {/* zaman çizelgesi — takip olayları + gelen UYAP evrakları */}
+        {/* zaman çizelgesi — takip olayları (tebliğ/itiraz/tahsilat…) */}
         {feed.length === 0 ? (
-          <div className="text-[13px] text-muted-foreground">Henüz takip olayı/evrak yok. Tebliğ / itiraz / tahsilat ve UYAP'tan inen evraklar burada kronolojik görünür (manuel ya da eklenti senkronu).</div>
+          <div className="text-[13px] text-muted-foreground">Henüz takip olayı yok. Tebliğ / itiraz / tahsilat olayları burada kronolojik görünür (manuel ya da eklenti senkronu). UYAP'tan inen belgeler yukarıda <b>türüne göre</b> listelenir.</div>
         ) : (
           <ol className="space-y-2.5">
-            {feed.map((o) => o.kind === 'evrak' ? (
-              <li key={`e-${o.id}`} className="flex items-start gap-3 rounded-[11px] border border-border-subtle bg-surface p-[10px_12px]">
-                <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-[8px] bg-info-soft text-info"><FileText className="h-4 w-4" /></span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-[13px] font-bold">Evrak geldi</span>
-                    <span className="font-mono rounded-full bg-surface-muted px-1.5 py-[1px] text-[9.5px] uppercase text-muted-foreground">{o.kategori}</span>
-                    <span className="font-mono ml-auto text-[10.5px] text-muted-foreground">{fmtDate(o.tarih)}</span>
-                  </div>
-                  <div className="mt-0.5 truncate text-[12px] text-muted-foreground">{o.dosyaAdi}</div>
-                </div>
-                {o.acilabilir && (
-                  <button onClick={() => setOnizle({ id: o.id, dosyaAdi: o.dosyaAdi })} aria-label="Evrağı aç" className="inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr-ink"><Eye className="h-3.5 w-3.5" /> Aç</button>
-                )}
-              </li>
-            ) : (
+            {feed.map((o) => (
               <li key={o.id} className="flex items-start gap-3 rounded-[11px] border border-border-subtle bg-surface p-[10px_12px]">
                 <span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-[8px] ${o.tip === 'TAHSILAT' ? 'bg-success-soft text-success' : o.tip === 'ITIRAZ' ? 'bg-warning-soft text-warning' : o.tip === 'KAPANDI' ? 'bg-muted text-muted-foreground' : 'bg-kr-soft text-kr-ink'}`}>
                   {o.tip === 'TAHSILAT' ? <Banknote className="h-4 w-4" /> : o.tip === 'ITIRAZ' ? <AlertTriangle className="h-4 w-4" /> : o.tip === 'KESINLESTI' ? <Scale className="h-4 w-4" /> : o.tip === 'HACIZ' ? <Gavel className="h-4 w-4" /> : <FileCheck className="h-4 w-4" />}
