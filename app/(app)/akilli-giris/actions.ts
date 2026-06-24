@@ -584,6 +584,15 @@ export async function asamaSonuclandir(formData: FormData): Promise<void> {
 }
 
 /** Etkinlik (toplantı/duruşma/süre) ekle — form action. */
+// datetime-local ("YYYY-MM-DDTHH:mm") değerini TÜRKİYE saati (UTC+3, DST yok) varsayıp doğru UTC instant'a çevirir.
+// Sunucu UTC olduğundan new Date(localStr) saati +3 kaydırırdı; bu fonksiyon kaymayı önler.
+function trDateTime(s: string): Date | null {
+  if (!s) return null
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
+  if (!m) { const d = new Date(s); return Number.isNaN(d.getTime()) ? null : d }
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] - 3, +m[5]))
+}
+
 export async function etkinlikKaydet(formData: FormData): Promise<void> {
   const { izinli } = await ctx()
   const dosyaId = String(formData.get('dosyaId') ?? '')
@@ -592,9 +601,9 @@ export async function etkinlikKaydet(formData: FormData): Promise<void> {
   const baslik = String(formData.get('baslik') ?? '').trim()
   const yer = String(formData.get('yer') ?? '').trim() || null
   const baslarStr = String(formData.get('baslar') ?? '')
-  const baslar = baslarStr ? new Date(baslarStr) : null
+  const baslar = trDateTime(baslarStr)
   const biterStr = String(formData.get('biter') ?? '')
-  const biterRaw = biterStr ? new Date(biterStr) : null
+  const biterRaw = trDateTime(biterStr)
   const biter = biterRaw && !Number.isNaN(biterRaw.getTime()) && (!baslar || biterRaw > baslar) ? biterRaw : null
   const hatirlatmaDkRaw = Number(formData.get('hatirlatmaDk'))
   const hatirlatmaDk = Number.isFinite(hatirlatmaDkRaw) && hatirlatmaDkRaw > 0 ? Math.round(hatirlatmaDkRaw) : null
@@ -634,9 +643,9 @@ export async function etkinlikGuncelle(formData: FormData): Promise<void> {
   const baslik = String(formData.get('baslik') ?? '').trim()
   const yer = String(formData.get('yer') ?? '').trim() || null
   const baslarStr = String(formData.get('baslar') ?? '')
-  const baslar = baslarStr ? new Date(baslarStr) : null
+  const baslar = trDateTime(baslarStr)
   const biterStr = String(formData.get('biter') ?? '')
-  const biterRaw = biterStr ? new Date(biterStr) : null
+  const biterRaw = trDateTime(biterStr)
   const biter = biterRaw && !Number.isNaN(biterRaw.getTime()) && (!baslar || biterRaw > baslar) ? biterRaw : null
   const onlineRaw = String(formData.get('online') ?? '')
   const online = onlineRaw === 'on' || onlineRaw === 'true'

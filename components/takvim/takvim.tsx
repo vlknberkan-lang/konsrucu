@@ -33,7 +33,7 @@ const gunKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 const ayBasi = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1)
 const haftaBasi = (d: Date) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x }
 const gunEkle = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
-const saat = (iso: string) => new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+const saat = (iso: string) => new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })
 const gunBaslik = (d: Date) => `${d.getDate()} ${AYLAR[d.getMonth()]} ${GUNLER[(d.getDay() + 6) % 7]}`
 
 // Etkinlik düzenleme (modal) — input stilleri + tür seçenekleri + ISO→datetime-local
@@ -46,7 +46,8 @@ const TUR_SECENEK: { val: string; label: string }[] = [
   { val: 'SURE', label: 'Süre / son tarih' },
   { val: 'HATIRLATMA', label: 'Hatırlatma' },
 ]
-const toLocalInput = (iso: string) => { const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}` }
+// UTC instant → Türkiye (UTC+3) duvar saati "YYYY-MM-DDTHH:mm" (tarayıcı TZ'inden bağımsız; trDateTime ile birebir round-trip)
+const toLocalInput = (iso: string) => { const d = new Date(new Date(iso).getTime() + 3 * 3600000); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}` }
 
 type Gorunum = 'ay' | 'hafta' | 'ajanda'
 
@@ -247,7 +248,7 @@ function EtkinlikModal({ e, bugun, onKapat }: { e: TakvimEtkinlik; bugun: string
             <span className={`grid h-9 w-9 place-items-center rounded-[11px] ${m.tone === 'kr' ? 'bg-kr-soft text-kr-ink' : 'bg-surface-muted text-foreground'}`}><m.Icon className="h-[18px] w-[18px]" /></span>
             <div>
               <div className="flex items-center gap-2"><h3 className="font-display text-[15.5px] font-extrabold">{duzenle ? 'Etkinliği düzenle' : e.baslik}</h3><Badge tone={m.tone}>{m.label}</Badge></div>
-              <div className="font-mono text-[11.5px] text-muted-foreground">{new Date(e.baslar).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{e.yer ? ` · ${e.yer}` : ''}</div>
+              <div className="font-mono text-[11.5px] text-muted-foreground">{new Date(e.baslar).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })}{e.yer ? ` · ${e.yer}` : ''}</div>
             </div>
           </div>
           <button type="button" aria-label="Kapat" onClick={onKapat} className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-surface-muted"><X className="h-4 w-4" /></button>
