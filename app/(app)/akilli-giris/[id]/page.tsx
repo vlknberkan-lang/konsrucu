@@ -140,8 +140,8 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const aktifSekme: SekmeKey = SEKMELER.includes((searchParams.asama ?? '') as SekmeKey) ? (searchParams.asama as SekmeKey) : guncelSekme
   const serit = asamalar.map((a) => ({ tur: a.tur as string, durum: a.durum as string, sonuc: a.sonuc, kimlikNo: a.kimlikNo }))
   const aktifAsama = aktifSekme === 'oncesi' ? null : asamalar.find((a) => a.tur === SEKME_TUR[aktifSekme as keyof typeof SEKME_TUR]) ?? null
-  // aşama kaydı varsa o aşamanın etkinlikleri; yoksa dosya-seviyesi (asamaId boş) etkinlikler
-  const aktifEtkinlikler = aktifAsama ? dosya.etkinlikler.filter((e) => e.asamaId === aktifAsama.id) : dosya.etkinlikler.filter((e) => e.asamaId === null)
+  // aşama kaydı varsa o aşamanın etkinlikleri + dosya-seviyesi (takvimden eklenen, asamaId boş); yoksa yalnız dosya-seviyesi
+  const aktifEtkinlikler = aktifAsama ? dosya.etkinlikler.filter((e) => e.asamaId === aktifAsama.id || e.asamaId === null) : dosya.etkinlikler.filter((e) => e.asamaId === null)
 
   const tahsilEdilen = dosya.olaylar.filter((o) => o.tip === 'TAHSILAT').reduce((s, o) => s + (o.tutar != null ? Number(o.tutar) : 0), 0)
   const bakiye = { toplam: toplamTalep, tahsil: tahsilEdilen, kalan: Math.max(0, toplamTalep - tahsilEdilen) }
