@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/haftalik-rapor",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/etkinlik-hatirlatma",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

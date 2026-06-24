@@ -423,6 +423,7 @@ model Etkinlik {
   sonucNot     String?       @db.Text
   sorumluId    String? // atanan avukat (Kullanici.id)
   hatirlatmaDk Int?
+  hatirlatmaGonderildiAt DateTime? // hatırlatma e-postası gönderildiyse zaman damgası (mükerrer gönderimi önler)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
