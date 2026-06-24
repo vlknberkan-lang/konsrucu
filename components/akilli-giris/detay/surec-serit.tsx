@@ -25,8 +25,7 @@ export function SurecSerit({ asamalar, aktif, guncelSekme, icraNo }: { asamalar:
   const guncelIdx = NODES.findIndex((n) => n.key === guncelSekme)
   const bitti = (i: number) => {
     const t = NODES[i].tur
-    if (!t) return false // İcra Öncesi = dosyanın ana içeriği; "tamamlandı" sayılmaz (hep erişilebilir)
-    const rec = byTur.get(t)
+    const rec = t ? byTur.get(t) : null
     return (!!rec && rec.durum === 'SONUCLANDI') || (guncelIdx >= 0 && i < guncelIdx)
   }
 
@@ -44,7 +43,7 @@ export function SurecSerit({ asamalar, aktif, guncelSekme, icraNo }: { asamalar:
           const kimlik = rec?.kimlikNo ?? (n.key === 'icra' ? icraNo : null)
           const dotCls = done ? 'border-success bg-success text-white' : current ? 'border-kr bg-kr text-white' : 'border-border bg-surface-muted text-muted-foreground'
           const labelCls = on || done ? 'text-foreground' : current ? 'text-kr-ink' : 'text-muted-foreground'
-          const href = n.key === 'oncesi' ? pathname : `${pathname}?asama=${n.key}`
+          const href = `${pathname}?asama=${n.key}` // İcra Öncesi dahil hepsi açık parametreyle (parametresiz URL güncel aşamaya düşer)
           return (
             <div key={n.key} className="flex items-start">
               {i > 0 && <span className={`mt-7 h-0.5 w-6 shrink-0 rounded-full ${bitti(i - 1) ? 'bg-success' : 'bg-border'}`} />}

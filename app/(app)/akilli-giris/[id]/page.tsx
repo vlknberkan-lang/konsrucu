@@ -135,10 +135,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const TUR_SEKME: Record<string, SekmeKey> = { ICRA_TAKIBI: 'icra', ARABULUCULUK: 'arabuluculuk', DAVA: 'dava', INFAZ: 'infaz' }
   const guncelAsamaRec = [...asamalar].reverse().find((a) => a.durum === 'DEVAM') ?? asamalar[asamalar.length - 1] ?? null
   const guncelSekme: SekmeKey = guncelAsamaRec ? TUR_SEKME[guncelAsamaRec.tur] : dosya.icraDosyaNo ? 'icra' : 'oncesi'
-  // varsayılan: İcra Öncesi (dosyanın ana içeriği — evrak/borçlu/faiz/AI). ?asama= ile aşama paneline geçilir.
-  // (guncelSekme yalnız şeritte "güncel" rozetini gösterir; ana içeriği gizlememek için varsayılan landing oncesi.)
+  // varsayılan: dosyanın GÜNCEL aşaması (aktif aşama paneli, ikinci tık gerekmez).
+  // İcra Öncesi'ye (ana içerik: evrak/borçlu/faiz/AI) şeritten ?asama=oncesi ile her zaman gidilebilir.
   const SEKMELER: SekmeKey[] = ['oncesi', 'icra', 'arabuluculuk', 'dava', 'infaz']
-  const aktifSekme: SekmeKey = SEKMELER.includes((searchParams.asama ?? '') as SekmeKey) ? (searchParams.asama as SekmeKey) : 'oncesi'
+  const aktifSekme: SekmeKey = SEKMELER.includes((searchParams.asama ?? '') as SekmeKey) ? (searchParams.asama as SekmeKey) : guncelSekme
   const serit = asamalar.map((a) => ({ tur: a.tur as string, durum: a.durum as string, sonuc: a.sonuc, kimlikNo: a.kimlikNo }))
   const aktifAsama = aktifSekme === 'oncesi' ? null : asamalar.find((a) => a.tur === SEKME_TUR[aktifSekme as keyof typeof SEKME_TUR]) ?? null
   // aşama kaydı varsa o aşamanın etkinlikleri + dosya-seviyesi (takvimden eklenen, asamaId boş); yoksa yalnız dosya-seviyesi
