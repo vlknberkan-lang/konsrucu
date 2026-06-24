@@ -16,6 +16,7 @@ import { takipXmlUret, type TakipXmlGirdi } from '@/lib/konsrucu/uyap-etakip/xml
 import { kanonik, paraTR, tarihTR } from '@/lib/import/hugo'
 import { dilekceMetni, type DilekceGirdi } from '@/lib/konsrucu/dilekce'
 import { dilekceAnlatim } from '@/lib/konsrucu/dilekce-ai'
+import { taksitProgrami } from '@/lib/konsrucu/taksit'
 
 type DosyaPayload = {
   hasarNo?: string
@@ -939,7 +940,7 @@ export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error
   const { dbUser, izinli } = await ctx()
   const dosya = await prisma.rucuDosyasi.findUnique({
     where: { id: dosyaId },
-    include: { borclular: { orderBy: { id: 'asc' } }, odemeler: true, belgeler: { select: { id: true } }, asamalar: true },
+    include: { borclular: { orderBy: { id: 'asc' } }, odemeler: true, belgeler: { select: { id: true, extractedText: true, kategori: true, dosyaAdi: true, storagePath: true } }, asamalar: true },
   })
   if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
   const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId } })
@@ -957,12 +958,53 @@ export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error
   const arab = dosya.asamalar.find((a) => a.tur === 'ARABULUCULUK')
   const cj = (dosya.cikarimJson ?? {}) as { olayBaglami?: string | null; olayTuru?: string | null }
 
+  // BELGE METNİ (önem sıralı + dedup) — dilekçe AI doğrudan kanıta baksın
+  const D_ONC = ['TUTANAK', 'EKSPERTIZ', 'SBM', 'ALKOL', 'EHLIYET', 'RUHSAT', 'LEHE', 'POLICE', 'DEKONT', 'DIGER', 'HASAR_FOTO']
+  const dOnc = (k: string) => { const i = D_ONC.indexOf(k); return i < 0 ? 99 : i }
+  const gorulen = new Set<string>()
+  const parcalar: string[] = []
+  for (const b of [...dosya.belgeler].sort((a, c) => dOnc(a.kategori) - dOnc(c.kategori))) {
+    const t = (b.extractedText ?? '').trim()
+    if (!t) continue
+    const imza = t.replace(/\s+/g, ' ').slice(0, 160)
+    if (gorulen.has(imza)) continue
+    gorulen.add(imza)
+    parcalar.push(`### ${b.kategori} · ${b.dosyaAdi}\n${t}`)
+  }
+  const belgeMetni = parcalar.join('\n\n').slice(0, 120000)
+
+  // GÖRSELLER (vision) — ehliyet/ruhsat/tutanak/plaka foto
+  const D_IMG: Record<string, number> = { EHLIYET: 0, RUHSAT: 1, TUTANAK: 2, ALKOL: 3, SBM: 4, DIGER: 5, HASAR_FOTO: 6 }
+  const imgAday = dosya.belgeler
+    .filter((b) => b.storagePath && (D_IMG[b.kategori] != null || /\.(jpe?g|png|webp|gif)$/i.test(b.storagePath) || /\.(jpe?g|png|webp|gif)$/i.test(b.dosyaAdi)))
+    .sort((a, c) => (D_IMG[a.kategori] ?? 9) - (D_IMG[c.kategori] ?? 9))
+    .slice(0, 16)
+  const gorseller: { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; b64: string }[] = []
+  if (imgAday.length) {
+    const admin = createAdminClient()
+    for (const b of imgAday) {
+      if (gorseller.length >= 10) break
+      try {
+        const { data, error } = await admin.storage.from('evrak').download(b.storagePath as string)
+        if (error || !data) continue
+        const buf = Buffer.from(await data.arrayBuffer())
+        const mime = imgMime(buf)
+        if (!mime || buf.length > 4_500_000) continue
+        gorseller.push({ mime, b64: buf.toString('base64') })
+      } catch { /* atla */ }
+    }
+  }
+
+  // dekont kalemleri (deterministik gösterim + AI'a ipucu)
+  const dekontlar = dosya.odemeler.map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : null, tutar: o.tutar != null ? Number(o.tutar) : null, aciklama: o.aciklama ?? null, haricMi: o.haricMi }))
+
   const anlatim = await dilekceAnlatim({
     olayBaglami: cj.olayBaglami ?? null, olayTuru: cj.olayTuru ?? null, brans: dosya.brans ?? null,
     sigortaliPlaka: dosya.sigortaliPlaka ?? null, karsiPlaka: dosya.karsiPlaka ?? null, sigortaliUnvan: dosya.sigortaliUnvan ?? null,
     kazaTarihi: dosya.kazaTarihi ? dosya.kazaTarihi.toISOString().slice(0, 10) : null, kazaYeri: dosya.kazaYeri ?? dosya.il ?? null,
     davalilar: dosya.borclular.map((b) => ({ ad: b.adUnvan, rol: b.rol as string })),
     asilAlacak: anapara || null, rucuOrani: dosya.rucuOrani ?? null, kusurDurumu: dosya.kusurDurumu ?? null, odemeBilgi: null,
+    belgeMetni, gorseller, dekontlar,
   })
 
   const girdi: DilekceGirdi = {
@@ -978,6 +1020,7 @@ export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error
     sigortaliPlaka: dosya.sigortaliPlaka ?? null, karsiPlaka: dosya.karsiPlaka ?? null,
     arabulucuBuro: arab?.birim ?? null, arabulucuDosyaNo: arab?.kimlikNo ?? null,
     arabulucuTarih: arab?.bitis ? arab.bitis.toISOString().slice(0, 10) : arab?.baslangic ? arab.baslangic.toISOString().slice(0, 10) : null,
+    dekontlar,
     olayAnlatimi: anlatim || '⟨olay anlatımı — AI üretemedi, elle yazın⟩',
   }
   const metin = dilekceMetni(girdi)
@@ -1007,5 +1050,141 @@ export async function dilekceKaydet(ciktiId: string, icerik: string, durum?: str
   const gecerli = ['TASLAK', 'IMZAYA_GIDEN', 'GONDERILDI'].includes(durum ?? '') ? durum : undefined
   await prisma.uretilenCikti.update({ where: { id: ciktiId }, data: { icerik: icerik.slice(0, 100000), durum: gecerli } })
   revalidatePath(`/akilli-giris/${c.dosya.id}`)
+  return { ok: true }
+}
+
+// ───────────────── TAKSİT PLANI: kur / ödendi / geri al / iptal ─────────────────
+// Taksit ödemesi = borçlunun BİZE ödemesi → TakipOlayi(TAHSILAT) olarak yazılır (bakiyeye düşer).
+// DİKKAT: Odeme tablosuna YAZILMAZ — orası faiz dekontları (tazminat ödemeleri), karıştırılırsa faiz bozulur.
+
+type TaksitPlaniPayload = {
+  toplamTutar: string // anlaşılan net (indirim sonrası)
+  taksitSayisi: number
+  ilkVade: string // YYYY-MM-DD
+  periyotAy?: number // varsayılan 1 (aylık)
+  hatirlatmaGun?: number // vade öncesi kaç gün hatırlat (varsayılan 3)
+  temerrutSarti?: boolean
+  indirimTutari?: string | null
+  not?: string | null
+  asamaId?: string | null // hangi aşamada (arabuluculuk/icra) yapıldı
+}
+
+/** Taksit planı kur: toplam + taksit sayısı + ilk vade → eşit bölünmüş program (son taksit kuruş artığı). */
+export async function taksitPlaniKur(dosyaId: string, p: TaksitPlaniPayload): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true } })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
+
+  const toplam = guvenliDecimal(p.toplamTutar)
+  if (!toplam || Number(toplam) <= 0) return { ok: false, error: 'Geçerli bir toplam tutar girin.' }
+  const adet = Math.round(Number(p.taksitSayisi))
+  if (!Number.isFinite(adet) || adet < 1 || adet > 120) return { ok: false, error: 'Taksit sayısı 1–120 olmalı.' }
+  const ilkVade = p.ilkVade && /^\d{4}-\d{2}-\d{2}/.test(p.ilkVade) ? new Date(p.ilkVade) : null
+  if (!ilkVade || Number.isNaN(ilkVade.getTime())) return { ok: false, error: 'İlk taksit vadesini seçin.' }
+  const periyot = p.periyotAy && p.periyotAy >= 1 && p.periyotAy <= 12 ? Math.round(p.periyotAy) : 1
+  const hatirlatmaGun = p.hatirlatmaGun != null && p.hatirlatmaGun >= 0 && p.hatirlatmaGun <= 60 ? Math.round(p.hatirlatmaGun) : 3
+  const indirim = p.indirimTutari ? guvenliDecimal(p.indirimTutari) : null
+
+  // aşama eşleşmesi opsiyonel — yalnız bu dosyaya aitse bağla
+  let asamaId: string | null = null
+  if (p.asamaId) {
+    const a = await prisma.asama.findUnique({ where: { id: p.asamaId }, select: { dosyaId: true } })
+    if (a && a.dosyaId === dosyaId) asamaId = p.asamaId
+  }
+
+  const program = taksitProgrami({ toplam: Number(toplam), taksitSayisi: adet, ilkVade, periyotAy: periyot })
+
+  try {
+    await prisma.taksitPlani.create({
+      data: {
+        dosyaId,
+        asamaId,
+        toplamTutar: toplam,
+        indirimTutari: indirim,
+        taksitSayisi: adet,
+        hatirlatmaGun,
+        temerrutSarti: p.temerrutSarti !== false,
+        not: (p.not ?? '').trim().slice(0, 2000) || null,
+        taksitler: {
+          create: program.map((t) => ({ sira: t.sira, vadeTarihi: t.vadeTarihi, tutar: new Prisma.Decimal(t.tutar.toFixed(2)) })),
+        },
+      },
+    })
+    await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `Taksit planı kuruldu · ${adet} taksit · toplam ${toplam} TL` } })
+  } catch (e) {
+    return { ok: false, error: `Plan kurulamadı: ${(e as Error).message}` }
+  }
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
+}
+
+/** Bir taksiti "ödendi" işaretle → TakipOlayi(TAHSILAT) yaz; tüm taksitler bitince planı TAMAMLANDI + dosya TAHSIL. */
+export async function taksitOdendi(taksitId: string): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const t = await prisma.taksit.findUnique({
+    where: { id: taksitId },
+    include: { plan: { select: { id: true, dosyaId: true, taksitSayisi: true, dosya: { select: { musteriId: true } } } } },
+  })
+  if (!t || !izinli.includes(t.plan.dosya.musteriId)) return { ok: false, error: 'Taksit bulunamadı veya yetkiniz yok' }
+  if (t.durum === 'ODENDI') return { ok: true }
+
+  const dosyaId = t.plan.dosyaId
+  const tutar = new Prisma.Decimal(t.tutar)
+  const simdi = new Date()
+  try {
+    const olay = await prisma.takipOlayi.create({
+      data: { dosyaId, tip: 'TAHSILAT', tutar, tarih: simdi, aciklama: `${t.sira}/${t.plan.taksitSayisi}. taksit tahsil edildi` },
+    })
+    await prisma.taksit.update({
+      where: { id: taksitId },
+      data: { durum: 'ODENDI', odenenTutar: tutar, odendiTarih: simdi, odemeId: olay.id },
+    })
+    // tüm taksitler ödendiyse planı + dosyayı kapat
+    const kalan = await prisma.taksit.count({ where: { planId: t.plan.id, durum: { not: 'ODENDI' } } })
+    if (kalan === 0) {
+      await prisma.taksitPlani.update({ where: { id: t.plan.id }, data: { durum: 'TAMAMLANDI' } })
+      await prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { durum: DosyaDurum.TAHSIL } })
+      await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: 'Taksit planı tamamlandı → dosya TAHSİL' } })
+    } else {
+      await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `${t.sira}/${t.plan.taksitSayisi}. taksit tahsil edildi (${tutar} TL)` } })
+    }
+  } catch (e) {
+    return { ok: false, error: `Taksit işaretlenemedi: ${(e as Error).message}` }
+  }
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
+}
+
+/** Taksit ödemesini geri al (yanlış işaretlendi) — bağlı TAHSILAT olayını sil, taksiti BEKLIYOR'a çek. */
+export async function taksitOdemeGeriAl(taksitId: string): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const t = await prisma.taksit.findUnique({
+    where: { id: taksitId },
+    include: { plan: { select: { id: true, dosyaId: true, durum: true, dosya: { select: { musteriId: true } } } } },
+  })
+  if (!t || !izinli.includes(t.plan.dosya.musteriId)) return { ok: false, error: 'Taksit bulunamadı veya yetkiniz yok' }
+  if (t.durum !== 'ODENDI') return { ok: true }
+  const dosyaId = t.plan.dosyaId
+  try {
+    if (t.odemeId) await prisma.takipOlayi.deleteMany({ where: { id: t.odemeId } })
+    await prisma.taksit.update({ where: { id: taksitId }, data: { durum: 'BEKLIYOR', odenenTutar: null, odendiTarih: null, odemeId: null, gecikmeBildirildiAt: null } })
+    // plan tamamlanmış sayıldıysa geri aç (dosya durumunu otomatik geri almıyoruz — avukat kararı)
+    if (t.plan.durum === 'TAMAMLANDI') await prisma.taksitPlani.update({ where: { id: t.plan.id }, data: { durum: 'AKTIF' } })
+    await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `${t.sira}. taksit ödemesi geri alındı` } })
+  } catch (e) {
+    return { ok: false, error: `Geri alınamadı: ${(e as Error).message}` }
+  }
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
+}
+
+/** Taksit planını iptal et (anlaşma bozuldu / yanlış kuruldu). Ödenen tahsilatlar dosyada kalır. */
+export async function taksitPlaniIptal(planId: string): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const plan = await prisma.taksitPlani.findUnique({ where: { id: planId }, select: { dosyaId: true, dosya: { select: { musteriId: true } } } })
+  if (!plan || !izinli.includes(plan.dosya.musteriId)) return { ok: false, error: 'Plan bulunamadı veya yetkiniz yok' }
+  await prisma.taksitPlani.update({ where: { id: planId }, data: { durum: 'IPTAL' } })
+  await prisma.aktivite.create({ data: { dosyaId: plan.dosyaId, kullaniciId: dbUser.id, eylem: 'Taksit planı iptal edildi' } })
+  revalidatePath(`/akilli-giris/${plan.dosyaId}`)
   return { ok: true }
 }

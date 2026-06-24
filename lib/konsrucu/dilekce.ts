@@ -37,9 +37,10 @@ export type DilekceGirdi = {
   arabulucuBuro: string | null
   arabulucuDosyaNo: string | null
   arabulucuTarih: string | null
+  // ödeme kalemleri (dekontlar) — kalem kalem deterministik gösterim
+  dekontlar?: { tarih: string | null; tutar: number | null; aciklama: string | null; haricMi: boolean }[]
   // AI olay anlatımı (AÇIKLAMALAR'ın olgusal kısmı)
   olayAnlatimi: string
-  // tür-özel ek deliller (ör. alkol raporu) — assembler terk listesine ekler
 }
 
 const Y = (s: string) => `⟨${s}⟩` // doldurulamayan alan → avukat tamamlar
@@ -185,6 +186,15 @@ export function dilekceMetni(g: DilekceGirdi): string {
   ekle()
   ekle(TUR_META[tur].argGovde(g))
   ekle()
+  // 3a) ödeme kalemleri (deterministik — uydurma yok)
+  const odemeKalem = (g.dekontlar ?? []).filter((d) => !d.haricMi && d.tutar != null && Number(d.tutar) > 0)
+  if (odemeKalem.length) {
+    const kalemler = odemeKalem
+      .map((d) => `${tarihTR(d.tarih) ? tarihTR(d.tarih) + ' tarihinde ' : ''}${d.aciklama ? d.aciklama + ' için ' : ''}${para(d.tutar)}`)
+      .join('; ')
+    ekle(`Müvekkil sigorta şirketince hasar bedeline istinaden gerçekleştirilen ödeme kalemleri şu şekildedir: ${kalemler}.`)
+    ekle()
+  }
   // 3) ödeme/halefiyet
   ekle(
     `Müvekkil sigorta şirketi, yapmış olduğu ${para(g.asilAlacak) || Y('tutar')} tutarındaki ödeme ile Türk Ticaret Kanunu'nun 1472. maddesinde düzenlenen halefiyet ilkesi gereğince sigortalısının haklarına halef olmuş ve kusurlu tarafa karşı rücu hakkı kazanmıştır. Bu doğrultuda ${g.icraDairesi || Y('icra dairesi')}'nin ${g.icraEsasNo || Y('esas no')} Esas sayılı dosyası ile icra takibi başlatılmış; davalı borçlu haksız, mesnetsiz ve kötü niyetli şekilde borca, faize ve fer'ilerine itiraz ederek takibi durdurmuştur.`

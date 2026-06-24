@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/etkinlik-hatirlatma",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/taksit-hatirlatma",
+      "schedule": "0 6 * * *"
     }
   ]
 }

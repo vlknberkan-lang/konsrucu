@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   try { body = await req.json() } catch { return corsJson({ ok: false, error: 'bad json' }, 400) }
 
   const icraDosyaNo = String(body?.icraDosyaNo ?? '').trim()
-  const uyapEvrakId = String(body?.uyapEvrakId ?? '').trim()
+  const uyapEvrakId = String(body?.uyapEvrakId ?? '').replace(/"/g, '').trim() // UYAP id'leri tırnaklı gelebilir → temizle (kaynakRef + storage anahtarı)
   const dosyaAdi = String(body?.dosyaAdi ?? '').trim().slice(0, 255)
   const b64 = String(body?.contentBase64 ?? '')
   if (!icraDosyaNo || !uyapEvrakId || !dosyaAdi) return corsJson({ ok: false, error: 'icraDosyaNo + uyapEvrakId + dosyaAdi gerekli' }, 400)
@@ -47,7 +47,8 @@ export async function POST(req: Request) {
 
   const mime = String(body?.mime ?? 'application/pdf')
   const safe = dosyaAdi.replace(/[^\w.\-]+/g, '_').slice(0, 80)
-  const sp = `${dosya.id}/uyap-${uyapEvrakId}-${safe}`
+  const safeId = (uyapEvrakId.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60)) || 'evrak' // storage anahtarı yalnız güvenli karakter
+  const sp = `${dosya.id}/uyap-${safeId}-${safe}`
 
   const admin = createAdminClient()
   const { error: upErr } = await admin.storage.from('evrak').upload(sp, bytes, { contentType: mime, upsert: false })

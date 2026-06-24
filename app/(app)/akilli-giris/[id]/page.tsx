@@ -25,6 +25,7 @@ import { OnayButonu } from '@/components/akilli-giris/detay/onay-butonu'
 import { TakipSureci } from '@/components/akilli-giris/detay/takip-sureci'
 import { UyapXmlButon } from '@/components/akilli-giris/detay/uyap-xml-buton'
 import { AsamaPanel } from '@/components/akilli-giris/detay/asama-panel'
+import { TaksitPanel, type PlanUI } from '@/components/akilli-giris/detay/taksit-panel'
 import { SurecSerit } from '@/components/akilli-giris/detay/surec-serit'
 import { DosyaSor } from '@/components/akilli-giris/detay/dosya-sor'
 import { DosyaOzet, ozetKur } from '@/components/konsrucu/dosya-ozet'
@@ -88,6 +89,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
       olaylar: true,
       asamalar: { orderBy: { sira: 'asc' } },
       etkinlikler: { orderBy: { baslar: 'asc' } },
+      taksitPlanlari: { include: { taksitler: { orderBy: { sira: 'asc' } } }, orderBy: { createdAt: 'desc' } },
     },
   })
   if (!dosya) notFound()
@@ -169,6 +171,26 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
     .filter((b) => b.kaynakRef)
     .map((b) => ({ id: b.id, dosyaAdi: b.dosyaAdi, kategori: b.kategori as string, t: b.createdAt.toISOString(), acilabilir: !!b.storagePath }))
   const takipProp = { durum: dosya.durum, olaylar: olaylarUi, bakiye, uyap: uyapBilgi, evraklar: evraklarUyap }
+
+  // taksit planı (sulh/anlaşma sonrası ödeme planı) — iptal olmayan en güncel plan
+  const planRec = dosya.taksitPlanlari.find((p) => p.durum !== 'IPTAL') ?? null
+  const taksitPlanUI: PlanUI | null = planRec
+    ? {
+        id: planRec.id,
+        durum: planRec.durum,
+        toplamTutar: Number(planRec.toplamTutar),
+        indirimTutari: planRec.indirimTutari != null ? Number(planRec.indirimTutari) : null,
+        taksitSayisi: planRec.taksitSayisi,
+        hatirlatmaGun: planRec.hatirlatmaGun,
+        temerrutSarti: planRec.temerrutSarti,
+        not: planRec.not,
+        taksitler: planRec.taksitler.map((t) => ({
+          id: t.id, sira: t.sira, vadeTarihi: t.vadeTarihi.toISOString(), tutar: Number(t.tutar),
+          durum: t.durum, odenenTutar: t.odenenTutar != null ? Number(t.odenenTutar) : null,
+          odendiTarih: t.odendiTarih ? t.odendiTarih.toISOString() : null,
+        })),
+      }
+    : null
 
   const evrakVar = dosya.belgeler.length > 0
   const cikarimVar = !!dosya.yol || dosya.borclular.length > 0 || !!cj.aciklama
@@ -306,6 +328,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
           prefill={aktifSekme === 'icra' ? { no: dosya.icraDosyaNo, birim: dosya.icraDairesi ?? dosya.yetkiliIcra } : undefined}
           takip={takipProp}
           dilekce={dilekceCikti}
+          taksit={{ plan: taksitPlanUI, asamaId: aktifAsama?.id ?? null, bugun }}
         />
       ) : (
         <>
@@ -434,8 +457,13 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
             <FaizPanel dosyaId={dosya.id} init={faizInit} oranlar={faizOranlar} bugun={bugun} />
           </Section>
 
-          {/* 5 · ZAMAN ÇİZELGESİ */}
-          <Section kicker="5 · ZAMAN ÇİZELGESİ" title="Geçmiş ve Notlar" sub="Dosyanın tüm olayları: tevdiye, çekim, çıkarım, teyit ve eklenen notlar — kronolojik.">
+          {/* 5 · TAKSİT PLANI */}
+          <Section kicker="5 · TAKSİT PLANI" title="Taksit Planı & Ödeme Hatırlatma" accent="text-kr" sub="Borçluyla taksitli ödeme anlaşıldıysa planı kurun. Her vade öncesi ekibe hatırlatma, vade geçerse gecikme uyarısı (e-posta) gider. Ödeme gelince “Ödendi” işaretleyin — tahsilat dosya bakiyesine düşer.">
+            <TaksitPanel dosyaId={dosya.id} plan={taksitPlanUI} bugun={bugun} />
+          </Section>
+
+          {/* 6 · ZAMAN ÇİZELGESİ */}
+          <Section kicker="6 · ZAMAN ÇİZELGESİ" title="Geçmiş ve Notlar" sub="Dosyanın tüm olayları: tevdiye, çekim, çıkarım, teyit ve eklenen notlar — kronolojik.">
             <NotForm dosyaId={dosya.id} init={initials(dbUser.ad)} />
             {tl.length === 0 ? (
               <div className="text-[13px] text-muted-foreground">Henüz işlem yok.</div>
