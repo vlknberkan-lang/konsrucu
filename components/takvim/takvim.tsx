@@ -4,11 +4,13 @@
  * KonsRücü — Takvim (custom, design-system) · Ay / Hafta / Ajanda + tür filtresi.
  * Etkinlikler (toplantı/duruşma/süre) bellekte; tıklayınca DosyaÖzet popover'ı. Kütüphane yok.
  */
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, X, Handshake, Scale, AlarmClock, Bell, CalendarDays, MapPin, Video, ArrowRight } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ChevronLeft, ChevronRight, X, Handshake, Scale, AlarmClock, Bell, CalendarDays, MapPin, Video, ArrowRight, Trash2, Pencil, Save, Loader2 } from 'lucide-react'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { DosyaOzet, type DosyaOzetData } from '@/components/konsrucu/dosya-ozet'
+import { etkinlikSil, etkinlikGuncelle } from '@/app/(app)/akilli-giris/actions'
 
 export type TakvimEtkinlik = {
   id: string; tur: string; baslik: string; baslar: string; biter: string | null
@@ -33,6 +35,18 @@ const haftaBasi = (d: Date) => { const x = new Date(d.getFullYear(), d.getMonth(
 const gunEkle = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 const saat = (iso: string) => new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
 const gunBaslik = (d: Date) => `${d.getDate()} ${AYLAR[d.getMonth()]} ${GUNLER[(d.getDay() + 6) % 7]}`
+
+// Etkinlik düzenleme (modal) — input stilleri + tür seçenekleri + ISO→datetime-local
+const INP = 'w-full rounded-[10px] border border-border bg-surface-muted px-3 py-2.5 text-[13px] outline-none transition focus:border-kr focus:bg-surface focus:ring-4 focus:ring-kr/15'
+const LBL = 'font-mono mb-1 block text-[9px] uppercase tracking-[0.1em] text-muted-foreground'
+const TUR_SECENEK: { val: string; label: string }[] = [
+  { val: 'DURUSMA', label: 'Duruşma' },
+  { val: 'ARABULUCULUK_TOPLANTISI', label: 'Arabuluculuk toplantısı' },
+  { val: 'GORUSME', label: 'Görüşme' },
+  { val: 'SURE', label: 'Süre / son tarih' },
+  { val: 'HATIRLATMA', label: 'Hatırlatma' },
+]
+const toLocalInput = (iso: string) => { const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}` }
 
 type Gorunum = 'ay' | 'hafta' | 'ajanda'
 
@@ -206,26 +220,72 @@ function AjandaGorunum({ bugun, etkinlikler, onSec }: { bugun: Date; etkinlikler
 
 function EtkinlikModal({ e, bugun, onKapat }: { e: TakvimEtkinlik; bugun: string; onKapat: () => void }) {
   const m = turMeta(e.tur)
+  const router = useRouter()
+  const [pending, start] = useTransition()
+  const [duzenle, setDuzenle] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  function sil() {
+    if (typeof window !== 'undefined' && !window.confirm('Bu etkinliği silmek istiyor musunuz? Bu işlem geri alınamaz.')) return
+    const fd = new FormData(); fd.set('id', e.id)
+    start(async () => { await etkinlikSil(fd); onKapat(); router.refresh() })
+  }
+  function kaydet(ev: React.FormEvent<HTMLFormElement>) {
+    ev.preventDefault()
+    const fd = new FormData(ev.currentTarget); fd.set('id', e.id)
+    if (!String(fd.get('baslik') ?? '').trim()) { setErr('Başlık gerekli.'); return }
+    if (!String(fd.get('baslar') ?? '').trim()) { setErr('Başlangıç tarih & saatini seçin.'); return }
+    setErr(null)
+    start(async () => { await etkinlikGuncelle(fd); onKapat(); router.refresh() })
+  }
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onKapat}>
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-surface shadow-float" onClick={(ev) => ev.stopPropagation()}>
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-surface shadow-float" onClick={(ev) => ev.stopPropagation()}>
         <div className="flex items-start justify-between gap-2 border-b border-border-subtle px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className={`grid h-9 w-9 place-items-center rounded-[11px] ${m.tone === 'kr' ? 'bg-kr-soft text-kr-ink' : 'bg-surface-muted text-foreground'}`}><m.Icon className="h-[18px] w-[18px]" /></span>
             <div>
-              <div className="flex items-center gap-2"><h3 className="font-display text-[15.5px] font-extrabold">{e.baslik}</h3><Badge tone={m.tone}>{m.label}</Badge></div>
+              <div className="flex items-center gap-2"><h3 className="font-display text-[15.5px] font-extrabold">{duzenle ? 'Etkinliği düzenle' : e.baslik}</h3><Badge tone={m.tone}>{m.label}</Badge></div>
               <div className="font-mono text-[11.5px] text-muted-foreground">{new Date(e.baslar).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{e.yer ? ` · ${e.yer}` : ''}</div>
             </div>
           </div>
           <button type="button" aria-label="Kapat" onClick={onKapat} className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-surface-muted"><X className="h-4 w-4" /></button>
         </div>
-        <div className="px-5 py-4">
-          <div className="font-mono mb-2 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Dosya künyesi</div>
-          <DosyaOzet data={e.ozet} bugun={bugun} />
-          <div className="mt-4 flex justify-end">
-            <Link href={`/akilli-giris/${e.dosyaId}`} className="inline-flex items-center gap-1.5 rounded-[10px] bg-kr px-4 py-2 text-[13px] font-semibold text-kr-foreground transition hover:bg-kr/90">Dosyaya git <ArrowRight className="h-4 w-4" /></Link>
+
+        {duzenle ? (
+          <form onSubmit={kaydet} className="flex flex-col gap-3.5 px-5 py-4">
+            <div><label className={LBL}>Başlık</label><input name="baslik" defaultValue={e.baslik} className={INP} /></div>
+            <div><label className={LBL}>Tür</label>
+              <select name="tur" defaultValue={e.tur} className={INP}>
+                {TUR_SECENEK.map((t) => <option key={t.val} value={t.val}>{t.label}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><label className={LBL}>Başlangıç (tarih & saat)</label><input type="datetime-local" name="baslar" step={60} defaultValue={toLocalInput(e.baslar)} className={INP} /></div>
+              <div><label className={LBL}>Bitiş (ops.)</label><input type="datetime-local" name="biter" step={60} defaultValue={e.biter ? toLocalInput(e.biter) : ''} className={INP} /></div>
+            </div>
+            <div><label className={LBL}>Yer</label><input name="yer" defaultValue={e.yer ?? ''} placeholder="adliye / büro / online" className={INP} /></div>
+            <label className="flex items-center gap-2 text-[12.5px] text-foreground"><input type="checkbox" name="online" defaultChecked={e.online} className="h-4 w-4 rounded border-border text-kr focus:ring-kr/40" /> Online görüşme/duruşma</label>
+            {err && <p className="text-[12px] text-danger">{err}</p>}
+            <div className="mt-1 flex items-center justify-end gap-2 border-t border-border-subtle pt-3.5">
+              <button type="button" onClick={() => { setDuzenle(false); setErr(null) }} className="rounded-[10px] border border-border px-3.5 py-2 text-[13px] font-medium text-muted-foreground transition hover:text-foreground">Vazgeç</button>
+              <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-[10px] bg-kr px-4 py-2 text-[13px] font-semibold text-kr-foreground transition hover:bg-kr/90 disabled:opacity-60">{pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Kaydet</button>
+            </div>
+          </form>
+        ) : (
+          <div className="px-5 py-4">
+            <div className="font-mono mb-2 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Dosya künyesi</div>
+            <DosyaOzet data={e.ozet} bugun={bugun} />
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={() => { setDuzenle(true); setErr(null) }} className="inline-flex items-center gap-1.5 rounded-[10px] border border-border px-3 py-2 text-[12.5px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr"><Pencil className="h-3.5 w-3.5" /> Düzenle</button>
+                <button type="button" onClick={sil} disabled={pending} className="inline-flex items-center gap-1.5 rounded-[10px] border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12.5px] font-semibold text-danger transition hover:bg-danger-soft disabled:opacity-60">{pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Sil</button>
+              </div>
+              <Link href={`/akilli-giris/${e.dosyaId}`} className="inline-flex items-center gap-1.5 rounded-[10px] bg-kr px-4 py-2 text-[13px] font-semibold text-kr-foreground transition hover:bg-kr/90">Dosyaya git <ArrowRight className="h-4 w-4" /></Link>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

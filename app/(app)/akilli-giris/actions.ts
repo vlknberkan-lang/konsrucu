@@ -608,6 +608,44 @@ export async function etkinlikKaydet(formData: FormData): Promise<void> {
   revalidatePath('/takvim')
 }
 
+const ETKINLIK_TURLERI = ['ARABULUCULUK_TOPLANTISI', 'DURUSMA', 'SURE', 'HATIRLATMA', 'GORUSME'] as const
+type EtkinlikTur = (typeof ETKINLIK_TURLERI)[number]
+
+/** Takvim/dosya etkinliğini sil (tenant-kapsamlı). */
+export async function etkinlikSil(formData: FormData): Promise<void> {
+  const { izinli } = await ctx()
+  const id = String(formData.get('id') ?? '')
+  if (!id) return
+  const etk = await prisma.etkinlik.findUnique({ where: { id }, select: { dosyaId: true, dosya: { select: { musteriId: true } } } })
+  if (!etk || !izinli.includes(etk.dosya.musteriId)) return
+  await prisma.etkinlik.delete({ where: { id } })
+  revalidatePath(`/akilli-giris/${etk.dosyaId}`)
+  revalidatePath('/takvim')
+}
+
+/** Etkinliği düzenle: tür/başlık/başlangıç-bitiş/yer/online (tenant-kapsamlı). */
+export async function etkinlikGuncelle(formData: FormData): Promise<void> {
+  const { izinli } = await ctx()
+  const id = String(formData.get('id') ?? '')
+  if (!id) return
+  const etk = await prisma.etkinlik.findUnique({ where: { id }, select: { dosyaId: true, dosya: { select: { musteriId: true } } } })
+  if (!etk || !izinli.includes(etk.dosya.musteriId)) return
+  const tur = String(formData.get('tur') ?? '') as EtkinlikTur
+  const baslik = String(formData.get('baslik') ?? '').trim()
+  const yer = String(formData.get('yer') ?? '').trim() || null
+  const baslarStr = String(formData.get('baslar') ?? '')
+  const baslar = baslarStr ? new Date(baslarStr) : null
+  const biterStr = String(formData.get('biter') ?? '')
+  const biterRaw = biterStr ? new Date(biterStr) : null
+  const biter = biterRaw && !Number.isNaN(biterRaw.getTime()) && (!baslar || biterRaw > baslar) ? biterRaw : null
+  const onlineRaw = String(formData.get('online') ?? '')
+  const online = onlineRaw === 'on' || onlineRaw === 'true'
+  if (!ETKINLIK_TURLERI.includes(tur) || !baslik || !baslar || Number.isNaN(baslar.getTime())) return
+  await prisma.etkinlik.update({ where: { id }, data: { tur, baslik, baslar, biter, yer, online } })
+  revalidatePath(`/akilli-giris/${etk.dosyaId}`)
+  revalidatePath('/takvim')
+}
+
 /** Excel ile toplu icra eşleştir (hukuk no → icra no + daire). Atanan Dosyalar'dan. */
 export async function icraEslestir(formData: FormData): Promise<{ ok: boolean; eslesen: number; bulunamayan: string[]; toplam: number; hata?: string }> {
   const { dbUser, izinli } = await ctx()
