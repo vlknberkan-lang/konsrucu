@@ -15,6 +15,7 @@ export type AnalizSonuc = {
   yol: 'klasik' | 'idari' | 'belirsiz'
   yolGuven: number
   yolNeden?: string
+  olayTuru?: string
   brans?: string
   sigortaliUnvan?: string
   sigortaliTelefon?: string
@@ -43,11 +44,12 @@ const SCHEMA = {
     yol: { type: 'string', enum: ['klasik', 'idari', 'belirsiz'], description: 'Triyaj kararı' },
     yolGuven: { type: 'number', description: '0-1 arası güven' },
     yolNeden: { type: 'string', description: 'kısa gerekçe' },
+    olayTuru: { type: 'string', description: 'Olayın türü (kanıttan): "trafik kazası (iki araç)", "çizme/kasıtlı zarar (vandalizm)", "tek taraflı", "sabit cisme çarpma", "hırsızlık", "yangın", "hizmet/yol kusuru (idari)", "yaya" vb. TÜM mantık (borçlu, karşı plaka, açıklama, öneri) buna göre kurulur.' },
     brans: { type: 'string', enum: ['KASKO', 'ZMMS', 'OTO_DISI', ''], description: 'poliçe branşı' },
     sigortaliUnvan: { type: 'string' },
     sigortaliTelefon: { type: 'string', description: 'sigortalının iletişim telefonu (varsa; poliçe/Lehe/başvuru formundan). Yoksa boş bırak.' },
     sigortaliPlaka: { type: 'string' },
-    karsiPlaka: { type: 'string' },
+    karsiPlaka: { type: 'string', description: 'Karşı aracın plakası — YALNIZ araç-araç çarpışmasında. Vandalizm/çizme, tek taraflı, hırsızlık, yangın, yaya olaylarında BOŞ bırak (karşı araç yoktur).' },
     il: { type: 'string', description: 'kaza ili' },
     kazaYeri: { type: 'string' },
     olusSekli: { type: 'string', description: 'kazanın oluş şekli (anlatım)' },
@@ -99,12 +101,20 @@ const SCHEMA = {
       },
     },
   },
-  required: ['yol', 'yolGuven', 'borclular', 'aciklama', 'olayBaglami', 'teyit'],
+  required: ['yol', 'yolGuven', 'olayTuru', 'borclular', 'aciklama', 'olayBaglami', 'teyit'],
 }
 
 const SISTEM = `Sen Ray Sigorta A.Ş. vekili K/Partners hukuk bürosunun rücu DEDEKTİFİ ve MENTORUSUN. Sana bir hasar dosyasının TÜM belgelerinden çıkarılmış ham metin verilir: kaza tespit tutanağı, görgü tutanağı, ifade/beyan tutanakları, bilirkişi raporu, ekspertiz raporu, poliçe, ruhsat, ehliyet, alkol/promil raporu, dekontlar ve Ray'in İÇ "Lehe / Hukuk Devir Formu". METNİN YANI SIRA dosyadaki FOTOĞRAFLAR da ek görüntü olarak verilir — ehliyet, ruhsat, tutanak ve plaka fotoğraflarındaki isim/TCKN/plaka bilgilerini de OKU ve bağlama kat (OCR metni eksik olabilir, görüntüye bak). Önce OLAYIN BAĞLAMINI kur, sonra alanları çıkar ve "kaydet" aracını çağır.
 
 ★★ ANA İŞ — ÖNCE OLAY BAĞLAMINI KUR ("olayBaglami"): Bütün belgeleri TEK TEK, baştan sona oku. Olayı yeniden inşa et: ne zaman, nerede, hangi araçlar/plakalar, hangi kişiler (sürücü / araç sahibi / işleten / yaya / tanık), kaza NASIL meydana geldi, KUSUR kimde ve hangi orana göre. Her kritik olgunun HANGİ BELGEDEN geldiğini söyle (ör. "kaza tespit tutanağına göre…", "görgü tutanağındaki tanık X'in beyanına göre…", "ifade tutanağında sürücü…", "bilirkişi raporunda %… kusur"). BAĞLAMI KURMADAN borçlu/kusur ÖNERME — öneri bu bağlamdan çıkmalı.
+
+★★ OLAY TÜRÜNÜ BELİRLE — HER DOSYA İKİ-ARAÇLI TRAFİK KAZASI DEĞİLDİR ("olayTuru"): Türü kanıttan oku, TÜM mantığı (borçlu, karşı plaka, açıklama, öneri) ona göre kur:
+ (a) Araç-araç trafik kazası → karşı sürücü/araç sahibi borçlu, karşı plaka geçerli.
+ (b) ÇİZME / kasıtlı zarar / VANDALİZM → KARŞI ARAÇ YOKTUR; borçlu = zararı veren KİŞİ (şikayet/savcılık/iddianame dosyasındaki fail/şüpheli). karsiPlaka BOŞ bırak; "karşı plaka / tescil-işleten sorgusu" ÖNERME → onun yerine "faili şikayet ve savcılık dosyasından tespit et, kimlik/TCKN'sini al" öner.
+ (c) Tek taraflı / sabit cisme çarpma → karşı araç yok.
+ (d) Hırsızlık / (e) yangın → karşı araç/plaka arama; muhatabı olaya göre belirle.
+ (f) Hizmet/yol kusuru → idari yol, muhatap KGM/işletmeci. (g) Yaya → karşı araç yok, fail yaya.
+OLMAYAN bir karşı aracı/plakayı ASLA UYDURMA; tür araç-araç çarpışması değilse karsiPlaka BOŞ kalsın ve plaka odaklı öneri verme.
 
 ★★ LEHE FORMUNA KİLİTLENME: "Lehe / Hukuk Devir Formu" Ray'in İÇ talep formudur ve GÜVENİLİR DEĞİLDİR — özellikle "RÜCU MUHATABI / MUHATAPLARI" ve TCKN alanları HATALI olabilir (aynı TCKN farklı dosyalarda yanlışlıkla tekrarlayabilir). Lehe formunu yalnız bir İPUCU/başlangıç olarak kullan; borçluyu ve kusuru TUTANAKLARLA (kaza tespit, görgü, ifade, bilirkişi) ÇAPRAZ DOĞRULA. Çelişki varsa RESMÎ TUTANAĞA güven; Lehe'deki sapmayı "olayBaglami" ve "sonrakiAdimlar"da açıkça belirt ve o borçlunun teyit'ini SUPHE/TEYIT_GEREK yap. Borçlunun kimliği olayın GERÇEĞİNDEN gelir, formun yazdığından değil.
 
@@ -126,7 +136,11 @@ DİĞER KURALLAR:
 - KUSUR ORANI: Kaza tespit tutanağı/bilirkişi varsa oradan oku. Yoksa RÜCU TUTARI ÷ ÖDEME TUTARI oranı kusur payını verir (rücu, ödemenin yarısı ise ~%50). kusurDurumu'na yaz.
 - MÜKERRER EVRAK: Aynı poliçe/ekspertiz/dekont farklı adlarla birden çok gelebilir. Tek varlık say; borçluyu TEKRARLAMA, çelişki yoksa birleştir.
 - ★ TUTAR AYRIMI (kısmi kusurda HASARI BÖL): asilAlacak = ÖDENEN tazminat (tam, ekspertiz hariç dekont toplamı). rucuTutari = ödenen × kusur oranı (ör. %50 kusur + 71.214,81 → 35.607,41). Lehe'de RÜCU TUTARI yazsa onu kullan; ama rakam ödemenin yarısıysa oran %50'dir — yaya/tam kusur olsa bile rakam bölünmüşse %100 VARSAYMA. rucuOrani'na yüzdeyi yaz; kusurDurumu ile tutarlı olsun.
-- AÇIKLAMA (UYAP takip metni) şu sabit kalıpta olsun: "[KAZA TARİHİ] tarihinde Ray Sigorta A.Ş nezdinde sigortalı bulunan [SİG.PLAKA] plakalı araç ile [KARŞI PLAKA] plakalı [araç/motosiklet] arasında meydana gelen trafik kazası neticesinde sigortalıya ödenen tazminatın kusurlu taraftan rücu bedeline ilişkindir." Sonuna footer satırını ekle. DETAY VERME (promil, tazminat türü yazma). Karşı plaka yoksa kalıbı minimal uyarla. Borçlu tartışmalıysa nötr bitir.
+- AÇIKLAMA (UYAP takip metni) OLAY TÜRÜNE göre:
+  · Araç-araç trafik kazası → "[KAZA TARİHİ] tarihinde Ray Sigorta A.Ş nezdinde sigortalı bulunan [SİG.PLAKA] plakalı araç ile [KARŞI PLAKA] plakalı [araç/motosiklet] arasında meydana gelen trafik kazası neticesinde sigortalıya ödenen tazminatın kusurlu taraftan rücu bedeline ilişkindir."
+  · ÇİZME / kasıtlı zarar / vandalizm → "[TARİH] tarihinde Ray Sigorta A.Ş nezdinde sigortalı bulunan [SİG.PLAKA] plakalı araca verilen zarar nedeniyle sigortalıya ödenen tazminatın zarar veren taraftan rücuen tahsiline ilişkindir." (KARŞI PLAKA/araç YAZMA.)
+  · Tek taraflı / hırsızlık / yangın / diğer → kalıbı OLAYA uydur; OLMAYAN karşı araç/plaka YAZMA.
+  Sonuna footer satırını ekle. DETAY VERME (promil, tazminat türü yazma). Borçlu tartışmalıysa nötr bitir.
 - ★ DEKONTLAR: Belgelerdeki her ödeme/dekont/makbuz/havale/EFT kaydını "dekontlar" dizisine yaz (tarih=YYYY-MM-DD, tutar=sayı). Mükerrer kopyayı TEK kalem say. EKSPERTİZ ödemesini de yaz ama ekspertizMi=true (faize dahil değil). Taksitler ayrı kalem. asilAlacak = ekspertiz HARİÇ ödemelerin toplamı.
 - TELEFON: sigortalının/borçlunun iletişim telefonu geçiyorsa ilgili alana yaz (rakamları olduğu gibi). Plaka, poliçe no, TCKN gibi sayıları telefon SANMA.
 - TEYİT NOTLARI: bağımsız doğrulayıcı gözüyle eksik/şüpheli noktaları (borçlu-plaka bağı belgesiz, el yazısı beyandan plaka, hasar-ödeme farkı, sürücü≠sahip≠sigortalı) "oneri"/"uyari"; doğrulanmış güçlü noktaları "ok".

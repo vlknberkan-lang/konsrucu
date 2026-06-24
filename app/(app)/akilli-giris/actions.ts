@@ -255,6 +255,7 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
 
   const cikarim = {
     aciklama: analiz.aciklama ?? null,
+    olayTuru: analiz.olayTuru ?? null,
     olayBaglami: analiz.olayBaglami ?? null,
     sonrakiAdimlar: analiz.sonrakiAdimlar ?? [],
     teyit: analiz.teyit ?? [],

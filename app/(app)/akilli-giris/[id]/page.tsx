@@ -93,8 +93,9 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   if (!dosya) notFound()
   const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId } })
 
-  const cj = (dosya.cikarimJson ?? {}) as { aciklama?: string | null; olayBaglami?: string | null; sonrakiAdimlar?: string[]; teyit?: { not: string; tip: 'oneri' | 'uyari' | 'ok' }[]; onay?: { ok?: boolean; kim?: string; tarih?: string } }
+  const cj = (dosya.cikarimJson ?? {}) as { aciklama?: string | null; olayTuru?: string | null; olayBaglami?: string | null; sonrakiAdimlar?: string[]; teyit?: { not: string; tip: 'oneri' | 'uyari' | 'ok' }[]; onay?: { ok?: boolean; kim?: string; tarih?: string } }
   const teyitler = Array.isArray(cj.teyit) ? cj.teyit : []
+  const olayTuru = typeof cj.olayTuru === 'string' && cj.olayTuru.trim() ? cj.olayTuru.trim() : null
   const olayBaglami = typeof cj.olayBaglami === 'string' && cj.olayBaglami.trim() ? cj.olayBaglami.trim() : null
   const sonrakiAdimlar = Array.isArray(cj.sonrakiAdimlar) ? cj.sonrakiAdimlar.filter((s) => typeof s === 'string' && s.trim()) : []
   const onay = cj.onay && cj.onay.ok === true ? cj.onay : null
@@ -345,6 +346,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
             ) : (
               <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center gap-[9px]">
+                  {olayTuru && <Badge tone="info">{olayTuru}</Badge>}
                   {dosya.yol && <Badge tone="kr">{YOL_LABEL[dosya.yol] ?? dosya.yol}</Badge>}
                   {dosya.yolGuven != null && <Badge tone="success" dot>Güven %{Math.round(dosya.yolGuven * 100)}</Badge>}
                 </div>
