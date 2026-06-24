@@ -27,11 +27,16 @@ async function handle(req: Request) {
 
   // ── alıcı = ana avukat (ADMIN = Yelda); RAPOR_ALICI override ──
   const admin = await prisma.kullanici.findFirst({ where: { rol: Rol.ADMIN, aktif: true }, orderBy: { createdAt: 'asc' }, include: { musteriler: true } })
-  const alici = url.searchParams.get('to') || process.env.RAPOR_ALICI || admin?.eposta || null
-  const aliciAd = admin?.ad?.split(/\s+/)[0] || 'Avukat'
   const musteriId = admin?.musteriler[0]?.musteriId || (await prisma.musteri.findFirst({ where: { aktif: true }, orderBy: { createdAt: 'asc' } }))?.id
-  if (!alici) return Response.json({ ok: false, error: 'Alıcı bulunamadı (ADMIN / RAPOR_ALICI yok)' }, { status: 500 })
   if (!musteriId) return Response.json({ ok: false, error: 'Aktif müşteri (tenant) bulunamadı' }, { status: 500 })
+
+  // alıcılar = tenant'taki tüm aktif kullanıcılar (Yelda + Sude + Ervanur). ?to= test override, RAPOR_ALICI yedek.
+  const ekip = await prisma.kullanici.findMany({ where: { aktif: true, musteriler: { some: { musteriId } } }, orderBy: { createdAt: 'asc' }, select: { eposta: true } })
+  const ekipMail = ekip.map((k) => k.eposta).filter(Boolean)
+  const override = url.searchParams.get('to')
+  const alicilar = override ? [override] : ekipMail.length ? ekipMail : process.env.RAPOR_ALICI ? [process.env.RAPOR_ALICI] : admin?.eposta ? [admin.eposta] : []
+  const aliciAd = alicilar.length > 1 ? 'Ekip' : admin?.ad?.split(/\s+/)[0] || 'Avukat'
+  if (!alicilar.length) return Response.json({ ok: false, error: 'Alıcı bulunamadı (aktif kullanıcı / RAPOR_ALICI yok)' }, { status: 500 })
 
   const now = new Date()
   // adaylar: hatırlatması olan, henüz gönderilmemiş, gelecekteki etkinlikler (per-event hatirlatmaDk JS'te süzülür)
@@ -69,13 +74,13 @@ async function handle(req: Request) {
       dosyaUrl: `${BASE}/akilli-giris/${d.id}`,
     })
     if (dry) { detay.push({ id: e.id, baslik: e.baslik, baslar: e.baslar.toISOString(), ok: true }); continue }
-    const r = await mailGonder({ to: alici, konu, html, text })
+    const r = await mailGonder({ to: alicilar, konu, html, text })
     if (r.ok) { await prisma.etkinlik.update({ where: { id: e.id }, data: { hatirlatmaGonderildiAt: new Date() } }); gonderilen++ }
     else hata++
     detay.push({ id: e.id, baslik: e.baslik, baslar: e.baslar.toISOString(), ok: r.ok, err: r.error })
   }
 
-  return Response.json({ ok: true, dry, alici, aday: adaylar.length, due: due.length, gonderilen, hata, detay })
+  return Response.json({ ok: true, dry, alicilar, aday: adaylar.length, due: due.length, gonderilen, hata, detay })
 }
 
 export async function GET(req: Request) { return handle(req) }

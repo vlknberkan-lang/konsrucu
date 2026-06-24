@@ -31,13 +31,16 @@ async function handle(req: Request) {
     orderBy: { createdAt: 'asc' },
     include: { musteriler: true },
   })
-  const aliciOverride = url.searchParams.get('to') // sadece test için (secret zaten doğrulandı)
-  const alici = aliciOverride || process.env.RAPOR_ALICI || admin?.eposta || null
-  const aliciAd = admin?.ad?.split(/\s+/)[0] || 'Avukat'
   const musteriId = admin?.musteriler[0]?.musteriId || (await prisma.musteri.findFirst({ where: { aktif: true }, orderBy: { createdAt: 'asc' } }))?.id
-
-  if (!alici) return Response.json({ ok: false, error: 'Alıcı bulunamadı (ADMIN kullanıcı / RAPOR_ALICI yok)' }, { status: 500 })
   if (!musteriId) return Response.json({ ok: false, error: 'Aktif müşteri (tenant) bulunamadı' }, { status: 500 })
+
+  // alıcılar = tenant'taki tüm aktif kullanıcılar (Yelda + Sude + Ervanur). ?to= test override, RAPOR_ALICI yedek.
+  const ekip = await prisma.kullanici.findMany({ where: { aktif: true, musteriler: { some: { musteriId } } }, orderBy: { createdAt: 'asc' }, select: { eposta: true } })
+  const ekipMail = ekip.map((k) => k.eposta).filter(Boolean)
+  const override = url.searchParams.get('to') // sadece test için (secret zaten doğrulandı)
+  const alicilar = override ? [override] : ekipMail.length ? ekipMail : process.env.RAPOR_ALICI ? [process.env.RAPOR_ALICI] : admin?.eposta ? [admin.eposta] : []
+  const aliciAd = alicilar.length > 1 ? 'Ekip' : admin?.ad?.split(/\s+/)[0] || 'Avukat'
+  if (!alicilar.length) return Response.json({ ok: false, error: 'Alıcı bulunamadı (aktif kullanıcı / RAPOR_ALICI yok)' }, { status: 500 })
 
   // ── veri (önizleme route'u ile aynı pencere) ──
   const simdi = new Date()
@@ -89,11 +92,11 @@ async function handle(req: Request) {
 
   // dry=1 → göndermeden çözümlenen alıcı + sayıları döndür (doğrulama için)
   if (url.searchParams.get('dry') === '1') {
-    return Response.json({ ok: true, dry: true, alici, aliciAd, musteriId, etkinlik: etkinlikler.length, zamanasimi: zamanasimi.length, konu })
+    return Response.json({ ok: true, dry: true, alicilar, aliciAd, musteriId, etkinlik: etkinlikler.length, zamanasimi: zamanasimi.length, konu })
   }
 
-  const r = await mailGonder({ to: alici, konu, html, text })
-  return Response.json({ ok: r.ok, gonderildi: r.ok, alici, etkinlik: etkinlikler.length, zamanasimi: zamanasimi.length, hata: r.error })
+  const r = await mailGonder({ to: alicilar, konu, html, text })
+  return Response.json({ ok: r.ok, gonderildi: r.ok, alicilar, etkinlik: etkinlikler.length, zamanasimi: zamanasimi.length, hata: r.error })
 }
 
 export async function GET(req: Request) { return handle(req) }
