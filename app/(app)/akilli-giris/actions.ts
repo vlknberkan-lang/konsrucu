@@ -202,9 +202,9 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
   })
   if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya bu dosyada yetkiniz yok' }
 
-  // Belgeleri ÖNEM sırasına diz (Lehe/tutanak önce), MÜKERRER metni ele, etiketle →
-  // AI'ın bütçesi mükerrer poliçeyle dolup en kritik belgeyi (Lehe formu) kaçırmasını önler.
-  const ONCELIK = ['LEHE', 'TUTANAK', 'EKSPERTIZ', 'SBM', 'POLICE', 'DEKONT', 'ALKOL', 'EHLIYET', 'RUHSAT', 'DIGER', 'HASAR_FOTO']
+  // Belgeleri ÖNEM sırasına diz: DELİL ÖNCE (tutanaklar/bilirkişi/ekspertiz/sorgular) → AI olay bağlamını
+  // bunlardan kursun; Lehe formu yalnız ipucu olarak sonra gelir. Mükerrer metin elenir, en kritik delil başta kalır.
+  const ONCELIK = ['TUTANAK', 'EKSPERTIZ', 'SBM', 'ALKOL', 'EHLIYET', 'RUHSAT', 'LEHE', 'POLICE', 'DEKONT', 'DIGER', 'HASAR_FOTO']
   const onc = (k: string) => { const i = ONCELIK.indexOf(k); return i < 0 ? 99 : i }
   const gorulen = new Set<string>()
   const parcalar: string[] = []
@@ -233,6 +233,8 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
 
   const cikarim = {
     aciklama: analiz.aciklama ?? null,
+    olayBaglami: analiz.olayBaglami ?? null,
+    sonrakiAdimlar: analiz.sonrakiAdimlar ?? [],
     teyit: analiz.teyit ?? [],
     llm: {
       brans: analiz.brans ?? null, kazaYeri: analiz.kazaYeri ?? null, asilAlacak: analiz.asilAlacak ?? null,

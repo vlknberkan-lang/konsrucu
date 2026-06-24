@@ -5,7 +5,7 @@
  */
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { ChevronLeft, Sparkles, Check, AlertTriangle, Clock, Scale, Send, StickyNote } from 'lucide-react'
+import { ChevronLeft, Sparkles, Check, AlertTriangle, Clock, Scale, Send, StickyNote, Search, ListChecks } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { footerOlustur, aciklamaTam } from '@/lib/konsrucu/takip'
@@ -93,8 +93,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   if (!dosya) notFound()
   const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId } })
 
-  const cj = (dosya.cikarimJson ?? {}) as { aciklama?: string | null; teyit?: { not: string; tip: 'oneri' | 'uyari' | 'ok' }[]; onay?: { ok?: boolean; kim?: string; tarih?: string } }
+  const cj = (dosya.cikarimJson ?? {}) as { aciklama?: string | null; olayBaglami?: string | null; sonrakiAdimlar?: string[]; teyit?: { not: string; tip: 'oneri' | 'uyari' | 'ok' }[]; onay?: { ok?: boolean; kim?: string; tarih?: string } }
   const teyitler = Array.isArray(cj.teyit) ? cj.teyit : []
+  const olayBaglami = typeof cj.olayBaglami === 'string' && cj.olayBaglami.trim() ? cj.olayBaglami.trim() : null
+  const sonrakiAdimlar = Array.isArray(cj.sonrakiAdimlar) ? cj.sonrakiAdimlar.filter((s) => typeof s === 'string' && s.trim()) : []
   const onay = cj.onay && cj.onay.ok === true ? cj.onay : null
   const onayli = !!onay
   const anapara = dosya.asilAlacak != null ? Number(dosya.asilAlacak) : dosya.rucuTutari != null ? Number(dosya.rucuTutari) : null
@@ -346,6 +348,12 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
                   {dosya.yol && <Badge tone="kr">{YOL_LABEL[dosya.yol] ?? dosya.yol}</Badge>}
                   {dosya.yolGuven != null && <Badge tone="success" dot>Güven %{Math.round(dosya.yolGuven * 100)}</Badge>}
                 </div>
+                {olayBaglami && (
+                  <div className="rounded-xl border border-kr/25 bg-kr-soft/40 p-[14px_16px]">
+                    <div className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-kr-ink"><Search className="h-3.5 w-3.5" /> Olay Bağlamı · dedektif</div>
+                    <p className="mt-1.5 whitespace-pre-line text-[13px] leading-[1.6] text-foreground">{olayBaglami}</p>
+                  </div>
+                )}
                 {(dosya.yolNeden || cj.aciklama) && (
                   <div className="rounded-xl border border-border-subtle bg-surface-muted p-[13px_15px]">
                     <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Özet</div>
@@ -374,6 +382,19 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
                         return <div key={i} className={`flex items-start gap-[11px] rounded-[11px] border p-[10px_13px] ${m.cls}`}><m.I className="mt-px h-4 w-4 shrink-0" /><span className="text-[12.5px] leading-[1.45]">{t.not}</span></div>
                       })}
                     </div>
+                  </div>
+                )}
+                {sonrakiAdimlar.length > 0 && (
+                  <div>
+                    <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground"><ListChecks className="h-3.5 w-3.5 text-kr" /> Önerilen Adımlar · mentor</div>
+                    <ol className="flex flex-col gap-1.5">
+                      {sonrakiAdimlar.map((s, i) => (
+                        <li key={i} className="flex items-start gap-2 rounded-[11px] border border-border-subtle bg-surface-muted/40 p-[9px_12px] text-[12.5px] leading-[1.45] text-foreground">
+                          <span className="font-mono mt-px grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-kr-soft text-[10px] font-bold text-kr-ink">{i + 1}</span>
+                          <span>{s}</span>
+                        </li>
+                      ))}
+                    </ol>
                   </div>
                 )}
                 <div className="rounded-xl border border-border-subtle bg-surface-muted/50 p-[13px_15px]">

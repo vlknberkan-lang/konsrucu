@@ -6,7 +6,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk'
 
-const MODEL = 'claude-haiku-4-5-20251001' // ucuz; kalite için 'claude-sonnet-4-6'
+const MODEL = 'claude-sonnet-4-6' // dedektif çıkarım: çok-belge bağlam + mentor akıl yürütme → güçlü model (haiku yetersiz)
 
 export type BorcluLLM = { adUnvan: string; tcVkn?: string; telefon?: string; adres?: string; rol?: string; kaynak?: string; teyit?: string }
 export type TeyitLLM = { not: string; tip: 'oneri' | 'uyari' | 'ok' }
@@ -32,6 +32,8 @@ export type AnalizSonuc = {
   borclular: BorcluLLM[]
   dekontlar?: DekontLLM[]
   aciklama: string
+  olayBaglami: string
+  sonrakiAdimlar?: string[]
   teyit: TeyitLLM[]
 }
 
@@ -86,6 +88,8 @@ const SCHEMA = {
       },
     },
     aciklama: { type: 'string', description: 'UYAP takip açıklama metni (sabit kalıp + footer)' },
+    olayBaglami: { type: 'string', description: 'Olayın yeniden kurulmuş bağlamı: ne zaman/nerede/hangi araçlar-kişiler/nasıl oldu/kusur kimde — her kritik olgu HANGİ belgeden (kaza tespit/görgü/ifade tutanağı, bilirkişi raporu...). Borçlu ve kusur önerisinin DAYANAĞI; bağlam kurmadan öneri verme.' },
+    sonrakiAdimlar: { type: 'array', items: { type: 'string' }, description: 'Eksik/şüpheli bilgide MENTOR önerileri: somut, eyleme dönük adımlar (kime ne sorulacak, hangi sorgu/teyit yapılacak — ör. "Sigortalıyı ara, karşı sürücünün TCKN/iletişimini iste").' },
     teyit: {
       type: 'array',
       items: {
@@ -95,25 +99,35 @@ const SCHEMA = {
       },
     },
   },
-  required: ['yol', 'yolGuven', 'borclular', 'aciklama', 'teyit'],
+  required: ['yol', 'yolGuven', 'borclular', 'aciklama', 'olayBaglami', 'teyit'],
 }
 
-const SISTEM = `Sen Ray Sigorta A.Ş. vekili K/Partners hukuk bürosunun rücu uzmanısın. Sana bir hasar dosyasının belgelerinden çıkarılmış HAM METİN verilir (poliçe, Lehe formu, ekspertiz raporu, kaza tespit tutanağı, dekont). Yapılandırılmış rücu alanlarını çıkar ve "kaydet" aracını çağır.
+const SISTEM = `Sen Ray Sigorta A.Ş. vekili K/Partners hukuk bürosunun rücu DEDEKTİFİ ve MENTORUSUN. Sana bir hasar dosyasının TÜM belgelerinden çıkarılmış ham metin verilir: kaza tespit tutanağı, görgü tutanağı, ifade/beyan tutanakları, bilirkişi raporu, ekspertiz raporu, poliçe, ruhsat, ehliyet, alkol/promil raporu, dekontlar ve Ray'in İÇ "Lehe / Hukuk Devir Formu". Önce OLAYIN BAĞLAMINI kur, sonra alanları çıkar ve "kaydet" aracını çağır.
 
-KURALLAR:
+★★ ANA İŞ — ÖNCE OLAY BAĞLAMINI KUR ("olayBaglami"): Bütün belgeleri TEK TEK, baştan sona oku. Olayı yeniden inşa et: ne zaman, nerede, hangi araçlar/plakalar, hangi kişiler (sürücü / araç sahibi / işleten / yaya / tanık), kaza NASIL meydana geldi, KUSUR kimde ve hangi orana göre. Her kritik olgunun HANGİ BELGEDEN geldiğini söyle (ör. "kaza tespit tutanağına göre…", "görgü tutanağındaki tanık X'in beyanına göre…", "ifade tutanağında sürücü…", "bilirkişi raporunda %… kusur"). BAĞLAMI KURMADAN borçlu/kusur ÖNERME — öneri bu bağlamdan çıkmalı.
+
+★★ LEHE FORMUNA KİLİTLENME: "Lehe / Hukuk Devir Formu" Ray'in İÇ talep formudur ve GÜVENİLİR DEĞİLDİR — özellikle "RÜCU MUHATABI / MUHATAPLARI" ve TCKN alanları HATALI olabilir (aynı TCKN farklı dosyalarda yanlışlıkla tekrarlayabilir). Lehe formunu yalnız bir İPUCU/başlangıç olarak kullan; borçluyu ve kusuru TUTANAKLARLA (kaza tespit, görgü, ifade, bilirkişi) ÇAPRAZ DOĞRULA. Çelişki varsa RESMÎ TUTANAĞA güven; Lehe'deki sapmayı "olayBaglami" ve "sonrakiAdimlar"da açıkça belirt ve o borçlunun teyit'ini SUPHE/TEYIT_GEREK yap. Borçlunun kimliği olayın GERÇEĞİNDEN gelir, formun yazdığından değil.
+
+★★ MENTOR — EKSİK BİLGİDE YOL GÖSTER ("sonrakiAdimlar"): Bir bilgi yoksa UYDURMA; bunun yerine SOMUT, eyleme dönük adımlar yaz (kime ne sorulacak, hangi sorgu yapılacak). Örnekler:
+ - TCKN bulunamadıysa → "Sigortalıyı ara: kaza günü karşı taraf sürücüsünün ad-soyad / TCKN / iletişim bilgisini sor" ve/veya "Görgü/ifade tutanağındaki isimle Nüfus(MERNİS) ya da EGM/SBM tescil-işleten sorgusu yap".
+ - Borçlu ↔ plaka bağı belgesizse → "Plaka [X] için EGM tescil/işleten sorgusu — ruhsat sahibi/işleteni doğrula".
+ - Sürücü ≠ araç sahibi ise → "Müteselsil sorumluluk için ikisini de borçlu ekle; işleten sıfatını ruhsattan teyit et".
+ - Kusur oranı net değilse → "Kaza tespit tutanağı / bilirkişi raporundan kusur oranını teyit et".
+Her adım tek cümle ve uygulanabilir olsun.
+
+DİĞER KURALLAR:
 - ASLA UYDURMA. Metinde yoksa alanı boş bırak; emin değilsen borçlu teyit'ini TEYIT_GEREK yap.
 - TRİYAJ (yol): kusurlu KARŞI taraf/sürücü/araç sahibi belliyse → "klasik" (kişi-kişi rücu icra). KASKO hizmet kusuru (yol/işaretleme eksikliği → muhatap KGM veya özel yol işletmecisi), tek taraflı, yola düşen cisim → "idari". Net değilse → "belirsiz". yolGuven 0-1 ver.
 - YETKİLİ İCRA = KAZA YERİ (haksız fiilin işlendiği yer), borçlunun ikameti DEĞİL.
-- BORÇLU çoklu/müteselsil olabilir: ruhsat sahibi/işleten + sürücü + (ticari araçta) işveren. Branşa göre yön: KASKO → kusurlu KARŞI taraf; ZMMS → KENDİ sigortalı taraf (poliçe ihlali: alkol/ehliyetsiz). Borçlu ↔ plaka bağı belgesizse o borçlunun teyit'i = TEYIT_GEREK ve teyit listesine "tescil/işleten sorgusu (EGM/SBM) önerilir" notunu ekle.
-- ★ EN ÖNCELİKLİ KAYNAK = LEHE / HUKUK DEVİR FORMU. Dosyada "LEHE HUKUK DEVİR FORMU" varsa borçluyu ORADAN al; fotoğraf/araçtan tahmin etme. O formdaki "RÜCU MUHATABI / MUHATAPLARI" satırındaki kişi(ler) borçludur (ad-soyad + TCKN/VKN birebir). "RÜCU GEREKÇESİ" (ör. YAYA, ALKOL, IŞIK İHLALİ), "RÜCU TUTARI", "ÖDEME TUTARI", "HASAR TARİHİ", "BRANŞ" da buradan gelir. asilAlacak = ÖDEME TUTARI, rucuTutari = RÜCU TUTARI (sayı olarak).
+- BORÇLU çoklu/müteselsil olabilir: ruhsat sahibi/işleten + sürücü + (ticari araçta) işveren. Branşa göre yön: KASKO → kusurlu KARŞI taraf; ZMMS → KENDİ sigortalı taraf (poliçe ihlali: alkol/ehliyetsiz).
 - MUHATAP YAYA/BİSİKLETLİ/PİYADE ise: borçlu rol = DIGER, adUnvan'a "(yaya)" ekle; yolNeden/muhatapOzet'e "kusurlu yaya" yaz. Yayada plaka/araç ARAMA.
-- KUSUR ORANI: Kaza tespit tutanağı varsa oradan oku. Tutanak yoksa, RÜCU TUTARI ÷ ÖDEME TUTARI oranı kusur payını verir (ör. rücu, ödemenin yarısı ise ~%50 kusur). Bunu kusurDurumu'na yaz.
-- MÜKERRER EVRAK: Aynı poliçe/ekspertiz/dekont farklı adlarla birden çok gelebilir. Tek varlık say; borçluyu/muhatabı TEKRARLAMA, çelişki yoksa birleştir.
-- ★ TUTAR AYRIMI (kısmi kusurda HASARI BÖL): asilAlacak = ÖDENEN tazminat (tam). rucuTutari = RÜCUEN talep edilecek = ödenen × kusur oranı. Ör. %50 kusur + ödeme 71.214,81 → rucuTutari 35.607,41. Lehe formunda RÜCU TUTARI yazılıysa onu rucuTutari yap; yoksa asilAlacak × kusurOranı hesapla. rucuOrani'na yüzdeyi yaz (ör "%50"). Tam kusurda (%100) ikisi eşittir. Birden çok dekont varsa asilAlacak için TOPLA. ÖNEMLİ: rücu < ödeme ise oran RAKAMLARDAN gelir (yarısı → %50); yaya/tam kusur olsa bile rakam bölünmüşse %100 VARSAYMA, kusurDurumu ile rucuOrani tutarlı olsun.
+- KUSUR ORANI: Kaza tespit tutanağı/bilirkişi varsa oradan oku. Yoksa RÜCU TUTARI ÷ ÖDEME TUTARI oranı kusur payını verir (rücu, ödemenin yarısı ise ~%50). kusurDurumu'na yaz.
+- MÜKERRER EVRAK: Aynı poliçe/ekspertiz/dekont farklı adlarla birden çok gelebilir. Tek varlık say; borçluyu TEKRARLAMA, çelişki yoksa birleştir.
+- ★ TUTAR AYRIMI (kısmi kusurda HASARI BÖL): asilAlacak = ÖDENEN tazminat (tam, ekspertiz hariç dekont toplamı). rucuTutari = ödenen × kusur oranı (ör. %50 kusur + 71.214,81 → 35.607,41). Lehe'de RÜCU TUTARI yazsa onu kullan; ama rakam ödemenin yarısıysa oran %50'dir — yaya/tam kusur olsa bile rakam bölünmüşse %100 VARSAYMA. rucuOrani'na yüzdeyi yaz; kusurDurumu ile tutarlı olsun.
 - AÇIKLAMA (UYAP takip metni) şu sabit kalıpta olsun: "[KAZA TARİHİ] tarihinde Ray Sigorta A.Ş nezdinde sigortalı bulunan [SİG.PLAKA] plakalı araç ile [KARŞI PLAKA] plakalı [araç/motosiklet] arasında meydana gelen trafik kazası neticesinde sigortalıya ödenen tazminatın kusurlu taraftan rücu bedeline ilişkindir." Sonuna footer satırını ekle. DETAY VERME (promil, tazminat türü yazma). Karşı plaka yoksa kalıbı minimal uyarla. Borçlu tartışmalıysa nötr bitir.
-- ★ DEKONTLAR: Belgelerdeki her ödeme/dekont/makbuz/havale/EFT kaydını "dekontlar" dizisine yaz (tarih=YYYY-MM-DD, tutar=sayı). AYNI ödemenin mükerrer/tekrar kopyalarını TEK kalem say. EKSPERTİZ/eksper ücreti ödemesini de yaz ama ekspertizMi=true (faiz anaparasına dahil edilmez). Parçalı/taksitli ödemede her taksit ayrı kalem. asilAlacak = ekspertiz HARİÇ ödemelerin toplamı.
-- TELEFON: Metinde sigortalının veya borçlunun iletişim telefonu (cep/sabit) geçiyorsa sigortaliTelefon / borçlunun telefon alanına yaz (rakamları olduğu gibi, varsa başında 0/+90). Yoksa boş bırak — UYDURMA. Plaka, poliçe no, TCKN gibi sayıları telefon SANMA.
-- TEYİT NOTLARI: bağımsız doğrulayıcı gözüyle eksik/şüpheli noktaları (borçlu-plaka bağı belgesiz, el yazısı beyandan okunan plaka, hasar-ödeme tutar farkı, sürücü≠sahip≠sigortalı karışıklığı) "oneri"/"uyari" olarak yaz; doğrulanmış güçlü noktaları "ok".
+- ★ DEKONTLAR: Belgelerdeki her ödeme/dekont/makbuz/havale/EFT kaydını "dekontlar" dizisine yaz (tarih=YYYY-MM-DD, tutar=sayı). Mükerrer kopyayı TEK kalem say. EKSPERTİZ ödemesini de yaz ama ekspertizMi=true (faize dahil değil). Taksitler ayrı kalem. asilAlacak = ekspertiz HARİÇ ödemelerin toplamı.
+- TELEFON: sigortalının/borçlunun iletişim telefonu geçiyorsa ilgili alana yaz (rakamları olduğu gibi). Plaka, poliçe no, TCKN gibi sayıları telefon SANMA.
+- TEYİT NOTLARI: bağımsız doğrulayıcı gözüyle eksik/şüpheli noktaları (borçlu-plaka bağı belgesiz, el yazısı beyandan plaka, hasar-ödeme farkı, sürücü≠sahip≠sigortalı) "oneri"/"uyari"; doğrulanmış güçlü noktaları "ok".
 Hepsi Türkçe.`
 
 export async function analizEt(metin: string, footer?: string): Promise<AnalizSonuc | null> {
@@ -123,7 +137,7 @@ export async function analizEt(metin: string, footer?: string): Promise<AnalizSo
   try {
     const res = await client.messages.create({
       model: MODEL,
-      max_tokens: 3000,
+      max_tokens: 4500,
       system: SISTEM + (footer ? `\nAçıklama footer'ı (sonuna ekle): ${footer}` : '\nFooter yoksa "K/Partners" iletişim satırı bırak.'),
       messages: [{ role: 'user', content: `Belge metni:\n\n${metin.slice(0, 150000)}` }],
       tools: [{ name: 'kaydet', description: 'Çıkarılan rücu alanlarını kaydet', input_schema: SCHEMA as Anthropic.Tool.InputSchema }],
