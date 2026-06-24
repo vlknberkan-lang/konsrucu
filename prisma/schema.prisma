@@ -111,6 +111,21 @@ enum EtkinlikDurum {
   IPTAL
 }
 
+// taksitlendirme (sulh/anlaşma sonrası ödeme planı) — plan + tek tek taksit
+enum TaksitPlanDurum {
+  AKTIF
+  TAMAMLANDI
+  TEMERRUT // bir taksit kaçtı, kalan muaccel oldu (avukat kararıyla)
+  IPTAL
+}
+
+enum TaksitDurum {
+  BEKLIYOR
+  ODENDI
+  KISMI
+  GECIKTI
+}
+
 // ─────────────────── tenant / kullanıcı ───────────────────
 model Musteri {
   id           String             @id @default(uuid())
@@ -279,15 +294,16 @@ model RucuDosyasi {
   updatedAt DateTime @updatedAt
 
   // ilişkiler
-  borclular   Borclu[]
-  odemeler    Odeme[]
-  belgeler    Belge[]
-  ciktilar    UretilenCikti[]
-  olaylar     TakipOlayi[]
-  asamalar    Asama[]
-  etkinlikler Etkinlik[]
-  notlar      Not[]
-  aktiviteler Aktivite[]
+  borclular      Borclu[]
+  odemeler       Odeme[]
+  belgeler       Belge[]
+  ciktilar       UretilenCikti[]
+  olaylar        TakipOlayi[]
+  asamalar       Asama[]
+  etkinlikler    Etkinlik[]
+  taksitPlanlari TaksitPlani[]
+  notlar         Not[]
+  aktiviteler    Aktivite[]
 
   @@index([musteriId])
   @@index([projeId])
@@ -404,9 +420,52 @@ model Asama {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   etkinlikler Etkinlik[]
+  taksitPlanlari TaksitPlani[]
 
   @@index([dosyaId])
   @@index([tur])
+  @@index([durum])
+}
+
+// taksit planı — sulh/anlaşma sonrası ödeme planı (dosyaya + opsiyonel aşamaya bağlı)
+model TaksitPlani {
+  id            String          @id @default(uuid())
+  dosyaId       String
+  dosya         RucuDosyasi     @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  asamaId       String? // sulh hangi evrede yapıldı (arabuluculuk/icra) — bilgi amaçlı
+  asama         Asama?          @relation(fields: [asamaId], references: [id], onDelete: SetNull)
+  toplamTutar   Decimal         @db.Decimal(14, 2) // anlaşılan net (indirim sonrası)
+  indirimTutari Decimal?        @db.Decimal(14, 2) // bilgi amaçlı (uygulanan indirim)
+  taksitSayisi  Int
+  hatirlatmaGun Int             @default(3) // her taksit vadesinden kaç gün önce hatırlatılsın
+  temerrutSarti Boolean         @default(true) // bir taksit kaçarsa kalan muaccel olur (uyarı için)
+  durum         TaksitPlanDurum @default(AKTIF)
+  not           String?         @db.Text
+  taksitler     Taksit[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([dosyaId])
+  @@index([durum])
+}
+
+// tek taksit — vade + tutar + ödeme/hatırlatma izi
+model Taksit {
+  id          String      @id @default(uuid())
+  planId      String
+  plan        TaksitPlani @relation(fields: [planId], references: [id], onDelete: Cascade)
+  sira        Int // 1, 2, 3 … (1/6, 2/6)
+  vadeTarihi  DateTime
+  tutar       Decimal     @db.Decimal(14, 2)
+  durum       TaksitDurum @default(BEKLIYOR)
+  odenenTutar Decimal?    @db.Decimal(14, 2) // kısmi ödeme için
+  odemeId     String? // ödeme gerçekleşince Odeme kaydına bağ
+  odendiTarih DateTime?
+  hatirlatmaGonderildiAt DateTime? // yaklaşan-vade hatırlatması (mükerrer önleme)
+  gecikmeBildirildiAt    DateTime? // vade-geçti uyarısı (bir kez)
+
+  @@index([planId])
+  @@index([vadeTarihi])
   @@index([durum])
 }
 
