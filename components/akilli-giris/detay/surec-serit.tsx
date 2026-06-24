@@ -25,7 +25,8 @@ export function SurecSerit({ asamalar, aktif, guncelSekme, icraNo }: { asamalar:
   const guncelIdx = NODES.findIndex((n) => n.key === guncelSekme)
   const bitti = (i: number) => {
     const t = NODES[i].tur
-    const rec = t ? byTur.get(t) : null
+    if (!t) return false // İcra Öncesi = dosyanın ana içeriği; "tamamlandı" sayılmaz (hep erişilebilir)
+    const rec = byTur.get(t)
     return (!!rec && rec.durum === 'SONUCLANDI') || (guncelIdx >= 0 && i < guncelIdx)
   }
 
