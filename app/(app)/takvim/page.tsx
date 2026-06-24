@@ -71,7 +71,7 @@ function Baslik({ adet, right }: { adet?: number; right?: React.ReactNode }) {
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">KonsRücü · Ajanda</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">KonsRücu · Ajanda</div>
         <h1 className="font-display mt-1.5 text-[30px] font-extrabold tracking-[-0.035em]">Takvim</h1>
         <p className="mt-1.5 max-w-[64ch] text-sm text-muted-foreground">
           Tüm dosyalardaki arabuluculuk toplantıları, duruşmalar ve süreler.

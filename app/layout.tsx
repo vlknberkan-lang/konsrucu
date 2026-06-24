@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { ThemeProvider } from '@/components/theme-provider'
 
 export const metadata: Metadata = {
-  title: 'KonsRücü — Sigorta Rücu Otomasyonu',
+  title: 'KonsRücu — Sigorta Rücu Otomasyonu',
   description: 'Ham evrak yığını içeri; imzaya hazır çıktı dışarı.',
 }
 

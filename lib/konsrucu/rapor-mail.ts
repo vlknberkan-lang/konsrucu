@@ -123,7 +123,7 @@ export function haftalikRaporHtml(g: RaporGirdi): { konu: string; html: string; 
     <tr><td align="center">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid ${BORDER};font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
         <tr><td style="background:${AKSAN};padding:20px 24px;">
-          <div style="color:#bdeef1;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:monospace;">KonsRücü · Ajanda</div>
+          <div style="color:#bdeef1;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:monospace;">KonsRücu · Ajanda</div>
           <div style="color:#ffffff;font-size:22px;font-weight:800;margin-top:4px;">Haftalık Takvim Raporu</div>
           <div style="color:#d7f3f5;font-size:13px;margin-top:4px;">${esc(aralik)}</div>
         </td></tr>

@@ -14,7 +14,7 @@ export function KonsRucuMark({ size = 32, dot = '#2fcad4', fill = '#fff' }: { si
   )
 }
 
-/** Kelime markası — "Kons" + teal "Rücü" + nokta. onDark=true ise koyu zemin için beyaz "Kons". */
+/** Kelime markası — "Kons" + teal "Rücu". onDark=true ise koyu zemin için beyaz "Kons". */
 export function KonsRucuWordmark({ size = 24, onDark = false }: { size?: number; onDark?: boolean }) {
   const teal = onDark ? '#46d6e0' : 'hsl(var(--kr))'
   return (
@@ -23,11 +23,7 @@ export function KonsRucuWordmark({ size = 24, onDark = false }: { size?: number;
       style={{ fontSize: size }}
     >
       <span style={{ color: onDark ? '#fff' : 'hsl(var(--foreground))' }}>Kons</span>
-      <span style={{ color: teal }}>Rücü</span>
-      <span
-        className="ml-px self-end rounded-full"
-        style={{ width: '0.26em', height: '0.26em', marginBottom: '0.14em', background: teal }}
-      />
+      <span style={{ color: teal }}>Rücu</span>
     </span>
   )
 }

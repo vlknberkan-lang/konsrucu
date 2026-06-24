@@ -88,7 +88,7 @@ export async function GET(req: Request) {
 
   // ── workbook ─────────────────────────────────────────────────────────────
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'KonsRücü'
+  wb.creator = 'KonsRücu'
   wb.created = new Date()
   const ws = wb.addWorksheet('Atanan Dosyalar', {
     views: [{ state: 'frozen', ySplit: 3 }],
