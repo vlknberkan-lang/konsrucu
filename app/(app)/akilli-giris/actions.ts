@@ -305,6 +305,18 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
 
 const katDb = (k: string): BelgeKategori => (k && k in BelgeKategori ? (k as BelgeKategori) : BelgeKategori.DIGER)
 
+// Postgres text alanı NUL (0x00) ve C0 kontrol baytlarını kabul etmez (UTF8 hata 22021) → PDF/OCR metninden temizle (tab/satır sonu korunur).
+const nulSuz = (s: string | null | undefined): string | null => {
+  if (s == null) return null
+  let out = ""
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) continue // NUL/C0 kontrol baytlarini at; tab/LF/CR koru
+    out += s[i]
+  }
+  return out
+}
+
 type EklenecekBelge = { dosyaAdi: string; kategori: string; guven?: number; extractedText: string | null; genislik?: number; yukseklik?: number; kamera?: string; exifTarih?: string; storagePath?: string }
 
 /** Mevcut dosyaya manuel belge ekle (tarayıcıda çıkarılmış metin + meta ile). */
@@ -320,12 +332,12 @@ export async function belgeEkle(dosyaId: string, belgeler: EklenecekBelge[]): Pr
         dosyaId,
         kategori: katDb(b.kategori),
         confidence: b.guven ?? null,
-        dosyaAdi: b.dosyaAdi.slice(0, 255),
-        storagePath: b.storagePath ?? '', // 'evrak' bucket'taki yol (bayt yüklendiyse)
-        extractedText: b.extractedText ? b.extractedText.slice(0, 100000) : null,
+        dosyaAdi: (nulSuz(b.dosyaAdi) ?? '').slice(0, 255),
+        storagePath: nulSuz(b.storagePath) ?? '', // 'evrak' bucket'taki yol (bayt yüklendiyse)
+        extractedText: b.extractedText ? (nulSuz(b.extractedText) ?? '').slice(0, 100000) || null : null,
         genislik: b.genislik ?? null,
         yukseklik: b.yukseklik ?? null,
-        kamera: b.kamera ?? null,
+        kamera: nulSuz(b.kamera),
         exifTarih: b.exifTarih ? new Date(b.exifTarih) : null,
       })),
     }),
