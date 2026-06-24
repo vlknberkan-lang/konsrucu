@@ -7,7 +7,7 @@
 import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, X, Handshake, Scale, AlarmClock, Bell, CalendarDays, MapPin, Video, ArrowRight, Trash2, Pencil, Save, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Handshake, Scale, AlarmClock, Bell, CalendarDays, MapPin, Video, ArrowRight, Trash2, Pencil, Save, Loader2, Mail } from 'lucide-react'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { DosyaOzet, type DosyaOzetData } from '@/components/konsrucu/dosya-ozet'
 import { etkinlikSil, etkinlikGuncelle } from '@/app/(app)/akilli-giris/actions'
@@ -278,9 +278,10 @@ function EtkinlikModal({ e, bugun, onKapat }: { e: TakvimEtkinlik; bugun: string
           <div className="px-5 py-4">
             <div className="font-mono mb-2 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Dosya künyesi</div>
             <DosyaOzet data={e.ozet} bugun={bugun} />
-            <div className="mt-4 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button type="button" onClick={() => { setDuzenle(true); setErr(null) }} className="inline-flex items-center gap-1.5 rounded-[10px] border border-border px-3 py-2 text-[12.5px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr"><Pencil className="h-3.5 w-3.5" /> Düzenle</button>
+                <a href={`/takvim/hatirlatma?id=${e.id}`} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 rounded-[10px] border border-border px-3 py-2 text-[12.5px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr"><Mail className="h-3.5 w-3.5" /> E-posta önizle</a>
                 <button type="button" onClick={sil} disabled={pending} className="inline-flex items-center gap-1.5 rounded-[10px] border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12.5px] font-semibold text-danger transition hover:bg-danger-soft disabled:opacity-60">{pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Sil</button>
               </div>
               <Link href={`/akilli-giris/${e.dosyaId}`} className="inline-flex items-center gap-1.5 rounded-[10px] bg-kr px-4 py-2 text-[13px] font-semibold text-kr-foreground transition hover:bg-kr/90">Dosyaya git <ArrowRight className="h-4 w-4" /></Link>
