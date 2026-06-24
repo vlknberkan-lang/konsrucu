@@ -30,6 +30,7 @@ export async function ayarlarKaydet(fd: FormData): Promise<void> {
     alacakliUnvan: str('alacakliUnvan'), mersis: str('mersis'), vekilAd: str('vekilAd'), vekilAdres: str('vekilAdres'),
     vekilBaro: str('vekilBaro'), iban: str('iban'), kep: str('kep'), eposta: str('eposta'),
     aciklamaFooter: str('aciklamaFooter'), faizTuru: str('faizTuru') ?? 'Yasal faiz',
+    davaciVkn: str('davaciVkn'), davaciAdres: str('davaciAdres'), vekilUets: str('vekilUets'), icraInkarOrani: str('icraInkarOrani') ?? '20',
   }
   await prisma.ayarlar.upsert({ where: { musteriId }, create: { musteriId, ...veri }, update: veri })
   revalidatePath('/ayarlar')

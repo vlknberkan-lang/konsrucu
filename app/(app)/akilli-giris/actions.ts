@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { Prisma, BelgeKategori, DosyaDurum, Yol, Brans, BorcluRol, TeyitDurum } from '@prisma/client'
+import { Prisma, BelgeKategori, DosyaDurum, Yol, Brans, BorcluRol, TeyitDurum, CiktiTip } from '@prisma/client'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
@@ -14,6 +14,8 @@ import { yetkiliIcraOner } from '@/lib/konsrucu/adli-rehber'
 import { aciklamaUret } from '@/lib/konsrucu/takip'
 import { takipXmlUret, type TakipXmlGirdi } from '@/lib/konsrucu/uyap-etakip/xml'
 import { kanonik, paraTR, tarihTR } from '@/lib/import/hugo'
+import { dilekceMetni, type DilekceGirdi } from '@/lib/konsrucu/dilekce'
+import { dilekceAnlatim } from '@/lib/konsrucu/dilekce-ai'
 
 type DosyaPayload = {
   hasarNo?: string
@@ -929,5 +931,81 @@ export async function dosyaOnayla(dosyaId: string, onay: boolean): Promise<{ ok:
   await prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { cikarimJson: cj as Prisma.InputJsonValue } })
   await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: onay ? 'Dosya avukat onayından geçti — takibe hazır' : 'Avukat onayı geri alındı' } })
   revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
+}
+
+/** Dava dilekçesi taslağı üret: dosya verisi + faiz (takip çıkışı) + arabuluculuk + AI olay anlatımı → UretilenCikti TASLAK. */
+export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error?: string; metin?: string; ciktiId?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const dosya = await prisma.rucuDosyasi.findUnique({
+    where: { id: dosyaId },
+    include: { borclular: { orderBy: { id: 'asc' } }, odemeler: true, belgeler: { select: { id: true } }, asamalar: true },
+  })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
+  const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId } })
+
+  // faiz → takip çıkış değeri (anapara + işlemiş faiz)
+  const anapara = dosya.rucuTutari != null ? Number(dosya.rucuTutari) : dosya.asilAlacak != null ? Number(dosya.asilAlacak) : 0
+  const oranlar = oranlariOku(ayarlar?.faizJson)
+  const dekontGirdi: DekontGirdi[] = dosya.odemeler.map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : null, tutar: o.tutar != null ? Number(o.tutar) : 0, haricMi: o.haricMi }))
+  const faizBas = dosya.faizBaslangic ? dosya.faizBaslangic.toISOString().slice(0, 10) : sonDekontTarihi(dekontGirdi)
+  const faizBit = dosya.faizBitis ? dosya.faizBitis.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)
+  const faizHesap = anapara > 0 && faizBas ? faizHesapla(anapara, new Date(faizBas), new Date(faizBit), oranlar) : null
+  const islemisFaiz = dosya.faizTutari != null ? Number(dosya.faizTutari) : faizHesap ? faizHesap.faiz : null
+  const takipCikis = islemisFaiz != null ? anapara + islemisFaiz : anapara
+
+  const arab = dosya.asamalar.find((a) => a.tur === 'ARABULUCULUK')
+  const cj = (dosya.cikarimJson ?? {}) as { olayBaglami?: string | null; olayTuru?: string | null }
+
+  const anlatim = await dilekceAnlatim({
+    olayBaglami: cj.olayBaglami ?? null, olayTuru: cj.olayTuru ?? null, brans: dosya.brans ?? null,
+    sigortaliPlaka: dosya.sigortaliPlaka ?? null, karsiPlaka: dosya.karsiPlaka ?? null, sigortaliUnvan: dosya.sigortaliUnvan ?? null,
+    kazaTarihi: dosya.kazaTarihi ? dosya.kazaTarihi.toISOString().slice(0, 10) : null, kazaYeri: dosya.kazaYeri ?? dosya.il ?? null,
+    davalilar: dosya.borclular.map((b) => ({ ad: b.adUnvan, rol: b.rol as string })),
+    asilAlacak: anapara || null, rucuOrani: dosya.rucuOrani ?? null, kusurDurumu: dosya.kusurDurumu ?? null, odemeBilgi: null,
+  })
+
+  const girdi: DilekceGirdi = {
+    davaciUnvan: ayarlar?.alacakliUnvan || 'RAY SİGORTA ANONİM ŞİRKETİ',
+    davaciVkn: ayarlar?.davaciVkn ?? null, davaciAdres: ayarlar?.davaciAdres ?? null,
+    vekilAd: ayarlar?.vekilAd ?? null, vekilUets: ayarlar?.vekilUets ?? null, vekilAdres: ayarlar?.vekilAdres ?? null,
+    icraInkarOrani: ayarlar?.icraInkarOrani || '20',
+    davalilar: dosya.borclular.map((b) => ({ ad: b.adUnvan, tc: b.tcVkn ?? null, adres: b.adres ?? null })),
+    brans: dosya.brans ?? null, olayTuru: cj.olayTuru ?? null, mahkemeYeri: dosya.kazaYeri ?? dosya.il ?? null,
+    icraDairesi: dosya.icraDairesi ?? dosya.yetkiliIcra ?? null, icraEsasNo: dosya.icraDosyaNo ?? null,
+    asilAlacak: anapara || null, islemisFaiz, takipCikis, policeNo: null,
+    kazaTarihi: dosya.kazaTarihi ? dosya.kazaTarihi.toISOString().slice(0, 10) : null, kazaYeri: dosya.kazaYeri ?? null,
+    sigortaliPlaka: dosya.sigortaliPlaka ?? null, karsiPlaka: dosya.karsiPlaka ?? null,
+    arabulucuBuro: arab?.birim ?? null, arabulucuDosyaNo: arab?.kimlikNo ?? null,
+    arabulucuTarih: arab?.bitis ? arab.bitis.toISOString().slice(0, 10) : arab?.baslangic ? arab.baslangic.toISOString().slice(0, 10) : null,
+    olayAnlatimi: anlatim || '⟨olay anlatımı — AI üretemedi, elle yazın⟩',
+  }
+  const metin = dilekceMetni(girdi)
+
+  const mevcut = await prisma.uretilenCikti.findFirst({ where: { dosyaId, tip: CiktiTip.DILEKCE }, orderBy: { createdAt: 'desc' } })
+  let ciktiId: string
+  if (mevcut) {
+    await prisma.uretilenCikti.update({ where: { id: mevcut.id }, data: { icerik: metin, durum: 'TASLAK' } })
+    await prisma.ciktiKaynak.deleteMany({ where: { ciktiId: mevcut.id } })
+    ciktiId = mevcut.id
+  } else {
+    const c = await prisma.uretilenCikti.create({ data: { dosyaId, tip: CiktiTip.DILEKCE, durum: 'TASLAK', icerik: metin } })
+    ciktiId = c.id
+  }
+  const belgeIds = dosya.belgeler.map((b) => b.id)
+  if (belgeIds.length) await prisma.ciktiKaynak.createMany({ data: belgeIds.map((belgeId) => ({ ciktiId, belgeId })), skipDuplicates: true })
+  await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: 'Dava dilekçesi taslağı üretildi' } })
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true, metin, ciktiId }
+}
+
+/** Dilekçe taslağını (elle düzenlenmiş) kaydet + durum güncelle (TASLAK/IMZAYA_GIDEN/GONDERILDI). */
+export async function dilekceKaydet(ciktiId: string, icerik: string, durum?: string): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  const c = await prisma.uretilenCikti.findUnique({ where: { id: ciktiId }, select: { dosya: { select: { id: true, musteriId: true } } } })
+  if (!c || !izinli.includes(c.dosya.musteriId)) return { ok: false, error: 'Çıktı bulunamadı veya yetkiniz yok' }
+  const gecerli = ['TASLAK', 'IMZAYA_GIDEN', 'GONDERILDI'].includes(durum ?? '') ? durum : undefined
+  await prisma.uretilenCikti.update({ where: { id: ciktiId }, data: { icerik: icerik.slice(0, 100000), durum: gecerli } })
+  revalidatePath(`/akilli-giris/${c.dosya.id}`)
   return { ok: true }
 }

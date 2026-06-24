@@ -71,6 +71,26 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
             <label htmlFor="aciklamaFooter" className={LABEL}>Takip açıklaması footer'ı (UYAP metninin sonuna eklenir)</label>
             <textarea id="aciklamaFooter" name="aciklamaFooter" rows={3} defaultValue={ayarlar?.aciklamaFooter ?? ''} placeholder="Örn. K/Partners: iletişim / vekâlet bilgisi…" className={`${ALAN} resize-y`} />
           </div>
+
+          <div className="sm:col-span-2 border-t border-border-subtle pt-3">
+            <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Dava dilekçesi sabitleri</div>
+          </div>
+          <div>
+            <label htmlFor="davaciVkn" className={LABEL}>Davacı (Ray) VKN</label>
+            <input id="davaciVkn" name="davaciVkn" defaultValue={ayarlar?.davaciVkn ?? ''} placeholder="7340039798" className={`${ALAN} font-mono`} />
+          </div>
+          <div>
+            <label htmlFor="vekilUets" className={LABEL}>Vekil UETS No</label>
+            <input id="vekilUets" name="vekilUets" defaultValue={ayarlar?.vekilUets ?? ''} placeholder="16812-18779-94498" className={`${ALAN} font-mono`} />
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor="davaciAdres" className={LABEL}>Davacı (Ray) açık adres</label>
+            <input id="davaciAdres" name="davaciAdres" defaultValue={ayarlar?.davaciAdres ?? ''} placeholder="Cumhuriyet Mah. Haydar Aliyev Cad. No:28 Sarıyer/İstanbul" className={ALAN} />
+          </div>
+          <div>
+            <label htmlFor="icraInkarOrani" className={LABEL}>İcra inkâr tazminatı oranı (%)</label>
+            <input id="icraInkarOrani" name="icraInkarOrani" defaultValue={ayarlar?.icraInkarOrani ?? '20'} placeholder="20" className={`${ALAN} font-mono`} />
+          </div>
         </div>
         <div className="flex items-center gap-3 border-t border-border-subtle bg-surface-muted/40 px-5 py-4">
           <button type="submit" className="inline-flex items-center gap-2 rounded-[10px] bg-kr px-4 py-2.5 text-[13.5px] font-semibold text-kr-foreground shadow-[0_2px_8px_hsl(var(--kr)/0.32)] transition hover:bg-kr/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50">

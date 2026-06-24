@@ -5,6 +5,7 @@
 import { Check, CalendarPlus, MapPin, Flag, Bell } from 'lucide-react'
 import { asamaKaydet, asamaSonuclandir, etkinlikKaydet } from '@/app/(app)/akilli-giris/actions'
 import { TakipSureci, type OlayUI, type EvrakUI, type UyapBilgi } from './takip-sureci'
+import { DilekcePanel, type DilekceCikti } from './dilekce-panel'
 
 type Sekme = 'icra' | 'arabuluculuk' | 'dava' | 'infaz'
 type Asama = { id: string; kimlikNo: string | null; birim: string | null; baslangic: Date | null; ozet: string | null; durum: string; sonuc: string | null }
@@ -32,6 +33,7 @@ export function AsamaPanel({
   etkinlikler = [],
   prefill,
   takip,
+  dilekce,
 }: {
   sekme: Sekme
   dosyaId: string
@@ -39,12 +41,14 @@ export function AsamaPanel({
   etkinlikler?: Etkinlik[]
   prefill?: { no?: string | null; birim?: string | null }
   takip: { durum: string; olaylar: OlayUI[]; bakiye: { toplam: number; tahsil: number; kalan: number }; uyap: UyapBilgi; evraklar: EvrakUI[] }
+  dilekce?: DilekceCikti | null
 }) {
   const m = META[sekme]
   const bitti = asama?.durum === 'SONUCLANDI'
 
   return (
     <section className="mt-5 flex flex-col gap-4">
+      {sekme === 'dava' && <DilekcePanel dosyaId={dosyaId} cikti={dilekce ?? null} />}
       {/* aşama no / birim / tarih */}
       <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
         <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-5 py-3.5">

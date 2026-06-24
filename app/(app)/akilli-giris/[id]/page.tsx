@@ -146,6 +146,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const aktifAsama = aktifSekme === 'oncesi' ? null : asamalar.find((a) => a.tur === SEKME_TUR[aktifSekme as keyof typeof SEKME_TUR]) ?? null
   // aşama kaydı varsa o aşamanın etkinlikleri + dosya-seviyesi (takvimden eklenen, asamaId boş); yoksa yalnız dosya-seviyesi
   const aktifEtkinlikler = aktifAsama ? dosya.etkinlikler.filter((e) => e.asamaId === aktifAsama.id || e.asamaId === null) : dosya.etkinlikler.filter((e) => e.asamaId === null)
+  // Dava sekmesi için mevcut dilekçe taslağı (UretilenCikti · DILEKCE)
+  const dilekceCikti = aktifSekme === 'dava'
+    ? await prisma.uretilenCikti.findFirst({ where: { dosyaId: dosya.id, tip: 'DILEKCE' }, orderBy: { createdAt: 'desc' }, select: { id: true, icerik: true, durum: true } })
+    : null
 
   const tahsilEdilen = dosya.olaylar.filter((o) => o.tip === 'TAHSILAT').reduce((s, o) => s + (o.tutar != null ? Number(o.tutar) : 0), 0)
   const bakiye = { toplam: toplamTalep, tahsil: tahsilEdilen, kalan: Math.max(0, toplamTalep - tahsilEdilen) }
@@ -301,6 +305,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
           etkinlikler={aktifEtkinlikler}
           prefill={aktifSekme === 'icra' ? { no: dosya.icraDosyaNo, birim: dosya.icraDairesi ?? dosya.yetkiliIcra } : undefined}
           takip={takipProp}
+          dilekce={dilekceCikti}
         />
       ) : (
         <>
