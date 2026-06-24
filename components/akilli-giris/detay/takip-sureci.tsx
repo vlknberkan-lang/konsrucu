@@ -8,8 +8,9 @@
  */
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Check, Loader2, AlertTriangle, Banknote, Gavel, Scale, FileCheck, FileText, ExternalLink, RefreshCw, CircleDot } from 'lucide-react'
-import { olayEkle, olaySil, belgeAc } from '@/app/(app)/akilli-giris/actions'
+import { Plus, Trash2, Check, Loader2, AlertTriangle, Banknote, Gavel, Scale, FileCheck, FileText, Eye, RefreshCw, CircleDot } from 'lucide-react'
+import { olayEkle, olaySil } from '@/app/(app)/akilli-giris/actions'
+import { BelgeOnizleme, type OnizlemeBelge } from '@/components/akilli-giris/detay/belge-onizleme'
 
 const TIPLER: [string, string][] = [['TEBLIG', 'Tebliğ edildi'], ['ITIRAZ', 'İtiraz'], ['KESINLESTI', 'Kesinleşti'], ['TAHSILAT', 'Tahsilat'], ['HACIZ', 'Haciz'], ['KAPANDI', 'Kapandı'], ['DURUM', 'Durum / not']]
 const ETIKET: Record<string, string> = Object.fromEntries(TIPLER)
@@ -58,7 +59,7 @@ export function TakipSureci({
   const [pending, start] = useTransition()
   const [err, setErr] = useState<string | null>(null)
   const [silen, setSilen] = useState<string | null>(null)
-  const [acan, setAcan] = useState<string | null>(null)
+  const [onizle, setOnizle] = useState<OnizlemeBelge | null>(null)
   const [tip, setTip] = useState('TEBLIG')
   const router = useRouter()
   const step = STEP[durum] ?? 0
@@ -74,13 +75,6 @@ export function TakipSureci({
   async function sil(id: string) {
     if (!window.confirm('Olay silinsin mi?')) return
     setSilen(id); const r = await olaySil(id); setSilen(null); if (r.ok) router.refresh()
-  }
-  async function ac(belgeId: string) {
-    setAcan(belgeId)
-    const r = await belgeAc(belgeId)
-    setAcan(null)
-    if (r.ok && r.url) window.open(r.url, '_blank', 'noopener')
-    else setErr(r.error ?? 'Belge açılamadı')
   }
 
   // takip olayları + UYAP evrakları → tek kronolojik akış (yeni → eski)
@@ -194,7 +188,7 @@ export function TakipSureci({
                   <div className="mt-0.5 truncate text-[12px] text-muted-foreground">{o.dosyaAdi}</div>
                 </div>
                 {o.acilabilir && (
-                  <button onClick={() => ac(o.id)} disabled={acan === o.id} aria-label="Evrağı aç" className="inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr-ink disabled:opacity-60">{acan === o.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Aç</button>
+                  <button onClick={() => setOnizle({ id: o.id, dosyaAdi: o.dosyaAdi })} aria-label="Evrağı aç" className="inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr-ink"><Eye className="h-3.5 w-3.5" /> Aç</button>
                 )}
               </li>
             ) : (
@@ -216,6 +210,8 @@ export function TakipSureci({
           </ol>
         )}
       </div>
+
+      <BelgeOnizleme belge={onizle} onKapat={() => setOnizle(null)} />
     </section>
   )
 }

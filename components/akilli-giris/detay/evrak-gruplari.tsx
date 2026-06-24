@@ -2,8 +2,8 @@
 
 /** KonsRücü — Dosya Detay · "1 · EVRAK" katlanabilir kategori grupları (gerçek Belge[]) + belge açma. */
 import { useState } from 'react'
-import { FileText, Image as ImageIcon, ChevronRight, Check, AlertTriangle, Sparkles, ExternalLink, Loader2 } from 'lucide-react'
-import { belgeAc } from '@/app/(app)/akilli-giris/actions'
+import { FileText, Image as ImageIcon, ChevronRight, Check, AlertTriangle, Sparkles, Eye } from 'lucide-react'
+import { BelgeOnizleme, type OnizlemeBelge } from '@/components/akilli-giris/detay/belge-onizleme'
 
 export type DetayBelge = { id: string; kategori: string; dosyaAdi: string; confidence: number | null; foto: boolean; acilabilir: boolean }
 
@@ -23,23 +23,7 @@ export function EvrakGruplari({ belgeler }: { belgeler: DetayBelge[] }) {
   const gruplar = KAT_SIRA.map((k) => ({ k, items: belgeler.filter((b) => b.kategori === k) })).filter((g) => g.items.length > 0)
   const review = belgeler.filter((b) => b.confidence != null && b.confidence < REVIEW).length
   const [acik, setAcik] = useState<Record<string, boolean>>(() => Object.fromEntries(gruplar.map((g) => [g.k, g.k !== 'HASAR_FOTO'])))
-  const [acan, setAcan] = useState<string | null>(null)
-  const [hata, setHata] = useState<string | null>(null)
-
-  async function ac(id: string) {
-    if (acan) return
-    const w = window.open('', '_blank') // popup engelini aşmak için önce aç, sonra yönlendir
-    setAcan(id); setHata(null)
-    try {
-      const r = await belgeAc(id)
-      if (r?.ok && r.url) { if (w) w.location.href = r.url }
-      else { if (w) w.close(); setHata(r?.error ?? 'Belge açılamadı') }
-    } catch (e) {
-      if (w) w.close(); setHata('Açılırken hata: ' + (e as Error).message)
-    } finally {
-      setAcan(null)
-    }
-  }
+  const [onizle, setOnizle] = useState<OnizlemeBelge | null>(null)
 
   return (
     <div>
@@ -51,8 +35,6 @@ export function EvrakGruplari({ belgeler }: { belgeler: DetayBelge[] }) {
           <div className={`text-[11.5px] ${review > 0 ? 'text-[hsl(var(--warning-fg))]' : 'text-kr-ink'}`}>{review > 0 ? `${review} belge düşük güven · gözden geçir` : 'Tüm belgeler sınıflandı ve metni çıkarıldı'}</div>
         </div>
       </div>
-
-      {hata && <p className="mb-2 flex items-center gap-1.5 text-[12px] text-danger"><AlertTriangle className="h-3.5 w-3.5" /> {hata}</p>}
 
       <div className="flex flex-col gap-[9px]">
         {gruplar.map(({ k, items }) => {
@@ -77,8 +59,8 @@ export function EvrakGruplari({ belgeler }: { belgeler: DetayBelge[] }) {
                   {foto ? (
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(62px,1fr))] gap-[7px] p-1">
                       {items.slice(0, 24).map((b) => (
-                        <button key={b.id} type="button" onClick={() => b.acilabilir && ac(b.id)} disabled={!b.acilabilir || acan === b.id} title={b.acilabilir ? `Aç: ${b.dosyaAdi}` : b.dosyaAdi} className={`group relative grid aspect-square place-items-center rounded-[8px] bg-surface-muted text-muted-foreground transition ${b.acilabilir ? 'cursor-pointer hover:text-kr hover:ring-2 hover:ring-kr/40' : 'cursor-default'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50`}>
-                          {acan === b.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                        <button key={b.id} type="button" onClick={() => b.acilabilir && setOnizle({ id: b.id, dosyaAdi: b.dosyaAdi })} disabled={!b.acilabilir} title={b.acilabilir ? `Aç: ${b.dosyaAdi}` : b.dosyaAdi} className={`group relative grid aspect-square place-items-center rounded-[8px] bg-surface-muted text-muted-foreground transition ${b.acilabilir ? 'cursor-pointer hover:text-kr hover:ring-2 hover:ring-kr/40' : 'cursor-default'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50`}>
+                          <ImageIcon className="h-4 w-4" />
                         </button>
                       ))}
                       {items.length > 24 && <span className="grid aspect-square place-items-center rounded-[8px] bg-surface-muted font-mono text-[12px] font-bold text-foreground">+{items.length - 24}</span>}
@@ -94,7 +76,7 @@ export function EvrakGruplari({ belgeler }: { belgeler: DetayBelge[] }) {
                             {b.confidence != null && <Conf c={b.confidence} />}
                             {dusuk && <span className="hidden shrink-0 items-center gap-1 font-mono text-[9.5px] text-[hsl(var(--warning-fg))] sm:flex"><AlertTriangle className="h-3 w-3" />teyit</span>}
                             {b.acilabilir
-                              ? <button type="button" onClick={() => ac(b.id)} disabled={acan === b.id} title="Belgeyi aç" className="inline-flex shrink-0 items-center gap-1 rounded-[8px] border border-border bg-surface px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50">{acan === b.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Aç</button>
+                              ? <button type="button" onClick={() => setOnizle({ id: b.id, dosyaAdi: b.dosyaAdi })} title="Belgeyi aç" className="inline-flex shrink-0 items-center gap-1 rounded-[8px] border border-border bg-surface px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50"><Eye className="h-3.5 w-3.5" /> Aç</button>
                               : <span className="shrink-0 font-mono text-[9.5px] text-muted-foreground" title="Bu kayıt Storage'sız (eski) — dosya saklanmamış">—</span>}
                           </div>
                         )
@@ -107,6 +89,8 @@ export function EvrakGruplari({ belgeler }: { belgeler: DetayBelge[] }) {
           )
         })}
       </div>
+
+      <BelgeOnizleme belge={onizle} onKapat={() => setOnizle(null)} />
     </div>
   )
 }

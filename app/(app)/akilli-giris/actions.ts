@@ -399,7 +399,7 @@ export async function belgeAc(belgeId: string): Promise<{ ok: boolean; url?: str
   if (!belge || !izinli.includes(belge.dosya.musteriId)) return { ok: false, error: 'Belge bulunamadı veya bu dosyada yetkiniz yok' }
   if (!belge.storagePath) return { ok: false, error: 'Bu belgenin dosyası saklanmamış (eski/Storage’sız kayıt).' }
   const admin = createAdminClient()
-  const { data, error } = await admin.storage.from('evrak').createSignedUrl(belge.storagePath, 120)
+  const { data, error } = await admin.storage.from('evrak').createSignedUrl(belge.storagePath, 600)
   if (error || !data?.signedUrl) return { ok: false, error: `Bağlantı oluşturulamadı: ${error?.message ?? 'bilinmeyen hata'}` }
   return { ok: true, url: data.signedUrl }
 }
