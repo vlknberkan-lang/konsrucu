@@ -11,7 +11,9 @@ import { belgeAc } from '@/app/(app)/akilli-giris/actions'
 
 export type OnizlemeBelge = { id: string; dosyaAdi: string }
 
-const isImg = (ad: string) => /\.(jpe?g|png|webp|gif|tiff?|bmp|heic)$/i.test(ad)
+// Tarayıcıda gösterilebilirlik: web-resmi → <img>, pdf → <iframe>, diğer (TIFF/HEIC…) → fallback
+const belgeTip = (ad: string): 'img' | 'pdf' | 'other' =>
+  /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(ad) ? 'img' : /\.pdf$/i.test(ad) ? 'pdf' : 'other'
 
 export function BelgeOnizleme({ belge, onKapat }: { belge: OnizlemeBelge | null; onKapat: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
@@ -38,7 +40,8 @@ export function BelgeOnizleme({ belge, onKapat }: { belge: OnizlemeBelge | null;
   }, [belge, onKapat])
 
   if (!belge) return null
-  const img = isImg(belge.dosyaAdi)
+  const tip = belgeTip(belge.dosyaAdi)
+  const img = tip === 'img'
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black/70 p-3 sm:p-6" onClick={onKapat}>
@@ -61,9 +64,11 @@ export function BelgeOnizleme({ belge, onKapat }: { belge: OnizlemeBelge | null;
             </div>
           )}
           {url && !hata && (
-            img
+            tip === 'img'
               ? <div className="flex h-full items-center justify-center overflow-auto p-2"><img src={url} alt={belge.dosyaAdi} className="max-h-full max-w-full object-contain" /></div>
-              : <iframe src={url} title={belge.dosyaAdi} className="h-full w-full border-0" />
+              : tip === 'pdf'
+                ? <iframe src={url} title={belge.dosyaAdi} className="h-full w-full border-0" />
+                : <div className="grid h-full place-items-center px-6 text-center"><div><FileText className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-2 text-[13px] text-muted-foreground">Bu belge türü (ör. TIFF) tarayıcıda önizlenemiyor.<br />Üstten <b>Yeni sekme</b> ile açıp indirebilirsiniz.</p></div></div>
           )}
         </div>
       </div>

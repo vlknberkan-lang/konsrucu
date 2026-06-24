@@ -5,7 +5,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
-import { dosyaSor } from '@/lib/konsrucu/dosya-sor'
+import { dosyaSor, dosyaYolGoster } from '@/lib/konsrucu/dosya-sor'
 
 const fmtTRY = (n: unknown) => (n != null ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(Number(n)) + ' TL' : '—')
 const fmtDate = (d: Date | null) => (d ? d.toLocaleDateString('tr-TR') : '—')
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const dosyaId = String(body?.dosyaId ?? '')
   const soru = String(body?.soru ?? '')
+  const mode = String(body?.mode ?? '')
 
   const dosya = await prisma.rucuDosyasi.findUnique({
     where: { id: dosyaId },
@@ -28,7 +29,8 @@ export async function POST(req: NextRequest) {
       borclular: true,
       odemeler: true,
       asamalar: { orderBy: { sira: 'asc' } },
-      belgeler: { select: { dosyaAdi: true, kategori: true, extractedText: true } },
+      belgeler: { select: { dosyaAdi: true, kategori: true, extractedText: true, createdAt: true, kaynakRef: true } },
+      olaylar: true,
     },
   })
   if (!dosya || !izinli.includes(dosya.musteriId)) return NextResponse.json({ ok: false, error: 'Dosya bulunamadı' }, { status: 404 })
@@ -45,6 +47,18 @@ export async function POST(req: NextRequest) {
   const belgeMetin = dosya.belgeler.filter((b) => b.extractedText).map((b) => `### ${b.dosyaAdi} (${b.kategori})\n${(b.extractedText ?? '').slice(0, 6000)}`).join('\n\n')
   if (belgeMetin) sat.push('BELGE METİNLERİ:\n' + belgeMetin)
 
-  const r = await dosyaSor(sat.join('\n'), soru)
+  // KRONOLOJİK belge + olay dökümü (yol göster için kilit; UYAP evrak adında tarih varsa ondan sırala)
+  const adTarih = (ad: string): number | null => {
+    const m = ad.match(/(\d{4})[-.](\d{2})[-.](\d{2})/); if (m) return new Date(+m[1], +m[2] - 1, +m[3]).getTime()
+    const m2 = ad.match(/(\d{2})[.](\d{2})[.](\d{4})/); if (m2) return new Date(+m2[3], +m2[2] - 1, +m2[1]).getTime()
+    return null
+  }
+  const tl: { t: number; tip: string; metin: string }[] = []
+  for (const b of dosya.belgeler) tl.push({ t: adTarih(b.dosyaAdi) ?? b.createdAt.getTime(), tip: b.kaynakRef ? 'UYAP-EVRAK' : 'BELGE', metin: `${b.dosyaAdi} (${b.kategori})` })
+  for (const o of dosya.olaylar) tl.push({ t: o.tarih ? o.tarih.getTime() : o.createdAt.getTime(), tip: o.tip, metin: o.aciklama ?? o.tip })
+  tl.sort((a, b) => a.t - b.t)
+  if (tl.length) sat.push('KRONOLOJİK BELGE/OLAY DÖKÜMÜ (eskiden yeniye):\n' + tl.map((x) => `  - ${fmtDate(new Date(x.t))} · [${x.tip}] ${x.metin}`).join('\n'))
+
+  const r = mode === 'yol' ? await dosyaYolGoster(sat.join('\n')) : await dosyaSor(sat.join('\n'), soru)
   return NextResponse.json(r, { status: r.ok ? 200 : 500 })
 }

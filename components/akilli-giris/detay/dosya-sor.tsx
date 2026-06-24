@@ -5,7 +5,7 @@
  * Belge + çıkarım + aşama bağlamıyla dosyaya soru sorulur. POST /api/dosya-sor.
  */
 import { useState } from 'react'
-import { Sparkles, Send, Loader2 } from 'lucide-react'
+import { Sparkles, Send, Loader2, Compass } from 'lucide-react'
 
 const ONERILER = [
   'Bu dosyada sıradaki adım ne olmalı?',
@@ -40,6 +40,23 @@ export function DosyaSor({ dosyaId }: { dosyaId: string }) {
     setYukleniyor(false)
   }
 
+  // Tüm belgeleri kronolojik değerlendir + yol göster (belge-belge değil, toplamına)
+  async function yolGoster() {
+    if (yukleniyor) return
+    setHata(null)
+    setMesajlar((m) => [...m, { rol: 'soru', metin: '🧭 Belgeleri kronolojik değerlendir ve yol göster' }])
+    setYukleniyor(true)
+    try {
+      const res = await fetch('/api/dosya-sor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dosyaId, mode: 'yol' }) })
+      const j = await res.json()
+      if (j.ok) setMesajlar((m) => [...m, { rol: 'cevap', metin: j.cevap }])
+      else setHata(j.error ?? 'Yanıt alınamadı')
+    } catch (e) {
+      setHata((e as Error).message)
+    }
+    setYukleniyor(false)
+  }
+
   return (
     <section className="mt-[14px] overflow-hidden rounded-2xl border border-kr/25 bg-kr/[0.03] shadow-card">
       <button type="button" onClick={() => setAcik((v) => !v)} className="flex w-full items-center justify-between gap-2 px-5 py-3 text-left transition hover:bg-kr/[0.04]">
@@ -53,6 +70,9 @@ export function DosyaSor({ dosyaId }: { dosyaId: string }) {
 
       {acik && (
         <div className="border-t border-kr/15 px-5 py-4">
+          <button type="button" onClick={yolGoster} disabled={yukleniyor} className="mb-3 inline-flex w-full items-center justify-center gap-2 rounded-[11px] bg-kr px-4 py-2.5 text-[13.5px] font-semibold text-kr-foreground shadow-[0_2px_10px_hsl(var(--kr)/0.3)] transition hover:bg-kr/90 disabled:opacity-60">
+            {yukleniyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Compass className="h-4 w-4" />} Belgeleri değerlendir · Yol göster
+          </button>
           <div className="mb-3 flex flex-wrap gap-1.5">
             {ONERILER.map((o) => (
               <button key={o} type="button" onClick={() => sor(o)} disabled={yukleniyor} className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11.5px] text-muted-foreground transition hover:border-kr/40 hover:text-kr disabled:opacity-50">{o}</button>
