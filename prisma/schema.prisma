@@ -161,6 +161,11 @@ model Ayarlar {
   faizJson       Json? // dönemsel kanuni faiz oranları
   vekilBaro      String?
   faizTuru       String?  @default("Yasal faiz")
+  // Dava dilekçesi sabitleri (Ray + vekil künyesi)
+  davaciVkn      String? // ör. 7340039798
+  davaciAdres    String? // Ray açık adres
+  vekilUets      String? // vekil UETS no
+  icraInkarOrani String?  @default("20")
   // vekaletname — TÜM dosyalarda ortak tek belge (değişmez); Storage 'evrak' bucket yolu
   vekaletnamePath String?
   vekaletnameAd   String?
