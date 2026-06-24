@@ -198,7 +198,7 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
   const { dbUser, izinli } = await ctx()
   const dosya = await prisma.rucuDosyasi.findUnique({
     where: { id: dosyaId },
-    select: { musteriId: true, durum: true, belgeler: { select: { extractedText: true, kategori: true, dosyaAdi: true } } },
+    select: { musteriId: true, durum: true, belgeler: { select: { extractedText: true, kategori: true, dosyaAdi: true, storagePath: true } } },
   })
   if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya bu dosyada yetkiniz yok' }
 
@@ -219,8 +219,30 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
   const metin = parcalar.join('\n\n').slice(0, 150000).trim()
   if (!metin) return { ok: false, error: 'Çıkarım için belge metni yok. Önce Evrak bölümünden belge ekleyin.' }
 
+  // GÖRSELLER (vision): ehliyet/ruhsat/tutanak/plaka fotoğraflarını da modele ver — metinde (zayıf OCR) olmayanı görüntüden okusun.
+  const IMG_ONC: Record<string, number> = { EHLIYET: 0, RUHSAT: 1, TUTANAK: 2, ALKOL: 3, SBM: 4, DIGER: 5, HASAR_FOTO: 6 }
+  const imgAday = dosya.belgeler
+    .filter((b) => b.storagePath && (IMG_ONC[b.kategori] != null || /\.(jpe?g|png|webp|gif)$/i.test(b.storagePath) || /\.(jpe?g|png|webp|gif)$/i.test(b.dosyaAdi)))
+    .sort((a, c) => (IMG_ONC[a.kategori] ?? 9) - (IMG_ONC[c.kategori] ?? 9))
+    .slice(0, 16)
+  const gorseller: { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; b64: string }[] = []
+  if (imgAday.length) {
+    const admin = createAdminClient()
+    for (const b of imgAday) {
+      if (gorseller.length >= 12) break
+      try {
+        const { data, error } = await admin.storage.from('evrak').download(b.storagePath as string)
+        if (error || !data) continue
+        const buf = Buffer.from(await data.arrayBuffer())
+        const mime = imgMime(buf)
+        if (!mime || buf.length > 4_500_000) continue
+        gorseller.push({ mime, b64: buf.toString('base64') })
+      } catch { /* görsel atlanır */ }
+    }
+  }
+
   const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { aciklamaFooter: true } })
-  const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined)
+  const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined, gorseller)
   if (!analiz) return { ok: false, error: 'AI çıkarımı sonuç vermedi (API anahtarı yok ya da model yanıtı boş).' }
 
   // Rücu oranını TUTARLARDAN deterministik türet (LLM yaya→%100 derken tutarı yarı verebiliyor).
@@ -306,6 +328,16 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
 }
 
 const katDb = (k: string): BelgeKategori => (k && k in BelgeKategori ? (k as BelgeKategori) : BelgeKategori.DIGER)
+
+// Görsel mime'ını magic-byte'tan belirle (PDF/bilinmeyen → null, atlanır → vision'a yalnız gerçek fotoğraf gider).
+function imgMime(buf: Buffer): 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' | null {
+  if (buf.length < 12) return null
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png'
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg'
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif'
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp'
+  return null
+}
 
 // Postgres text alanı NUL (0x00) ve C0 kontrol baytlarını kabul etmez (UTF8 hata 22021) → PDF/OCR metninden temizle (tab/satır sonu korunur).
 const nulSuz = (s: string | null | undefined): string | null => {

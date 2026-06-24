@@ -108,6 +108,8 @@ const SISTEM = `Sen Ray Sigorta A.Ş. vekili K/Partners hukuk bürosunun rücu D
 
 ★★ LEHE FORMUNA KİLİTLENME: "Lehe / Hukuk Devir Formu" Ray'in İÇ talep formudur ve GÜVENİLİR DEĞİLDİR — özellikle "RÜCU MUHATABI / MUHATAPLARI" ve TCKN alanları HATALI olabilir (aynı TCKN farklı dosyalarda yanlışlıkla tekrarlayabilir). Lehe formunu yalnız bir İPUCU/başlangıç olarak kullan; borçluyu ve kusuru TUTANAKLARLA (kaza tespit, görgü, ifade, bilirkişi) ÇAPRAZ DOĞRULA. Çelişki varsa RESMÎ TUTANAĞA güven; Lehe'deki sapmayı "olayBaglami" ve "sonrakiAdimlar"da açıkça belirt ve o borçlunun teyit'ini SUPHE/TEYIT_GEREK yap. Borçlunun kimliği olayın GERÇEĞİNDEN gelir, formun yazdığından değil.
 
+★★ FARKLI İSİMLER = AYRI ROLLER → ÇOKLU BORÇLU: Olayı fiilen yapan SÜRÜCÜYÜ kanıtlardan tespit et — şikayet/ifade tutanağındaki isim, EKTEKİ FOTOĞRAFLARDAKİ ehliyet/ruhsat, kaza tespit tutanağı. Bu sürücü Lehe formundaki muhataptan FARKLIYSA, kişileri "aynı kişi" VARSAYMA: genelde AYRI rollerdir (kusurlu SÜRÜCÜ + RUHSAT SAHİBİ/İŞLETEN) → MÜTESELSİL sorumlulukla İKİSİNİ DE borçlu yaz. Tek bir isme (Lehe muhatabına) İNDİRGEME. Hangi ismin hangi belgeden/rolden geldiğini olayBaglami'nda açıkla; bağ kuramadığın borçluya teyit=TEYIT_GEREK + sonrakiAdimlar'a tescil/MERNİS sorgusu ekle.
+
 ★★ MENTOR — EKSİK BİLGİDE YOL GÖSTER ("sonrakiAdimlar"): Bir bilgi yoksa UYDURMA; bunun yerine SOMUT, eyleme dönük adımlar yaz (kime ne sorulacak, hangi sorgu yapılacak). Örnekler:
  - TCKN bulunamadıysa → "Sigortalıyı ara: kaza günü karşı taraf sürücüsünün ad-soyad / TCKN / iletişim bilgisini sor" ve/veya "Görgü/ifade tutanağındaki isimle Nüfus(MERNİS) ya da EGM/SBM tescil-işleten sorgusu yap".
  - Borçlu ↔ plaka bağı belgesizse → "Plaka [X] için EGM tescil/işleten sorgusu — ruhsat sahibi/işleteni doğrula".
@@ -130,16 +132,22 @@ DİĞER KURALLAR:
 - TEYİT NOTLARI: bağımsız doğrulayıcı gözüyle eksik/şüpheli noktaları (borçlu-plaka bağı belgesiz, el yazısı beyandan plaka, hasar-ödeme farkı, sürücü≠sahip≠sigortalı) "oneri"/"uyari"; doğrulanmış güçlü noktaları "ok".
 Hepsi Türkçe.`
 
-export async function analizEt(metin: string, footer?: string): Promise<AnalizSonuc | null> {
+export type Gorsel = { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; b64: string }
+
+export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[]): Promise<AnalizSonuc | null> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key || !metin.trim()) return null
   const client = new Anthropic({ apiKey: key })
+  const imgs = (gorseller ?? []).slice(0, 12)
+  const content: Anthropic.ContentBlockParam[] = [{ type: 'text', text: `Belge metni:\n\n${metin.slice(0, 150000)}` }]
+  for (const g of imgs) content.push({ type: 'image', source: { type: 'base64', media_type: g.mime, data: g.b64 } })
+  if (imgs.length) content.push({ type: 'text', text: `Yukarıdaki ${imgs.length} fotoğrafı da incele (ehliyet/ruhsat/tutanak/plaka); metinde olmayan isim/TCKN/plakayı görüntüden oku ve bağlama kat.` })
   try {
     const res = await client.messages.create({
       model: MODEL,
       max_tokens: 4500,
       system: SISTEM + (footer ? `\nAçıklama footer'ı (sonuna ekle): ${footer}` : '\nFooter yoksa "K/Partners" iletişim satırı bırak.'),
-      messages: [{ role: 'user', content: `Belge metni:\n\n${metin.slice(0, 150000)}` }],
+      messages: [{ role: 'user', content }],
       tools: [{ name: 'kaydet', description: 'Çıkarılan rücu alanlarını kaydet', input_schema: SCHEMA as Anthropic.Tool.InputSchema }],
       tool_choice: { type: 'tool', name: 'kaydet' },
     })
