@@ -1152,6 +1152,7 @@ export async function taksitOdendi(taksitId: string): Promise<{ ok: boolean; err
     return { ok: false, error: `Taksit işaretlenemedi: ${(e as Error).message}` }
   }
   revalidatePath(`/akilli-giris/${dosyaId}`)
+  revalidatePath('/taksitler')
   return { ok: true }
 }
 
@@ -1175,6 +1176,7 @@ export async function taksitOdemeGeriAl(taksitId: string): Promise<{ ok: boolean
     return { ok: false, error: `Geri alınamadı: ${(e as Error).message}` }
   }
   revalidatePath(`/akilli-giris/${dosyaId}`)
+  revalidatePath('/taksitler')
   return { ok: true }
 }
 
