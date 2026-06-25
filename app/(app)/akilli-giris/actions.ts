@@ -1115,6 +1115,7 @@ export async function taksitPlaniKur(dosyaId: string, p: TaksitPlaniPayload): Pr
     return { ok: false, error: `Plan kurulamadı: ${(e as Error).message}` }
   }
   revalidatePath(`/akilli-giris/${dosyaId}`)
+  revalidatePath('/taksitler')
   return { ok: true }
 }
 
