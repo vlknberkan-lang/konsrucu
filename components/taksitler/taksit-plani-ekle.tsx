@@ -21,6 +21,16 @@ const numTR = (s: string): number => {
   if (t.includes(',')) return Number(t.replace(/\./g, '').replace(',', '.'))
   return Number(t)
 }
+// Yazarken Türkçe binlik ayracı (nokta) ekler; ondalık virgül korunur. "120000" → "120.000"
+function formatTRInput(raw: string): string {
+  const s = (raw ?? '').replace(/[^\d,]/g, '')
+  const ci = s.indexOf(',')
+  let tam = ci >= 0 ? s.slice(0, ci) : s
+  const ondalik = ci >= 0 ? s.slice(ci + 1).replace(/,/g, '').slice(0, 2) : null
+  tam = tam.replace(/^0+(?=\d)/, '')
+  const grup = tam.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return ondalik != null ? `${grup},${ondalik}` : grup
+}
 const para = (n: number) => (Number.isFinite(n) ? n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺' : '—')
 
 export function TaksitPlaniEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
@@ -34,6 +44,7 @@ export function TaksitPlaniEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
   const [acikListe, setAcikListe] = useState(false)
   const [toplam, setToplam] = useState('')
   const [sayi, setSayi] = useState('')
+  const [indirim, setIndirim] = useState('')
 
   const sonuc = useMemo(() => {
     const q = ara.trim().toLocaleLowerCase('tr')
@@ -70,7 +81,7 @@ export function TaksitPlaniEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
     setErr(null)
     start(async () => {
       const r = await taksitPlaniKur(secili.id, payload)
-      if (r.ok) { kapat(); setSecili(null); setAra(''); setToplam(''); setSayi(''); router.refresh() }
+      if (r.ok) { kapat(); setSecili(null); setAra(''); setToplam(''); setSayi(''); setIndirim(''); router.refresh() }
       else setErr(r.error ?? 'Plan kurulamadı')
     })
   }
@@ -124,12 +135,12 @@ export function TaksitPlaniEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div><label className={LBL}>Toplam (anlaşılan) tutar ₺</label><input name="toplamTutar" value={toplam} onChange={(e) => setToplam(e.target.value)} inputMode="decimal" placeholder="120.000,00" className={`${INP} font-mono`} /></div>
+                <div><label className={LBL}>Toplam (anlaşılan) tutar ₺</label><input name="toplamTutar" value={toplam} onChange={(e) => setToplam(formatTRInput(e.target.value))} inputMode="decimal" placeholder="120.000,00" className={`${INP} font-mono`} /></div>
                 <div><label className={LBL}>Taksit sayısı</label><input name="taksitSayisi" value={sayi} onChange={(e) => setSayi(e.target.value)} inputMode="numeric" placeholder="6" className={`${INP} font-mono`} /></div>
                 <div><label className={LBL}>İlk taksit vadesi</label><input type="date" name="ilkVade" className={INP} /></div>
                 <div><label className={LBL}>Periyot (kaç ayda bir)</label><input type="number" name="periyotAy" min={1} max={12} defaultValue={1} className={`${INP} font-mono`} /></div>
                 <div><label className={LBL}>Vade öncesi hatırlatma (gün)</label><input type="number" name="hatirlatmaGun" min={0} max={60} defaultValue={3} className={`${INP} font-mono`} /></div>
-                <div><label className={LBL}>İndirim tutarı ₺ (ops.)</label><input name="indirimTutari" inputMode="decimal" placeholder="—" className={`${INP} font-mono`} /></div>
+                <div><label className={LBL}>İndirim tutarı ₺ (ops.)</label><input name="indirimTutari" value={indirim} onChange={(e) => setIndirim(formatTRInput(e.target.value))} inputMode="decimal" placeholder="—" className={`${INP} font-mono`} /></div>
               </div>
 
               {Number.isFinite(taksitTutar) && (
