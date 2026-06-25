@@ -35,6 +35,7 @@ export function EtkinlikEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
   const [acikListe, setAcikListe] = useState(false)
   const [tur, setTur] = useState('DURUSMA')
   const baslikRef = useRef<HTMLInputElement>(null)
+  const overlayDown = useRef(false) // kapatma yalnız basış arka planda başladıysa (metin sürükle-seçimi kapatmasın)
 
   const sonuc = useMemo(() => {
     const q = ara.trim().toLocaleLowerCase('tr')
@@ -71,8 +72,10 @@ export function EtkinlikEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={kapat}>
-          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-border bg-surface shadow-float" onClick={(ev) => ev.stopPropagation()}>
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+          onMouseDown={(e) => { overlayDown.current = e.target === e.currentTarget }}
+          onClick={(e) => { if (overlayDown.current && e.target === e.currentTarget) kapat(); overlayDown.current = false }}>
+          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-border bg-surface shadow-float">
             <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-5 py-3.5">
               <div className="flex items-center gap-2.5">
                 <span className="grid h-9 w-9 place-items-center rounded-[11px] bg-kr-soft text-kr-ink"><CalendarPlus className="h-[18px] w-[18px]" /></span>

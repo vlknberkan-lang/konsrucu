@@ -4,7 +4,7 @@
  * KonsRücü — Takvim (custom, design-system) · Ay / Hafta / Ajanda + tür filtresi.
  * Etkinlikler (toplantı/duruşma/süre) bellekte; tıklayınca DosyaÖzet popover'ı. Kütüphane yok.
  */
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, X, Handshake, Scale, AlarmClock, Bell, CalendarDays, MapPin, Video, ArrowRight, Trash2, Pencil, Save, Loader2 } from 'lucide-react'
@@ -225,6 +225,7 @@ function EtkinlikModal({ e, bugun, onKapat }: { e: TakvimEtkinlik; bugun: string
   const [pending, start] = useTransition()
   const [duzenle, setDuzenle] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const overlayDown = useRef(false) // kapatma yalnız basış arka planda başladıysa (metin sürükle-seçimi kapatmasın)
 
   function sil() {
     if (typeof window !== 'undefined' && !window.confirm('Bu etkinliği silmek istiyor musunuz? Bu işlem geri alınamaz.')) return
@@ -241,8 +242,10 @@ function EtkinlikModal({ e, bugun, onKapat }: { e: TakvimEtkinlik; bugun: string
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onKapat}>
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-surface shadow-float" onClick={(ev) => ev.stopPropagation()}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      onMouseDown={(ev) => { overlayDown.current = ev.target === ev.currentTarget }}
+      onClick={(ev) => { if (overlayDown.current && ev.target === ev.currentTarget) onKapat(); overlayDown.current = false }}>
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-surface shadow-float">
         <div className="flex items-start justify-between gap-2 border-b border-border-subtle px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className={`grid h-9 w-9 place-items-center rounded-[11px] ${m.tone === 'kr' ? 'bg-kr-soft text-kr-ink' : 'bg-surface-muted text-foreground'}`}><m.Icon className="h-[18px] w-[18px]" /></span>

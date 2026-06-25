@@ -4,7 +4,7 @@
  * KonsRücü — Taksit Takvimi · "Taksit Planı Ekle" (menüden, Etkinlik Ekle mantığı).
  * Aranabilir dosya seç + toplam/sayı/ilk vade/periyot/hatırlatma → taksitPlaniKur (eşit bölünmüş program).
  */
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CreditCard, X, Loader2, Search, Check } from 'lucide-react'
 import { taksitPlaniKur } from '@/app/(app)/akilli-giris/actions'
@@ -45,6 +45,7 @@ export function TaksitPlaniEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
   const [toplam, setToplam] = useState('')
   const [sayi, setSayi] = useState('')
   const [indirim, setIndirim] = useState('')
+  const overlayDown = useRef(false) // kapatma yalnız basış arka planda BAŞLADIYSA (metin sürükle-seçimi modalı kapatmasın)
 
   const sonuc = useMemo(() => {
     const q = ara.trim().toLocaleLowerCase('tr')
@@ -94,8 +95,10 @@ export function TaksitPlaniEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={kapat}>
-          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-border bg-surface shadow-float" onClick={(ev) => ev.stopPropagation()}>
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+          onMouseDown={(e) => { overlayDown.current = e.target === e.currentTarget }}
+          onClick={(e) => { if (overlayDown.current && e.target === e.currentTarget) kapat(); overlayDown.current = false }}>
+          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-border bg-surface shadow-float">
             <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-5 py-3.5">
               <div className="flex items-center gap-2.5">
                 <span className="grid h-9 w-9 place-items-center rounded-[11px] bg-kr-soft text-kr-ink"><CreditCard className="h-[18px] w-[18px]" /></span>
