@@ -1119,66 +1119,105 @@ export async function taksitPlaniKur(dosyaId: string, p: TaksitPlaniPayload): Pr
   return { ok: true }
 }
 
-/** Bir taksiti "ödendi" işaretle → TakipOlayi(TAHSILAT) yaz; tüm taksitler bitince planı TAMAMLANDI + dosya TAHSIL. */
-export async function taksitOdendi(taksitId: string): Promise<{ ok: boolean; error?: string }> {
-  const { dbUser, izinli } = await ctx()
-  const t = await prisma.taksit.findUnique({
-    where: { id: taksitId },
-    include: { plan: { select: { id: true, dosyaId: true, taksitSayisi: true, dosya: { select: { musteriId: true } } } } },
-  })
-  if (!t || !izinli.includes(t.plan.dosya.musteriId)) return { ok: false, error: 'Taksit bulunamadı veya yetkiniz yok' }
-  if (t.durum === 'ODENDI') return { ok: true }
+// ── TAKSİT defter (ledger) modeli — gerçek tahsilatlar TakipOlayi(TAHSILAT, hamJson.planId); taksit durumları FIFO mahsupla TÜRETİLİR ──
 
-  const dosyaId = t.plan.dosyaId
-  const tutar = new Prisma.Decimal(t.tutar)
-  const simdi = new Date()
-  try {
-    const olay = await prisma.takipOlayi.create({
-      data: { dosyaId, tip: 'TAHSILAT', tutar, tarih: simdi, aciklama: `${t.sira}/${t.plan.taksitSayisi}. taksit tahsil edildi` },
-    })
-    await prisma.taksit.update({
-      where: { id: taksitId },
-      data: { durum: 'ODENDI', odenenTutar: tutar, odendiTarih: simdi, odemeId: olay.id },
-    })
-    // tüm taksitler ödendiyse planı + dosyayı kapat
-    const kalan = await prisma.taksit.count({ where: { planId: t.plan.id, durum: { not: 'ODENDI' } } })
-    if (kalan === 0) {
-      await prisma.taksitPlani.update({ where: { id: t.plan.id }, data: { durum: 'TAMAMLANDI' } })
-      await prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { durum: DosyaDurum.TAHSIL } })
-      await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: 'Taksit planı tamamlandı → dosya TAHSİL' } })
-    } else {
-      await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `${t.sira}/${t.plan.taksitSayisi}. taksit tahsil edildi (${tutar} TL)` } })
+/** Planın plan-etiketli TAHSİLATLARINI FIFO (eski taksitten) mahsup eder → her taksitin durum/odenenTutar/odendiTarih'ini türetir; plan/dosya kapanışını ayarlar. */
+async function taksitMahsupEt(planId: string): Promise<void> {
+  const plan = await prisma.taksitPlani.findUnique({ where: { id: planId }, include: { taksitler: { orderBy: { sira: 'asc' } } } })
+  if (!plan) return
+  const tahsilatlar = await prisma.takipOlayi.findMany({
+    where: { dosyaId: plan.dosyaId, tip: 'TAHSILAT', hamJson: { path: ['planId'], equals: planId } },
+    select: { tutar: true, tarih: true, createdAt: true },
+    orderBy: [{ tarih: 'asc' }, { createdAt: 'asc' }],
+  })
+  const toplamTahsil = tahsilatlar.reduce((s, o) => s + (o.tutar != null ? Number(o.tutar) : 0), 0)
+
+  // FIFO: her tahsilat sırayla taksitleri doldurur (odendiTarih = dolduran ödemenin tarihi)
+  const st = plan.taksitler.map((t) => ({ id: t.id, tutar: Number(t.tutar), dolan: 0, son: null as Date | null }))
+  let ti = 0
+  for (const o of tahsilatlar) {
+    let kalan = o.tutar != null ? Number(o.tutar) : 0
+    const tar = o.tarih ?? o.createdAt
+    while (kalan > 0.005 && ti < st.length) {
+      const ekle = Math.min(kalan, st[ti].tutar - st[ti].dolan)
+      st[ti].dolan += ekle; kalan -= ekle; st[ti].son = tar
+      if (st[ti].dolan >= st[ti].tutar - 0.005) ti++
     }
-  } catch (e) {
-    return { ok: false, error: `Taksit işaretlenemedi: ${(e as Error).message}` }
   }
-  revalidatePath(`/akilli-giris/${dosyaId}`)
+
+  const ops: Prisma.PrismaPromise<unknown>[] = st.map((s) => {
+    const odendi = s.dolan >= s.tutar - 0.005
+    const kismi = !odendi && s.dolan > 0.005
+    return prisma.taksit.update({
+      where: { id: s.id },
+      data: { durum: odendi ? 'ODENDI' : kismi ? 'KISMI' : 'BEKLIYOR', odenenTutar: s.dolan > 0.005 ? new Prisma.Decimal(s.dolan.toFixed(2)) : null, odendiTarih: odendi ? (s.son ?? new Date()) : null, odemeId: null },
+    })
+  })
+  const tamam = toplamTahsil >= Number(plan.toplamTutar) - 0.005
+  if (plan.durum !== 'IPTAL') ops.push(prisma.taksitPlani.update({ where: { id: planId }, data: { durum: tamam ? 'TAMAMLANDI' : 'AKTIF' } }))
+  await prisma.$transaction(ops)
+  if (tamam) await prisma.rucuDosyasi.update({ where: { id: plan.dosyaId }, data: { durum: DosyaDurum.TAHSIL } })
+}
+
+/** Serbest tahsilat gir (herhangi tutar + tarih) → TakipOlayi(TAHSILAT, planId) + FIFO mahsup. Dağınık ödemeleri plana oturtur. */
+export async function taksitTahsilatGir(planId: string, tutarStr: string, tarihStr: string, aciklama?: string): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const plan = await prisma.taksitPlani.findUnique({ where: { id: planId }, select: { dosyaId: true, durum: true, dosya: { select: { musteriId: true } } } })
+  if (!plan || !izinli.includes(plan.dosya.musteriId)) return { ok: false, error: 'Plan bulunamadı veya yetkiniz yok' }
+  if (plan.durum === 'IPTAL') return { ok: false, error: 'İptal edilmiş plana tahsilat girilemez' }
+  const tutar = guvenliDecimal(tutarStr)
+  if (!tutar || Number(tutar) <= 0) return { ok: false, error: 'Geçerli bir tahsilat tutarı girin.' }
+  const tarih = tarihStr && /^\d{4}-\d{2}-\d{2}/.test(tarihStr) ? new Date(tarihStr) : new Date()
+  try {
+    await prisma.takipOlayi.create({ data: { dosyaId: plan.dosyaId, tip: 'TAHSILAT', tutar, tarih, aciklama: (aciklama ?? '').trim().slice(0, 200) || 'Taksit tahsilatı', hamJson: { planId, kaynak: 'taksit' } as Prisma.InputJsonValue } })
+    await taksitMahsupEt(planId)
+    await prisma.aktivite.create({ data: { dosyaId: plan.dosyaId, kullaniciId: dbUser.id, eylem: `Taksit tahsilatı girildi: ${tutar} TL` } })
+  } catch (e) {
+    return { ok: false, error: `Tahsilat girilemedi: ${(e as Error).message}` }
+  }
+  revalidatePath(`/akilli-giris/${plan.dosyaId}`)
   revalidatePath('/taksitler')
   return { ok: true }
 }
 
-/** Taksit ödemesini geri al (yanlış işaretlendi) — bağlı TAHSILAT olayını sil, taksiti BEKLIYOR'a çek. */
-export async function taksitOdemeGeriAl(taksitId: string): Promise<{ ok: boolean; error?: string }> {
+/** Plan tahsilatını geri al (yanlış giriş) → TAHSILAT olayını sil + yeniden mahsup. */
+export async function taksitTahsilatGeriAl(olayId: string): Promise<{ ok: boolean; error?: string }> {
   const { dbUser, izinli } = await ctx()
-  const t = await prisma.taksit.findUnique({
-    where: { id: taksitId },
-    include: { plan: { select: { id: true, dosyaId: true, durum: true, dosya: { select: { musteriId: true } } } } },
-  })
-  if (!t || !izinli.includes(t.plan.dosya.musteriId)) return { ok: false, error: 'Taksit bulunamadı veya yetkiniz yok' }
-  if (t.durum !== 'ODENDI') return { ok: true }
-  const dosyaId = t.plan.dosyaId
+  const olay = await prisma.takipOlayi.findUnique({ where: { id: olayId }, select: { id: true, dosyaId: true, hamJson: true, dosya: { select: { musteriId: true } } } })
+  if (!olay || !izinli.includes(olay.dosya.musteriId)) return { ok: false, error: 'Tahsilat bulunamadı veya yetkiniz yok' }
+  const planId = (olay.hamJson as { planId?: string } | null)?.planId
+  if (!planId) return { ok: false, error: 'Bu kayıt bir taksit tahsilatı değil' }
   try {
-    if (t.odemeId) await prisma.takipOlayi.deleteMany({ where: { id: t.odemeId } })
-    await prisma.taksit.update({ where: { id: taksitId }, data: { durum: 'BEKLIYOR', odenenTutar: null, odendiTarih: null, odemeId: null, gecikmeBildirildiAt: null } })
-    // plan tamamlanmış sayıldıysa geri aç (dosya durumunu otomatik geri almıyoruz — avukat kararı)
-    if (t.plan.durum === 'TAMAMLANDI') await prisma.taksitPlani.update({ where: { id: t.plan.id }, data: { durum: 'AKTIF' } })
-    await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `${t.sira}. taksit ödemesi geri alındı` } })
+    await prisma.takipOlayi.delete({ where: { id: olayId } })
+    await taksitMahsupEt(planId)
+    await prisma.aktivite.create({ data: { dosyaId: olay.dosyaId, kullaniciId: dbUser.id, eylem: 'Taksit tahsilatı geri alındı' } })
   } catch (e) {
     return { ok: false, error: `Geri alınamadı: ${(e as Error).message}` }
   }
-  revalidatePath(`/akilli-giris/${dosyaId}`)
+  revalidatePath(`/akilli-giris/${olay.dosyaId}`)
   revalidatePath('/taksitler')
   return { ok: true }
+}
+
+/** Bir taksiti "ödendi" işaretle = o taksitin KALANI kadar tahsilat gir (ledger) → FIFO mahsup. */
+export async function taksitOdendi(taksitId: string): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  const t = await prisma.taksit.findUnique({ where: { id: taksitId }, include: { plan: { select: { id: true, durum: true, dosya: { select: { musteriId: true } } } } } })
+  if (!t || !izinli.includes(t.plan.dosya.musteriId)) return { ok: false, error: 'Taksit bulunamadı veya yetkiniz yok' }
+  if (t.plan.durum === 'IPTAL') return { ok: false, error: 'İptal planda işlem yapılamaz' }
+  const kalan = Number(t.tutar) - (t.odenenTutar != null ? Number(t.odenenTutar) : 0)
+  if (kalan <= 0.005) return { ok: true }
+  return taksitTahsilatGir(t.plan.id, kalan.toFixed(2), new Date().toISOString().slice(0, 10), `${t.sira}. taksit`)
+}
+
+/** Taksit "geri al" = planın EN SON tahsilatını sil (undo-last) + yeniden mahsup. */
+export async function taksitOdemeGeriAl(taksitId: string): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  const t = await prisma.taksit.findUnique({ where: { id: taksitId }, select: { plan: { select: { id: true, dosyaId: true, dosya: { select: { musteriId: true } } } } } })
+  if (!t || !izinli.includes(t.plan.dosya.musteriId)) return { ok: false, error: 'Taksit bulunamadı veya yetkiniz yok' }
+  const son = await prisma.takipOlayi.findFirst({ where: { dosyaId: t.plan.dosyaId, tip: 'TAHSILAT', hamJson: { path: ['planId'], equals: t.plan.id } }, orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }], select: { id: true } })
+  if (!son) return { ok: false, error: 'Geri alınacak tahsilat yok' }
+  return taksitTahsilatGeriAl(son.id)
 }
 
 /** Taksit planını iptal et (anlaşma bozuldu / yanlış kuruldu). Ödenen tahsilatlar dosyada kalır. */

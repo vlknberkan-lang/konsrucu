@@ -40,7 +40,13 @@ async function handle(req: Request) {
   const mj = (ayarlar?.masrafJson ?? null) as { eposta?: unknown } | null
   const ayarMail = Array.isArray(mj?.eposta) ? (mj!.eposta as unknown[]).filter((e): e is string => typeof e === 'string' && !!e.trim()) : []
 
+  const dry = url.searchParams.get('dry') === '1'
   const override = url.searchParams.get('to')
+  const izinliSet = new Set([...ekipMail, ...ayarMail].map((e) => e.trim()).filter(Boolean))
+  // Güvenlik: ?to= yalnız izin listesindeki (ekip / Ayarlar.masrafJson) bir adres olabilir — masraf Excel'i PII taşır.
+  if (override && !izinliSet.has(override.trim()) && !dry) {
+    return Response.json({ ok: false, error: 'to= alıcısı izin listesinde değil (ekip / Ayarlar.masrafJson)' }, { status: 403 })
+  }
   const taban = override ? [override] : [...ekipMail, ...ayarMail]
   const havuz = taban.length ? taban : process.env.RAPOR_ALICI ? [process.env.RAPOR_ALICI] : admin?.eposta ? [admin.eposta] : []
   const alicilar = Array.from(new Set(havuz.map((e) => e.trim()).filter(Boolean)))
@@ -55,8 +61,10 @@ async function handle(req: Request) {
     take: 5000,
   })
   const satirlar = rows.map(masrafToUi)
+  // Karar bekleyen (BELIRSIZ) kalemler faturalanmaz ama gözden kaçmasın → e-postada hatırlat.
+  const belirsizAdet = await prisma.masraf.count({ where: { dosya: { is: { musteriId } }, taraf: 'BELIRSIZ', durum: { in: ['YENI', 'ONAYLI'] } } })
 
-  if (!satirlar.length) return Response.json({ ok: true, bos: true })
+  if (!satirlar.length && !belirsizAdet) return Response.json({ ok: true, bos: true })
 
   // ── dosya/müvekkil bazında özet ──
   const grup = new Map<string, { etiket: string; adet: number; tutar: number }>()
@@ -75,13 +83,13 @@ async function handle(req: Request) {
 
   const donem = isoHaftaDonem()
 
-  if (url.searchParams.get('dry') === '1') {
-    return Response.json({ ok: true, dry: true, alicilar, aday: satirlar.length, dosyaSayisi: dosyaOzet.length, toplamTutar })
+  if (dry) {
+    return Response.json({ ok: true, dry: true, alicilar, aday: satirlar.length, belirsizAdet, dosyaSayisi: dosyaOzet.length, toplamTutar })
   }
 
   // ── Excel eki + özet mail ──
   const buf = await masrafExcelBuffer(satirlar)
-  const { konu, html, text } = masrafOzetMail({ aliciAd, donem, toplamTutar, adet: satirlar.length, dosyaOzet, url: `${BASE}/masraf` })
+  const { konu, html, text } = masrafOzetMail({ aliciAd, donem, toplamTutar, adet: satirlar.length, dosyaOzet, url: `${BASE}/masraf`, belirsizAdet })
 
   const r = await mailGonder({
     to: alicilar,

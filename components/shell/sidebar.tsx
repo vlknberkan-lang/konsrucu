@@ -33,9 +33,16 @@ export function Sidebar({ tenant, counts }: { tenant: ShellTenant | null; counts
         {RAIL_NAV.map((n) => {
           const Icon = n.icon
           const aktif = pathname.startsWith(n.href)
+          const rozet = n.id === 'onemli' ? counts?.onemli ?? 0 : 0
           return (
             <Link key={n.id} href={n.href} className={`${item} ${aktif ? on : off}`}>
-              <Icon className={`h-[17px] w-[17px] ${aktif ? 'text-kr' : 'text-muted-foreground'}`} /> {n.label}
+              <Icon className={`h-[17px] w-[17px] ${aktif ? 'text-kr' : 'text-muted-foreground'}`} />
+              <span className="min-w-0 flex-1 truncate">{n.label}</span>
+              {rozet > 0 && (
+                <span className="font-mono ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger px-1.5 text-[10.5px] font-bold text-white" title={`${rozet} açık önemli olay`}>
+                  {rozet > 99 ? '99+' : rozet}
+                </span>
+              )}
             </Link>
           )
         })}

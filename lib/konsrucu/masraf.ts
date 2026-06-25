@@ -95,11 +95,13 @@ export function masrafDedupKey(p: {
   tarih?: string | Date | null
 }): string | null {
   const dk = norm(p.dekontNo)
+  const td = p.tarih ? new Date(p.tarih).toISOString().slice(0, 10) : ''
+  // Güçlü anahtar şart: dekont no YA DA tarih yoksa dedup uygulama (farklı kalemleri
+  // yanlışlıkla 'mükerrer' sayıp atlamasın). Aynı fiziksel makbuzun tekrarı belgeId ile yakalanır.
+  if (!dk && !td) return null
   const ch = norm(p.cinsHam)
   const tt = p.tutar != null ? Number(p.tutar).toFixed(2) : ''
-  const td = p.tarih ? new Date(p.tarih).toISOString().slice(0, 10) : ''
-  const key = [dk, ch, tt, td].join('|')
-  return key === '|||' ? null : key
+  return [dk, ch, tt, td].join('|')
 }
 
 /**

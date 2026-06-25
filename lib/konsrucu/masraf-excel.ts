@@ -46,7 +46,9 @@ export async function masrafExcelBuffer(satirlar: MasrafUi[]): Promise<Buffer> {
     g.value = m.tutar
     g.numFmt = '#,##0.00'
 
-    ws.getCell(r, 8).value = cins // H MASRAF CİNSİ/ADI
+    const hCell = ws.getCell(r, 8) // H MASRAF CİNSİ/ADI (yalnız 63 kalem)
+    hCell.value = cins
+    if (!cins && m.cinsHam) hCell.note = `Ham: ${m.cinsHam}` // listede yoksa ham adı kaybolmasın
 
     const iCell = ws.getCell(r, 9) // I MASRAF TARİHİ
     if (m.tarih) {
@@ -59,18 +61,20 @@ export async function masrafExcelBuffer(satirlar: MasrafUi[]): Promise<Buffer> {
     ws.getCell(r, 10).value = m.belgeli ? 'Belgeli' : 'Belgesiz' // J BELGELİ/BELGESİZ
     ws.getCell(r, 11).value = sorumlu // K SORUMLU
     // L, M, N — Başvurma / Peşin / Vekalet Harcı: boş bırak.
-
-    // H sütununa veri doğrulaması: yalnız Sayfa2 listesinden.
-    ws.getCell(r, 8).dataValidation = {
-      type: 'list',
-      allowBlank: true,
-      formulae: ['Sayfa2!$A$1:$A$63'],
-      showErrorMessage: true,
-      errorStyle: 'stop',
-      errorTitle: 'Geçersiz cins',
-      error: 'Yalnız Sayfa2 listesinden seçin: 63 kalem.',
-    }
   })
+
+  // H sütunu veri doğrulaması — yazılan satırlar + tampon (boş export'ta da H kilitli kalsın).
+  const dv = {
+    type: 'list' as const,
+    allowBlank: true,
+    formulae: ['Sayfa2!$A$1:$A$63'],
+    showErrorMessage: true,
+    errorStyle: 'stop' as const,
+    errorTitle: 'Geçersiz cins',
+    error: 'Yalnız Sayfa2 listesinden seçin: 63 kalem.',
+  }
+  const sonSatir = Math.max(satirlar.length + 1, 100)
+  for (let r = 2; r <= sonSatir; r++) ws.getCell(r, 8).dataValidation = dv
 
   return Buffer.from(await wb.xlsx.writeBuffer())
 }

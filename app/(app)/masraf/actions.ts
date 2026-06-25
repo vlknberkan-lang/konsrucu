@@ -77,9 +77,17 @@ export async function masrafEkle(fd: FormData): Promise<R> {
 /** Eşleşmeyen/yanlış cins'i 63 kalemden birine ata + sözlüğe öğret. */
 export async function masrafCinsAta(id: string, cins: string): Promise<R> {
   const { izinli } = await ctx()
-  if (!MASRAF_CINSLERI.includes(cins)) return { ok: false, error: 'Geçersiz masraf cinsi' }
+  const temizle = !cins || cins === 'YOK'
+  if (!temizle && !MASRAF_CINSLERI.includes(cins)) return { ok: false, error: 'Geçersiz masraf cinsi' }
   const m = await masrafErisim(id, izinli)
   if (!m) return { ok: false, error: 'Kayıt bulunamadı veya yetkiniz yok' }
+
+  if (temizle) {
+    // "Eşleştirilmedi"ye geri al (öğretme yok)
+    await prisma.masraf.update({ where: { id }, data: { cins: null, cinsGuven: null } })
+    revalidatePath('/masraf')
+    return { ok: true }
+  }
 
   await prisma.masraf.update({ where: { id }, data: { cins, cinsGuven: 1 } })
   // öğret: ham açıklama → seçilen kalem (tenant sözlüğü)

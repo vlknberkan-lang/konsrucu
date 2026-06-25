@@ -214,6 +214,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
           durum: t.durum, odenenTutar: t.odenenTutar != null ? Number(t.odenenTutar) : null,
           odendiTarih: t.odendiTarih ? t.odendiTarih.toISOString() : null,
         })),
+        tahsilatlar: dosya.olaylar
+          .filter((o) => o.tip === 'TAHSILAT' && (o.hamJson as { planId?: string } | null)?.planId === planRec.id)
+          .map((o) => ({ id: o.id, tutar: o.tutar != null ? Number(o.tutar) : 0, tarih: (o.tarih ?? o.createdAt).toISOString(), aciklama: o.aciklama }))
+          .sort((a, b) => a.tarih.localeCompare(b.tarih)),
       }
     : null
 

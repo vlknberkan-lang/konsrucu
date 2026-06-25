@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { siniflandir } from '@/lib/konsrucu/belge-siniflandir'
 import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
 import { belgeBorcaItirazMi, onemliOlayTespit } from '@/lib/konsrucu/onemli-olay'
+import { belgedenMasrafCikar } from '@/lib/konsrucu/masraf-cikar'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,5 +72,16 @@ export async function POST(req: Request) {
     }
   }
 
-  return corsJson({ ok: true, eklendi: true, kategori: snf.kategori })
+  // Makbuz/dekont indiyse → PDF'i otomatik oku, Masraf kalemlerini çıkar (hata evrak kaydını bozmaz).
+  let masraf: { eklendi: number; atlandi: number } | undefined
+  if (snf.kategori === 'DEKONT') {
+    try {
+      const r = await belgedenMasrafCikar(belge.id, { kullaniciId: k.userId })
+      masraf = { eklendi: r.eklendi, atlandi: r.atlandi }
+    } catch (e) {
+      console.error('masraf çıkarım (evrak):', e)
+    }
+  }
+
+  return corsJson({ ok: true, eklendi: true, kategori: snf.kategori, masraf })
 }

@@ -10,7 +10,7 @@ import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Check, Loader2, AlertTriangle, Bell, RotateCcw, CreditCard, Ban } from 'lucide-react'
 import { taksitProgrami, taksitOzet, efektifDurum, type TaksitDurum, type TaksitPlanDurum, type TaksitGirdi } from '@/lib/konsrucu/taksit'
-import { taksitPlaniKur, taksitOdendi, taksitOdemeGeriAl, taksitPlaniIptal } from '@/app/(app)/akilli-giris/actions'
+import { taksitPlaniKur, taksitOdendi, taksitOdemeGeriAl, taksitPlaniIptal, taksitTahsilatGir, taksitTahsilatGeriAl } from '@/app/(app)/akilli-giris/actions'
 
 export type TaksitUI = { id: string; sira: number; vadeTarihi: string; tutar: number; durum: TaksitDurum; odenenTutar: number | null; odendiTarih: string | null }
 export type PlanUI = {
@@ -23,6 +23,7 @@ export type PlanUI = {
   temerrutSarti: boolean
   not: string | null
   taksitler: TaksitUI[]
+  tahsilatlar: { id: string; tutar: number; tarih: string; aciklama: string | null }[]
 }
 
 const fmtTRY = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺'
@@ -62,6 +63,8 @@ function PlanGorunum({ dosyaId, plan, bugun }: { dosyaId: string; plan: PlanUI; 
   const router = useRouter()
   const [pending, start] = useTransition()
   const [hata, setHata] = useState<string | null>(null)
+  const [tahTutar, setTahTutar] = useState('')
+  const [tahTarih, setTahTarih] = useState(bugun)
   const bugunD = new Date(bugun)
 
   const girdiler: TaksitGirdi[] = plan.taksitler.map((t) => ({ id: t.id, sira: t.sira, vadeTarihi: new Date(t.vadeTarihi), tutar: t.tutar, durum: t.durum, odenenTutar: t.odenenTutar, odendiTarih: t.odendiTarih ? new Date(t.odendiTarih) : null }))
@@ -70,6 +73,11 @@ function PlanGorunum({ dosyaId, plan, bugun }: { dosyaId: string; plan: PlanUI; 
   const calistir = (fn: () => Promise<{ ok: boolean; error?: string }>) => {
     setHata(null)
     start(async () => { const r = await fn(); if (r.ok) router.refresh(); else setHata(r.error ?? 'İşlem başarısız') })
+  }
+  function tahsilatEkle() {
+    if (numTR(tahTutar) <= 0) { setHata('Geçerli bir tahsilat tutarı girin.'); return }
+    setHata(null)
+    start(async () => { const r = await taksitTahsilatGir(plan.id, tahTutar.trim(), tahTarih); if (r.ok) { setTahTutar(''); router.refresh() } else setHata(r.error ?? 'Tahsilat girilemedi') })
   }
 
   return (
@@ -128,6 +136,33 @@ function PlanGorunum({ dosyaId, plan, bugun }: { dosyaId: string; plan: PlanUI; 
             </div>
           )
         })}
+      </div>
+
+      {/* serbest tahsilat (dağınık ödeme) — plana eski taksitten başlayarak FIFO mahsup */}
+      <div className="rounded-xl border border-border-subtle bg-surface-muted/30 p-[12px_14px]">
+        <div className="font-mono mb-2 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Tahsilat gir · serbest tutar (plana otomatik mahsup edilir)</div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="relative min-w-[130px] flex-1">
+            <label className={LBL}>Tutar</label>
+            <input inputMode="decimal" value={tahTutar} onChange={(e) => setTahTutar(e.target.value)} placeholder="0,00" className={`${INP} pr-6 text-right font-mono tabular-nums`} />
+            <span className="pointer-events-none absolute right-2.5 top-[34px] text-[11px] text-muted-foreground">₺</span>
+          </div>
+          <div><label className={LBL}>Tarih</label><input type="date" value={tahTarih} onChange={(e) => setTahTarih(e.target.value)} className={INP} /></div>
+          <button type="button" onClick={tahsilatEkle} disabled={pending} className="inline-flex items-center gap-1.5 rounded-[9px] bg-kr px-3.5 py-2.5 text-[12.5px] font-semibold text-kr-foreground transition hover:bg-kr/90 disabled:opacity-60"><Plus className="h-3.5 w-3.5" /> Tahsilat ekle</button>
+        </div>
+        {plan.tahsilatlar.length > 0 && (
+          <div className="mt-2.5 flex flex-col gap-1 border-t border-border-subtle pt-2">
+            {plan.tahsilatlar.map((o) => (
+              <div key={o.id} className="flex items-center gap-2 text-[12px]">
+                <span className="font-mono font-semibold tabular-nums text-foreground">{fmtTRY(o.tutar)}</span>
+                <span className="text-muted-foreground">· {fmtDate(o.tarih)}</span>
+                {o.aciklama && <span className="truncate text-muted-foreground">· {o.aciklama}</span>}
+                <button type="button" onClick={() => calistir(() => taksitTahsilatGeriAl(o.id))} disabled={pending} className="ml-auto grid h-6 w-6 place-items-center rounded text-muted-foreground transition hover:text-danger disabled:opacity-60" title="tahsilatı geri al"><RotateCcw className="h-3 w-3" /></button>
+              </div>
+            ))}
+            <div className="mt-1 flex justify-between text-[11.5px]"><span className="text-muted-foreground">Toplam tahsil</span><span className="font-mono font-bold tabular-nums text-foreground">{fmtTRY(plan.tahsilatlar.reduce((s, o) => s + o.tutar, 0))}</span></div>
+          </div>
+        )}
       </div>
 
       {plan.not && <p className="rounded-[10px] border border-border-subtle bg-surface-muted/40 px-3 py-2 text-[12px] text-muted-foreground"><b className="text-foreground">Not:</b> {plan.not}</p>}

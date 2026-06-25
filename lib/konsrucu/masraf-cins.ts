@@ -14,7 +14,7 @@ export const CINS_ESIK = 0.62
 /** Türkçe-duyarlı normalize (adli-rehber trNorm ile aynı mantık; ağır JSON çekmemek için kopya). */
 export function normCins(s: string | null | undefined): string {
   return (s ?? '')
-    .replace(/\(.*?\)/g, ' ')
+    .replace(/[()]/g, ' ') // parantez İÇERİĞİ ayırt edici (Nispi/Maktu, Satış/Taşıt) — silme, sadece parantezi aç
     .toLocaleLowerCase('tr-TR')
     .replace(/[âā]/g, 'a').replace(/[îī]/g, 'i').replace(/[ûū]/g, 'u')
     .replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ü/g, 'u')
@@ -204,14 +204,17 @@ export function cinsEslesti(ham: string | null | undefined, ogrenilen?: Map<stri
   let icerenCins: string | null = null
   let icerenLen = 0
   const taraTara = (key: string, cins: string) => {
-    if (key.length >= 4 && (n.includes(key) || key.includes(n)) && key.length > icerenLen) {
+    if (key.length < 5) return // kısa/genel token'larda aşırı eşleşmeyi önle
+    const eslesir = n.includes(key) || (n.length >= 5 && key.includes(n))
+    if (eslesir && key.length > icerenLen) {
       icerenLen = key.length
       icerenCins = cins
     }
   }
   CANON_NORM.forEach((cins, key) => taraTara(key, cins))
   ALIAS_NORM.forEach((cins, key) => taraTara(key, cins))
-  if (icerenCins) return { cins: icerenCins, guven: 0.85 }
+  // içerme güveni 0.8 → UI'daki dusukGuven (<0.85) eşiğinin ALTINDA: sarı nokta ile "kontrol et" işaretlenir
+  if (icerenCins) return { cins: icerenCins, guven: 0.8 }
 
   // bulanık: kanonik + alias anahtarları içinde en yakın
   let enIyi: string | null = null

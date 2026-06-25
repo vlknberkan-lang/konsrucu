@@ -12,6 +12,7 @@ export type MasrafOzetGirdi = {
   adet: number
   dosyaOzet: { etiket: string; adet: number; tutar: number }[]
   url: string // Masraflar sayfası linki
+  belirsizAdet?: number // "belirsiz taraf" (faturalanmayan) kalem — hatırlatma için
 }
 
 const AKSAN = '#1897a0'
@@ -40,6 +41,12 @@ export function masrafOzetMail(a: MasrafOzetGirdi): { konu: string; html: string
     )
     .join('')
 
+  const belirsizAdet = a.belirsizAdet ?? 0
+  const belirsizHtml = belirsizAdet > 0
+    ? `<tr><td style="padding:4px 24px;"><div style="font-size:13px;color:#92600a;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;">⚠️ <b>${belirsizAdet} kalem</b> "belirsiz taraf" olarak işaretli — faturalama havuzuna GİRMEZ. Masraflar sayfasından tarafını (bizim/karşı) belirleyin.</div></td></tr>`
+    : ''
+  const belirsizText = belirsizAdet > 0 ? `\n⚠️ ${belirsizAdet} kalem belirsiz taraf — faturalanmaz; Masraflar sayfasından tarafını belirleyin.\n` : ''
+
   const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(konu)}</title></head>
 <body style="margin:0;padding:0;background:#f1f5f9;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 12px;">
@@ -54,6 +61,7 @@ export function masrafOzetMail(a: MasrafOzetGirdi): { konu: string; html: string
           <div style="font-size:15px;color:${INK};">Merhaba <b>${esc(a.aliciAd)}</b>,</div>
           <div style="font-size:13.5px;color:${MUTED};margin-top:4px;">Bizim taraf, henüz faturalanmamış (Yeni/Onaylı) masraflar aşağıda dosya bazında özetlendi. Ayrıntılı liste ekteki Excel'dedir. <b>Bu bir hazırlık e-postasıdır</b> — faturalama bu mesajla yapılmaz.</div>
         </td></tr>
+        ${belirsizHtml}
         <tr><td style="padding:12px 24px 4px;">
           <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;font-family:monospace;color:${MUTED};margin-bottom:6px;">Dosya / müvekkil bazında</div>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${BORDER};border-radius:12px;overflow:hidden;">
@@ -82,7 +90,7 @@ export function masrafOzetMail(a: MasrafOzetGirdi): { konu: string; html: string
 Masraf faturalama hazırlığı · ${a.donem}
 Bizim taraf, faturalanmamış (Yeni/Onaylı): ${a.adet} kalem · toplam ${tl(a.toplamTutar)}
 Bu bir hazırlık e-postasıdır; faturalama bu mesajla yapılmaz. Ayrıntılı liste ektedir.
-
+${belirsizText}
 DOSYA / MÜVEKKİL BAZINDA
 ${textSatir}
   Genel toplam: ${a.adet} kalem · ${tl(a.toplamTutar)}

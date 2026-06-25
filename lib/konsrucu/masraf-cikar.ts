@@ -8,10 +8,11 @@
  * dedup + Masraf.create) → dosyaMakbuzlariniTara (dosyadaki tüm DEKONT belgelerini tara).
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cinsEslesti, ogrenilenMap } from './masraf-cins'
-import { masrafDedupKey } from './masraf'
+import { masrafDedupKey, paraGuvenli } from './masraf'
 
 const MODEL = 'claude-sonnet-4-6' // makbuz okuma: çok-kalemli harç dökümü + taranmış görüntü → güçlü model
 
@@ -54,8 +55,25 @@ const SCHEMA = {
 
 const SISTEM = `Bu bir Türk icra/dava harç-masraf MAKBUZU/dekontudur. Her masraf/harç kalemini ayrı satır olarak çıkar. Bir makbuzda birden çok kalem olabilir (başvurma harcı + peşin harç + ... ayrı satır). dekontNo = makbuz/dekont numarası; varsa makbuz 'Sayı' ve 'No' alanlarını da yakala. tarih = makbuz tarihi (YYYY-MM-DD). tutar = TL sayı. cinsHam = makbuzdaki ham masraf adı (AYNEN). taraf: ödeyen alacaklı/vekil/büro ise BIZ; borçlu/karşı taraf ise KARSI; belli değilse BELIRSIZ — icra açılış/takip harç-masraflarını genelde alacaklı vekili öder → BIZ. UYDURMA; emin değilsen alanı boş bırak.`
 
+/** Makbuz baytlarını PDF mi görsel mi olduğunu sihirli baytlardan anlayıp uygun Claude bloğu kurar. */
+function makbuzBlok(bytes: Buffer): Anthropic.ContentBlockParam {
+  const data = bytes.toString('base64')
+  const h = bytes.subarray(0, 4)
+  if (h[0] === 0x25 && h[1] === 0x50 && h[2] === 0x44 && h[3] === 0x46) // %PDF
+    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
+  const media: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' | null =
+    h[0] === 0x89 && h[1] === 0x50 ? 'image/png'
+      : h[0] === 0xff && h[1] === 0xd8 ? 'image/jpeg'
+      : h[0] === 0x47 && h[1] === 0x49 && h[2] === 0x46 ? 'image/gif'
+      : h[0] === 0x52 && h[1] === 0x49 && h[2] === 0x46 ? 'image/webp' // RIFF (webp)
+      : null
+  if (media) return { type: 'image', source: { type: 'base64', media_type: media, data } }
+  // bilinmiyor → çoğu UYAP makbuzu PDF; PDF varsay
+  return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
+}
+
 /**
- * PDF makbuzu Claude'a 'document' bloğu olarak gönderip masraf kalemlerini çıkarır.
+ * Makbuzu (PDF veya görsel) Claude'a uygun blok olarak gönderip masraf kalemlerini çıkarır.
  * ANTHROPIC_API_KEY yoksa veya hata olursa [] döner.
  */
 export async function makbuzCikarPdf(
@@ -71,10 +89,7 @@ export async function makbuzCikarPdf(
   if (ipuclari?.alacakliUnvan) ipucuSatirlari.push(`Alacaklı/vekil ünvanı (BIZ tarafı): ${ipuclari.alacakliUnvan}`)
 
   const content: Anthropic.ContentBlockParam[] = [
-    {
-      type: 'document',
-      source: { type: 'base64', media_type: 'application/pdf', data: pdfBytes.toString('base64') },
-    },
+    makbuzBlok(pdfBytes),
     {
       type: 'text',
       text: ipucuSatirlari.length
@@ -111,16 +126,6 @@ function tarihToDate(s: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-/** Güvenli sayı (string/number/null → number | null). */
-function guvenliTutar(v: unknown): number | null {
-  if (typeof v === 'number' && Number.isFinite(v)) return v
-  if (typeof v === 'string') {
-    const n = Number(v.replace(/\s/g, '').replace(/\./g, '').replace(',', '.'))
-    if (Number.isFinite(n)) return n
-  }
-  return null
-}
-
 export type BelgeMasrafSonuc = { eklendi: number; atlandi: number; toplam: number; hata?: string }
 
 /**
@@ -140,6 +145,10 @@ export async function belgedenMasrafCikar(
     })
     if (!belge) return { eklendi: 0, atlandi: 0, toplam: 0, hata: 'Belge bulunamadı' }
 
+    // Bu belge zaten işlendiyse tekrar çıkarma (idempotent: re-scan + eşzamanlı evrak hook'una karşı).
+    const islendiMi = await prisma.masraf.findFirst({ where: { belgeId: belge.id }, select: { id: true } })
+    if (islendiMi) return { eklendi: 0, atlandi: 0, toplam: 0 }
+
     const admin = createAdminClient()
     const { data, error } = await admin.storage.from('evrak').download(belge.storagePath)
     if (error || !data) return { eklendi: 0, atlandi: 0, toplam: 0, hata: `PDF indirilemedi: ${error?.message ?? 'boş'}` }
@@ -154,8 +163,9 @@ export async function belgedenMasrafCikar(
 
     let eklendi = 0
     let atlandi = 0
+    const islenmis = new Set<string>() // aynı makbuzda tekrarlı kalem koruması (in-batch)
     for (const kalem of kalemler) {
-      const tutar = guvenliTutar(kalem.tutar)
+      const tutar = paraGuvenli(kalem.tutar)
       const cinsHam = (kalem.cinsHam ?? '').toString().trim()
       if (tutar == null || !cinsHam) continue // tutar/cins olmayan kalemi atla (UYDURMA)
 
@@ -164,36 +174,41 @@ export async function belgedenMasrafCikar(
       const tarih = tarihToDate(kalem.tarih)
       const kaynakRef = masrafDedupKey({ dekontNo, cinsHam, tutar, tarih: kalem.tarih })
 
-      // dedup: aynı makbuz kalemi bu dosyada zaten varsa atla (kaynakRef null ise dedup uygulanmaz)
+      // dedup: kaynakRef varsa (güçlü anahtar) hem aynı çalıştırmada hem DB'de tekrarı atla
       if (kaynakRef) {
+        if (islenmis.has(kaynakRef)) { atlandi++; continue }
+        islenmis.add(kaynakRef)
         const mevcut = await prisma.masraf.findFirst({ where: { dosyaId: belge.dosyaId, kaynakRef }, select: { id: true } })
-        if (mevcut) {
-          atlandi++
-          continue
-        }
+        if (mevcut) { atlandi++; continue }
       }
 
-      await prisma.masraf.create({
-        data: {
-          dosyaId: belge.dosyaId,
-          belgeId: belge.id,
-          tutar,
-          tarih,
-          dekontNo,
-          makbuzSayi: kalem.makbuzSayi ? String(kalem.makbuzSayi).trim() || null : null,
-          makbuzNo: kalem.makbuzNo ? String(kalem.makbuzNo).trim() || null : null,
-          cinsHam,
-          cins,
-          cinsGuven: guven,
-          taraf: kalem.taraf ?? 'BELIRSIZ',
-          sorumlu: kalem.sorumlu ? String(kalem.sorumlu).trim() || null : null,
-          durum: 'YENI',
-          kaynak: 'UYAP_PDF',
-          kaynakRef,
-          guven,
-        },
-      })
-      eklendi++
+      try {
+        await prisma.masraf.create({
+          data: {
+            dosyaId: belge.dosyaId,
+            belgeId: belge.id,
+            tutar,
+            tarih,
+            dekontNo,
+            makbuzSayi: kalem.makbuzSayi ? String(kalem.makbuzSayi).trim() || null : null,
+            makbuzNo: kalem.makbuzNo ? String(kalem.makbuzNo).trim() || null : null,
+            cinsHam,
+            cins,
+            cinsGuven: guven,
+            taraf: kalem.taraf ?? 'BELIRSIZ',
+            sorumlu: kalem.sorumlu ? String(kalem.sorumlu).trim() || null : null,
+            durum: 'YENI',
+            kaynak: 'UYAP_PDF',
+            kaynakRef,
+            guven,
+          },
+        })
+        eklendi++
+      } catch (e) {
+        // eşzamanlı çağrıda unique çakışması (P2002) → mükerrer say, devam et (makbuzu yarım bırakma)
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') { atlandi++; continue }
+        throw e
+      }
     }
 
     await prisma.aktivite.create({

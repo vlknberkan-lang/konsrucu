@@ -7,10 +7,10 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LifeBuoy } from 'lucide-react'
-import { RAIL_NAV } from '@/lib/konsrucu/nav'
+import { RAIL_NAV, type NavCounts } from '@/lib/konsrucu/nav'
 import { KonsRucuMark } from '@/components/brand/konsrucu-mark'
 
-export function Rail({ userInit }: { userInit: string }) {
+export function Rail({ userInit, counts }: { userInit: string; counts?: NavCounts }) {
   const pathname = usePathname()
   return (
     <aside className="relative flex flex-col items-center gap-1.5 bg-[#0a1628] py-4 after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-white/[.06]">
@@ -22,6 +22,7 @@ export function Rail({ userInit }: { userInit: string }) {
         {RAIL_NAV.map((n) => {
           const active = pathname.startsWith(n.href)
           const Icon = n.icon
+          const rozet = n.id === 'onemli' ? counts?.onemli ?? 0 : 0
           return (
             <Link
               key={n.id}
@@ -37,6 +38,11 @@ export function Rail({ userInit }: { userInit: string }) {
                 <span className="absolute -left-4 top-1/2 h-[22px] w-1 -translate-y-1/2 rounded-r bg-white" />
               )}
               <Icon className="h-5 w-5" />
+              {rozet > 0 && (
+                <span className="font-mono absolute -right-0.5 -top-0.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold text-white ring-2 ring-[#0a1628]" title={`${rozet} açık önemli olay`}>
+                  {rozet > 9 ? '9+' : rozet}
+                </span>
+              )}
               <span className="pointer-events-none absolute left-14 top-1/2 z-40 -translate-y-1/2 whitespace-nowrap rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0a1628] opacity-0 shadow-pop transition group-hover:opacity-100">
                 {n.label}{!n.ready && ' · yakında'}
               </span>
