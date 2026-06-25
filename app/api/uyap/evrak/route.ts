@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { siniflandir } from '@/lib/konsrucu/belge-siniflandir'
 import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
+import { belgeBorcaItirazMi, onemliOlayTespit } from '@/lib/konsrucu/onemli-olay'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,10 +56,20 @@ export async function POST(req: Request) {
   if (upErr && !/already exists/i.test(upErr.message)) return corsJson({ ok: false, error: `yükleme: ${upErr.message}` }, 500)
 
   const snf = siniflandir({ dosyaAdi: `${dosyaAdi} ${body?.tur ?? ''}`.trim(), metin: null, foto: false })
-  await prisma.belge.create({
+  const belge = await prisma.belge.create({
     data: { dosyaId: dosya.id, kategori: snf.kategori as never, confidence: snf.guven, dosyaAdi, storagePath: sp, kaynakRef: uyapEvrakId },
+    select: { id: true },
   })
   await prisma.aktivite.create({ data: { dosyaId: dosya.id, kullaniciId: k.userId, eylem: `UYAP'tan evrak indi: ${dosyaAdi}` } })
+
+  // Borca itiraz dilekçesi indiyse → Önemli Olaylar kuyruğu (idempotent; tespit hatası evrak kaydını bozmaz).
+  if (belgeBorcaItirazMi(dosyaAdi) || belgeBorcaItirazMi(body?.tur)) {
+    try {
+      await onemliOlayTespit({ dosyaId: dosya.id, kaynakBelgeId: belge.id, baslik: dosyaAdi, kullaniciId: k.userId })
+    } catch {
+      /* sessiz — tespit başarısız olsa da evrak yüklendi */
+    }
+  }
 
   return corsJson({ ok: true, eklendi: true, kategori: snf.kategori })
 }

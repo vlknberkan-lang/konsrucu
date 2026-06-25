@@ -190,7 +190,9 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
                   const tutar = r.davaMiktari ?? r.rucuTutari
                   const borcluFazla = r.borclular.length - 1
                   const ilk = r.borclular[0]
-                  const am = ASAMA_META[durumAsama(r.durum)]
+                  const asamaKey = durumAsama(r.durum)
+                  const am = ASAMA_META[asamaKey]
+                  const takipAcik = asamaKey !== 'oncesi' || !!r.icraDosyaNo // takip açıldıysa zamanaşımı (takip açma için) kesilmiştir
                   // güncel aşamanın esas/dosya no'su (DEVAM eden aşama; yoksa son; icra fallback)
                   const guncelAsama = [...r.asamalar].reverse().find((a) => a.durum === 'DEVAM') ?? r.asamalar[r.asamalar.length - 1] ?? null
                   const esasNo = guncelAsama?.kimlikNo ?? r.icraDosyaNo ?? null
@@ -234,11 +236,15 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
                         <Badge tone={am.tone} dot>{am.label}</Badge>
                         {esasNo && <div className="font-mono mt-1 truncate text-[10.5px] text-muted-foreground" title={esasNo}>{esasNo}</div>}
                       </div>
-                      {/* zaman aşımı — renk kodlu */}
+                      {/* zaman aşımı — takip açıldıysa kesildiği için nötr (—) gösterilir */}
                       <div>
-                        <Badge tone={za.tone} dot={za.tone === 'danger' || za.tone === 'warning'}>
-                          <span className="font-mono text-[10.5px]">{za.label}</span>
-                        </Badge>
+                        {takipAcik ? (
+                          <span className="font-mono text-[11px] text-muted-foreground/60" title="İcra takibi açıldı — zamanaşımı kesildi">—</span>
+                        ) : (
+                          <Badge tone={za.tone} dot={za.tone === 'danger' || za.tone === 'warning'}>
+                            <span className="font-mono text-[10.5px]">{za.label}</span>
+                          </Badge>
+                        )}
                       </div>
                       {/* dava miktarı */}
                       <div className="font-mono text-right text-[12.5px] font-bold">{tutar ? money(Number(tutar)) : '—'}</div>

@@ -5,6 +5,7 @@
  */
 import { Prisma, DosyaDurum } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { borcaItirazMi, onemliOlayTespit } from '@/lib/konsrucu/onemli-olay'
 
 export const OLAY_TIPLERI = ['TEBLIG', 'ITIRAZ', 'KESINLESTI', 'TAHSILAT', 'HACIZ', 'KAPANDI', 'DURUM'] as const
 export type OlayTip = (typeof OLAY_TIPLERI)[number]
@@ -33,5 +34,15 @@ export async function takipOlayKaydet(
     prisma.aktivite.create({ data: { dosyaId, kullaniciId, eylem: `Takip olayı: ${OLAY_ETIKET[o.tip] ?? o.tip}${o.tutar != null ? ` · ${o.tutar} TL` : ''}` } }),
   ]
   if (yeniDurum) ops.unshift(prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { durum: yeniDurum } }))
-  await prisma.$transaction(ops)
+  const res = await prisma.$transaction(ops)
+
+  // Borca itiraz → Önemli Olaylar kuyruğu (idempotent; tespit hatası olay kaydını bozmaz).
+  if (borcaItirazMi(o.tip, o.aciklama)) {
+    const olayId = (res[yeniDurum ? 1 : 0] as { id?: string } | undefined)?.id ?? null
+    try {
+      await onemliOlayTespit({ dosyaId, tetikTarihi: o.tarih, kaynakOlayId: olayId, baslik: o.aciklama ?? 'Borca itiraz', kullaniciId })
+    } catch {
+      /* tespit başarısız olsa da takip olayı kaydı geçerli kalır */
+    }
+  }
 }

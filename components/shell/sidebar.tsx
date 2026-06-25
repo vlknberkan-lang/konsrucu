@@ -8,14 +8,14 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronsUpDown } from 'lucide-react'
-import { RAIL_NAV, type ShellTenant } from '@/lib/konsrucu/nav'
+import { RAIL_NAV, type ShellTenant, type NavCounts } from '@/lib/konsrucu/nav'
 import { KonsRucuWordmark } from '@/components/brand/konsrucu-mark'
 
 function GLabel({ children }: { children: React.ReactNode }) {
   return <div className="font-mono px-2.5 pb-1.5 pt-3 text-[9px] uppercase tracking-[0.14em] text-muted-foreground">{children}</div>
 }
 
-export function Sidebar({ tenant }: { tenant: ShellTenant | null }) {
+export function Sidebar({ tenant, counts }: { tenant: ShellTenant | null; counts?: NavCounts }) {
   const pathname = usePathname()
   const item = 'flex w-full items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-[13.5px] font-medium transition'
   const off = 'text-foreground hover:bg-surface-muted'

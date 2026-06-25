@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/taksit-hatirlatma",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/masraf-ozet",
+      "schedule": "0 17 * * 2,4"
     }
   ]
 }

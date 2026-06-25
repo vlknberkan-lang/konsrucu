@@ -126,6 +126,34 @@ enum TaksitDurum {
   GECIKTI
 }
 
+// masraf/harç takibi (müvekkile faturalanacak icra masrafları) — makbuz PDF'inden çıkarılır + manuel
+enum MasrafDurum {
+  YENI
+  ONAYLI
+  FATURALANDI
+  TAHSIL
+  ARSIV
+}
+
+enum MasrafTaraf {
+  BIZ // bizim/müvekkil-büro ödemesi → faturalanır
+  KARSI // karşı taraf masrafı → HARİÇ
+  BELIRSIZ // belirlenemedi → kullanıcı karar verir (otomatik dahil edilmez)
+}
+
+// önemli olay (görev/alarm kuyruğu) — şimdilik tek tip: borca itiraz → arabuluculuk. Genişletilebilir.
+enum OnemliOlayTip {
+  BORCA_ITIRAZ
+}
+
+// Açık → İşlemde (üstlenildi/kilitli) → Tamamlandı (resmî teyit) | İptal (mükerrer/yanlış)
+enum OnemliOlayDurum {
+  ACIK
+  ISLEMDE
+  TAMAMLANDI
+  IPTAL
+}
+
 // ─────────────────── tenant / kullanıcı ───────────────────
 model Musteri {
   id           String             @id @default(uuid())
@@ -147,6 +175,7 @@ model Kullanici {
   createdAt      DateTime           @default(now())
   musteriler     MusteriKullanici[]
   atananDosyalar RucuDosyasi[]      @relation("AtananKullanici")
+  onemliOlaylar  OnemliOlay[]       @relation("OnemliOlaySorumlu")
   notlar         Not[]
   aktiviteler    Aktivite[]
 }
@@ -162,31 +191,36 @@ model MusteriKullanici {
 
 // ─────────────────── şirket bilgileri (her müşteriye ayrı) ───────────────────
 model Ayarlar {
-  id             String   @id @default(uuid())
-  musteriId      String   @unique
-  musteri        Musteri  @relation(fields: [musteriId], references: [id], onDelete: Cascade)
-  alacakliUnvan  String?
-  mersis         String?
-  vekilAd        String?
-  vekilAdres     String?
-  iban           String?
-  kep            String?
-  eposta         String?
-  aciklamaFooter String? // ör. "K/Partners: ..."
-  faizJson       Json? // dönemsel kanuni faiz oranları
-  vekilBaro      String?
-  faizTuru       String?  @default("Yasal faiz")
+  id                 String   @id @default(uuid())
+  musteriId          String   @unique
+  musteri            Musteri  @relation(fields: [musteriId], references: [id], onDelete: Cascade)
+  alacakliUnvan      String?
+  mersis             String?
+  vekilAd            String?
+  vekilAdres         String?
+  iban               String?
+  kep                String?
+  eposta             String?
+  aciklamaFooter     String? // ör. "K/Partners: ..."
+  faizJson           Json? // dönemsel kanuni faiz oranları
+  vekilBaro          String?
+  faizTuru           String?  @default("Yasal faiz")
   // Dava dilekçesi sabitleri (Ray + vekil künyesi)
-  davaciVkn      String? // ör. 7340039798
-  davaciAdres    String? // Ray açık adres
-  vekilUets      String? // vekil UETS no
-  icraInkarOrani String?  @default("20")
+  davaciVkn          String? // ör. 7340039798
+  davaciAdres        String? // Ray açık adres
+  vekilUets          String? // vekil UETS no
+  icraInkarOrani     String?  @default("20")
   // vekaletname — TÜM dosyalarda ortak tek belge (değişmez); Storage 'evrak' bucket yolu
-  vekaletnamePath String?
-  vekaletnameAd   String?
+  vekaletnamePath    String?
+  vekaletnameAd      String?
   // UYAP eklenti senkron anahtarı (Bearer) — eklentiye bir kez yapıştırılır, tenant'a bağlar
-  senkronToken   String?  @unique
-  updatedAt      DateTime @updatedAt
+  senkronToken       String?  @unique
+  // masraf modülü — öğrenilen cins eşleştirme sözlüğü (ham açıklama → 63 kalem) + modül ayarları
+  masrafEslestirJson Json? // { "basvurma harci": "Başvuru Harcı", ... } (normalize edilmiş anahtar)
+  masrafJson         Json? // { eposta?: string[], gonderimSaatiUtc?: number, varsayilanSorumlu?: string }
+  // önemli olay (borca itiraz tespiti) — tetik desen override'ı + ileride süre kuralı; kod varsayılanı yeterli
+  onemliOlayAyarJson Json? // { tetikDesenler?: string[] }
+  updatedAt          DateTime @updatedAt
 }
 
 // ─────────────────── proje (müşteri altı; alacaklı/faiz override'ı) ───────────────────
@@ -220,13 +254,13 @@ model RucuDosyasi {
   proje   Proje?  @relation(fields: [projeId], references: [id])
 
   // kimlik
-  hukukDosyaNo   String?
-  hasarDosyaNo   String?
-  hasarTarihi    DateTime?
-  sigortaliUnvan String?
+  hukukDosyaNo     String?
+  hasarDosyaNo     String?
+  hasarTarihi      DateTime?
+  sigortaliUnvan   String?
   sigortaliTelefon String?
-  il             String?
-  muhatapOzet    String?
+  il               String?
+  muhatapOzet      String?
 
   // rücu
   brans      Brans?
@@ -302,6 +336,8 @@ model RucuDosyasi {
   asamalar       Asama[]
   etkinlikler    Etkinlik[]
   taksitPlanlari TaksitPlani[]
+  masraflar      Masraf[]
+  onemliOlaylar  OnemliOlay[]
   notlar         Not[]
   aktiviteler    Aktivite[]
 
@@ -340,6 +376,57 @@ model Odeme {
   @@index([dosyaId])
 }
 
+// masraf/harç kaydı — müvekkile (Ray) faturalanacak icra masrafı. Makbuz PDF'inden çıkarılır + manuel girilebilir.
+// Faiz/alacak hesabına KARIŞMAZ (Odeme'den ayrı) — saf masraf-faturalama izi.
+model Masraf {
+  id      String      @id @default(uuid())
+  dosyaId String
+  dosya   RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  asamaId String? // hangi aşamanın masrafı (icra/dava…) — bilgi amaçlı
+  asama   Asama?      @relation(fields: [asamaId], references: [id], onDelete: SetNull)
+
+  // makbuz kimliği (Excel: B=DEKONT NO; "Sayı"/"No" mükerrer masraf fişi alanları)
+  dekontNo   String?
+  makbuzSayi String?
+  makbuzNo   String?
+
+  // tutar + tarih (sıralama esası = tarih, içe-aktarım tarihi DEĞİL → B4)
+  tutar Decimal   @db.Decimal(14, 2)
+  tarih DateTime?
+
+  // cins (Sayfa2'deki 63 sabit kalem) — ham açıklama + eşleşmiş kalem + güven (B2)
+  cinsHam   String?
+  cins      String? // 63 kalemden biri (MASRAF_CINSLERI). null = "Eşleştirilmedi"
+  cinsGuven Float?
+
+  // kendi taraf filtresi (B1) + Excel K=SORUMLU sütunu
+  taraf   MasrafTaraf @default(BELIRSIZ)
+  sorumlu String?
+
+  // makbuz görseli (Belge — Supabase 'evrak' bucket). doluysa "Belgeli"
+  belgeId String?
+  belge   Belge?  @relation(fields: [belgeId], references: [id], onDelete: SetNull)
+
+  // durum akışı (Yeni→Onaylı→Faturalandı→Tahsil / Arşiv) + faturalama izi
+  durum        MasrafDurum @default(YENI)
+  faturaDonem  String? // faturalandığı dönem (ör. "2026-W26")
+  faturaTarihi DateTime?
+
+  // köken + mükerrerlik (B3) + çıkarım güveni
+  kaynak    String  @default("MANUEL") // MANUEL / UYAP_PDF / TOPLU
+  kaynakRef String? // içerik-temelli dedup anahtarı (dekontNo|cinsHam|tutar|tarih) — aynı makbuz iki kez girmez
+  guven     Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dosyaId, kaynakRef])
+  @@index([dosyaId])
+  @@index([durum])
+  @@index([tarih])
+  @@index([taraf])
+}
+
 model Belge {
   id            String        @id @default(uuid())
   dosyaId       String
@@ -356,6 +443,7 @@ model Belge {
   kaynakRef     String? // dış kaynak referansı (ör. UYAP evrakId) — otomatik içe aktarımda tekrarı önler
   createdAt     DateTime      @default(now())
   ciktiBaglari  CiktiKaynak[]
+  masraflar     Masraf[] // bu belge bir makbuz ise: ondan çıkan masraf kalemleri
 
   @@index([dosyaId])
   @@index([kategori])
@@ -401,26 +489,67 @@ model TakipOlayi {
   @@index([dosyaId])
 }
 
+// önemli olay — yüksek öncelikli görev/alarm kuyruğu (borca itiraz → arabuluculuk iş akışı).
+// TakipOlayi (ham log) ve Asama (hukuki evre) ile karışmaz; bağımsız görev kaydı.
+model OnemliOlay {
+  id      String          @id @default(uuid())
+  dosyaId String
+  dosya   RucuDosyasi     @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  tip     OnemliOlayTip   @default(BORCA_ITIRAZ)
+  durum   OnemliOlayDurum @default(ACIK)
+
+  // tetikleyici iz (olaydan ve/veya evraktan tespit)
+  kaynakOlayId  String? // TakipOlayi.id
+  kaynakBelgeId String? // Belge.id
+  tetikTarihi   DateTime // itiraz/tebliğ tarihi (tespit anı default)
+  baslik        String? // "Borca itiraz — ödeme emrine"
+  sonTarih      DateTime? // ELLE girilir (otomatik kural yok); doluysa renk kodu
+
+  // atama — manuel üstlenme (kilitle)
+  sorumluId    String?
+  sorumlu      Kullanici? @relation("OnemliOlaySorumlu", fields: [sorumluId], references: [id])
+  ustlenildiAt DateTime?
+
+  // tekillik (mükerrerlik önleme) = dosya + tip + tetik GÜNÜ → olay+evrak aynı itirazda tek kayıt
+  tekilAnahtar String @unique
+
+  // tamamlama (resmî sistem teyidi)
+  basvuruNo     String?
+  basvuruTarihi DateTime?
+  arabulucu     String?
+  tamamlayanId  String?
+  tamamlanmaAt  DateTime?
+  not           String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dosyaId])
+  @@index([durum])
+  @@index([sorumluId])
+}
+
 // aşama omurgası — dosyaya biriken evreler (İcra → Arabuluculuk → Dava → İnfaz). Aynı dosya, biriken kayıt.
 model Asama {
-  id          String      @id @default(uuid())
-  dosyaId     String
-  dosya       RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
-  tur         AsamaTur
-  durum       AsamaDurum  @default(DEVAM)
-  sonuc       String? // anlasildi | anlasilmadi | itiraz | kabul | ret | kesinlesti...
-  kimlikNo    String? // icra no / arabuluculuk no / dava esas no
-  birim       String? // icra dairesi / arabuluculuk bürosu / mahkeme
-  baslangic   DateTime?
-  bitis       DateTime?
-  tutar       Decimal?    @db.Decimal(14, 2)
-  ozet        String?     @db.Text
-  detayJson   Json? // türe özel alanlar (arabulucu, bilirkişi, hakim…)
-  sira        Int         @default(0)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  etkinlikler Etkinlik[]
+  id             String        @id @default(uuid())
+  dosyaId        String
+  dosya          RucuDosyasi   @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  tur            AsamaTur
+  durum          AsamaDurum    @default(DEVAM)
+  sonuc          String? // anlasildi | anlasilmadi | itiraz | kabul | ret | kesinlesti...
+  kimlikNo       String? // icra no / arabuluculuk no / dava esas no
+  birim          String? // icra dairesi / arabuluculuk bürosu / mahkeme
+  baslangic      DateTime?
+  bitis          DateTime?
+  tutar          Decimal?      @db.Decimal(14, 2)
+  ozet           String?       @db.Text
+  detayJson      Json? // türe özel alanlar (arabulucu, bilirkişi, hakim…)
+  sira           Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  etkinlikler    Etkinlik[]
   taksitPlanlari TaksitPlani[]
+  masraflar      Masraf[]
 
   @@index([dosyaId])
   @@index([tur])
@@ -451,16 +580,16 @@ model TaksitPlani {
 
 // tek taksit — vade + tutar + ödeme/hatırlatma izi
 model Taksit {
-  id          String      @id @default(uuid())
-  planId      String
-  plan        TaksitPlani @relation(fields: [planId], references: [id], onDelete: Cascade)
-  sira        Int // 1, 2, 3 … (1/6, 2/6)
-  vadeTarihi  DateTime
-  tutar       Decimal     @db.Decimal(14, 2)
-  durum       TaksitDurum @default(BEKLIYOR)
-  odenenTutar Decimal?    @db.Decimal(14, 2) // kısmi ödeme için
-  odemeId     String? // ödeme gerçekleşince Odeme kaydına bağ
-  odendiTarih DateTime?
+  id                     String      @id @default(uuid())
+  planId                 String
+  plan                   TaksitPlani @relation(fields: [planId], references: [id], onDelete: Cascade)
+  sira                   Int // 1, 2, 3 … (1/6, 2/6)
+  vadeTarihi             DateTime
+  tutar                  Decimal     @db.Decimal(14, 2)
+  durum                  TaksitDurum @default(BEKLIYOR)
+  odenenTutar            Decimal?    @db.Decimal(14, 2) // kısmi ödeme için
+  odemeId                String? // ödeme gerçekleşince Odeme kaydına bağ
+  odendiTarih            DateTime?
   hatirlatmaGonderildiAt DateTime? // yaklaşan-vade hatırlatması (mükerrer önleme)
   gecikmeBildirildiAt    DateTime? // vade-geçti uyarısı (bir kez)
 
@@ -471,25 +600,25 @@ model Taksit {
 
 // takvim olayı — toplantı / duruşma / süre / hatırlatma (dosyaya + aşamaya bağlı)
 model Etkinlik {
-  id           String        @id @default(uuid())
-  dosyaId      String
-  dosya        RucuDosyasi   @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
-  asamaId      String?
-  asama        Asama?        @relation(fields: [asamaId], references: [id], onDelete: SetNull)
-  tur          EtkinlikTur
-  baslik       String
-  baslar       DateTime
-  biter        DateTime?
-  tumGun       Boolean       @default(false)
-  yer          String?
-  online       Boolean       @default(false)
-  durum        EtkinlikDurum @default(PLANLANDI)
-  sonucNot     String?       @db.Text
-  sorumluId    String? // atanan avukat (Kullanici.id)
-  hatirlatmaDk Int?
+  id                     String        @id @default(uuid())
+  dosyaId                String
+  dosya                  RucuDosyasi   @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  asamaId                String?
+  asama                  Asama?        @relation(fields: [asamaId], references: [id], onDelete: SetNull)
+  tur                    EtkinlikTur
+  baslik                 String
+  baslar                 DateTime
+  biter                  DateTime?
+  tumGun                 Boolean       @default(false)
+  yer                    String?
+  online                 Boolean       @default(false)
+  durum                  EtkinlikDurum @default(PLANLANDI)
+  sonucNot               String?       @db.Text
+  sorumluId              String? // atanan avukat (Kullanici.id)
+  hatirlatmaDk           Int?
   hatirlatmaGonderildiAt DateTime? // hatırlatma e-postası gönderildiyse zaman damgası (mükerrer gönderimi önler)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
 
   @@index([dosyaId])
   @@index([tur])

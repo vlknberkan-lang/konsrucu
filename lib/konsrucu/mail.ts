@@ -5,7 +5,13 @@
  */
 import nodemailer from 'nodemailer'
 
-export type MailGirdi = { to: string | string[]; konu: string; html: string; text?: string }
+export type MailGirdi = {
+  to: string | string[]
+  konu: string
+  html: string
+  text?: string
+  attachments?: { filename: string; content: Buffer | string; contentType?: string }[]
+}
 
 function fromAdresi(): string {
   const eposta = process.env.EMAIL_FROM || 'no-reply@localhost'
@@ -19,7 +25,7 @@ export async function mailGonder(g: MailGirdi): Promise<{ ok: boolean; id?: stri
   if (!to) return { ok: false, error: 'Alıcı (to) boş' }
 
   if (servis === 'console') {
-    console.log('[mail:console]', { to, konu: g.konu, htmlUzunluk: g.html.length })
+    console.log('[mail:console]', { to, konu: g.konu, htmlUzunluk: g.html.length, ek: g.attachments?.length ?? 0 })
     return { ok: true, id: 'console' }
   }
 
@@ -46,7 +52,7 @@ export async function mailGonder(g: MailGirdi): Promise<{ ok: boolean; id?: stri
           greetingTimeout: 10_000,
           requireTLS: !d.secure,
         })
-        const info = await transport.sendMail({ from: fromAdresi(), to, subject: g.konu, html: g.html, text: g.text })
+        const info = await transport.sendMail({ from: fromAdresi(), to, subject: g.konu, html: g.html, text: g.text, ...(g.attachments?.length ? { attachments: g.attachments } : {}) })
         return { ok: true, id: info.messageId }
       } catch (e) {
         hatalar.push(`:${d.port} → ${(e as Error).message}`)

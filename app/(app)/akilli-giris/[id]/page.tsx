@@ -25,6 +25,7 @@ import { OnayButonu } from '@/components/akilli-giris/detay/onay-butonu'
 import { TakipSureci } from '@/components/akilli-giris/detay/takip-sureci'
 import { UyapXmlButon } from '@/components/akilli-giris/detay/uyap-xml-buton'
 import { AsamaPanel } from '@/components/akilli-giris/detay/asama-panel'
+import { ArabuluculukBaslat } from '@/components/akilli-giris/detay/arabuluculuk-baslat'
 import { TaksitPanel, type PlanUI } from '@/components/akilli-giris/detay/taksit-panel'
 import { SurecSerit } from '@/components/akilli-giris/detay/surec-serit'
 import { DosyaSor } from '@/components/akilli-giris/detay/dosya-sor'
@@ -69,7 +70,7 @@ function Kv({ label, value, mono, strong }: { label: string; value: React.ReactN
   )
 }
 
-export default async function DosyaDetayPage({ params, searchParams }: { params: { id: string }; searchParams: { asama?: string } }) {
+export default async function DosyaDetayPage({ params, searchParams }: { params: { id: string }; searchParams: { asama?: string; olay?: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -90,6 +91,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
       asamalar: { orderBy: { sira: 'asc' } },
       etkinlikler: { orderBy: { baslar: 'asc' } },
       taksitPlanlari: { include: { taksitler: { orderBy: { sira: 'asc' } } }, orderBy: { createdAt: 'desc' } },
+      onemliOlaylar: { where: { durum: { in: ['ACIK', 'ISLEMDE'] } }, orderBy: { tetikTarihi: 'asc' }, include: { sorumlu: { select: { id: true, ad: true } } } },
     },
   })
   if (!dosya) notFound()
@@ -151,6 +153,29 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   // Dava sekmesi için mevcut dilekçe taslağı (UretilenCikti · DILEKCE)
   const dilekceCikti = aktifSekme === 'dava'
     ? await prisma.uretilenCikti.findFirst({ where: { dosyaId: dosya.id, tip: 'DILEKCE' }, orderBy: { createdAt: 'desc' }, select: { id: true, icerik: true, durum: true } })
+    : null
+
+  // Önemli Olay (borca itiraz) — arabuluculuk sekmesinde "başvuru hazırlığı + tamamla" paneli
+  const acikOlaylar = dosya.onemliOlaylar
+  const secOlay = (searchParams.olay ? acikOlaylar.find((o) => o.id === searchParams.olay) : null) ?? acikOlaylar[0] ?? null
+  const arabuluculukOlayProps = secOlay
+    ? {
+        olayId: secOlay.id,
+        durum: secOlay.durum as 'ACIK' | 'ISLEMDE',
+        mine: secOlay.sorumlu?.id === dbUser.id,
+        sorumluAd: secOlay.sorumlu?.ad ?? null,
+        alacakli: {
+          unvan: ayarlar?.alacakliUnvan ?? null,
+          mersisVkn: ayarlar?.mersis ?? ayarlar?.davaciVkn ?? null,
+          adres: ayarlar?.davaciAdres ?? ayarlar?.vekilAdres ?? null,
+          vekil: ayarlar?.vekilAd ?? null,
+          vekilAdres: ayarlar?.vekilAdres ?? null,
+        },
+        borclular: dosya.borclular.map((b) => ({ adUnvan: b.adUnvan, tcVkn: b.tcVkn, adres: b.adres })),
+        icra: { daire: dosya.icraDairesi ?? dosya.yetkiliIcra ?? null, dosyaNo: dosya.icraDosyaNo ?? null, hukukNo: dosya.hukukDosyaNo ?? null },
+        alacak: { tutar: fmtTRY(faizToplam ?? faizAnapara), konu: dosya.rucuSebebi ?? null },
+        prefill: { basvuruNo: aktifAsama?.kimlikNo ?? null, bugun },
+      }
     : null
 
   const tahsilEdilen = dosya.olaylar.filter((o) => o.tip === 'TAHSILAT').reduce((s, o) => s + (o.tutar != null ? Number(o.tutar) : 0), 0)
@@ -320,16 +345,19 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
       <SurecSerit asamalar={serit} aktif={aktifSekme} guncelSekme={guncelSekme} icraNo={dosya.icraDosyaNo} />
       <DosyaSor dosyaId={dosya.id} />
       {aktifSekme !== 'oncesi' ? (
-        <AsamaPanel
-          sekme={aktifSekme}
-          dosyaId={dosya.id}
-          asama={aktifAsama}
-          etkinlikler={aktifEtkinlikler}
-          prefill={aktifSekme === 'icra' ? { no: dosya.icraDosyaNo, birim: dosya.icraDairesi ?? dosya.yetkiliIcra } : undefined}
-          takip={takipProp}
-          dilekce={dilekceCikti}
-          taksit={{ plan: taksitPlanUI, asamaId: aktifAsama?.id ?? null, bugun }}
-        />
+        <>
+          {aktifSekme === 'arabuluculuk' && arabuluculukOlayProps && <ArabuluculukBaslat {...arabuluculukOlayProps} />}
+          <AsamaPanel
+            sekme={aktifSekme}
+            dosyaId={dosya.id}
+            asama={aktifAsama}
+            etkinlikler={aktifEtkinlikler}
+            prefill={aktifSekme === 'icra' ? { no: dosya.icraDosyaNo, birim: dosya.icraDairesi ?? dosya.yetkiliIcra } : undefined}
+            takip={takipProp}
+            dilekce={dilekceCikti}
+            taksit={{ plan: taksitPlanUI, asamaId: aktifAsama?.id ?? null, bugun }}
+          />
+        </>
       ) : (
         <>
       {/* durum pipeline */}
