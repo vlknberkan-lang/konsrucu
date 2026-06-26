@@ -2,11 +2,10 @@
  * KonsRücü — Dosya Detay · aşama paneli (İcra/Arabuluculuk/Dava/İnfaz)
  * Aşama no/birim/tarih kaydı + sonuçlandır + etkinlik (toplantı/duruşma) ekleme & listesi.
  */
-import { Check, CalendarPlus, MapPin, Flag, Bell, CreditCard } from 'lucide-react'
+import { Check, CalendarPlus, MapPin, Flag, Bell } from 'lucide-react'
 import { asamaKaydet, asamaSonuclandir, etkinlikKaydet } from '@/app/(app)/akilli-giris/actions'
-import { TakipSureci, type OlayUI, type EvrakUI, type UyapBilgi } from './takip-sureci'
+import { TakipSureci, type OlayUI, type UyapBilgi } from './takip-sureci'
 import { DilekcePanel, type DilekceCikti } from './dilekce-panel'
-import { TaksitPanel, type PlanUI } from './taksit-panel'
 
 type Sekme = 'icra' | 'arabuluculuk' | 'dava' | 'infaz'
 type Asama = { id: string; kimlikNo: string | null; birim: string | null; baslangic: Date | null; ozet: string | null; durum: string; sonuc: string | null }
@@ -35,16 +34,14 @@ export function AsamaPanel({
   prefill,
   takip,
   dilekce,
-  taksit,
 }: {
   sekme: Sekme
   dosyaId: string
   asama: Asama | null
   etkinlikler?: Etkinlik[]
   prefill?: { no?: string | null; birim?: string | null }
-  takip: { durum: string; olaylar: OlayUI[]; bakiye: { toplam: number; tahsil: number; kalan: number }; uyap: UyapBilgi; evraklar: EvrakUI[] }
+  takip: { durum: string; olaylar: OlayUI[]; bakiye: { toplam: number; tahsil: number; kalan: number }; uyap: UyapBilgi }
   dilekce?: DilekceCikti | null
-  taksit?: { plan: PlanUI | null; asamaId: string | null; bugun: string }
 }) {
   const m = META[sekme]
   const bitti = asama?.durum === 'SONUCLANDI'
@@ -140,27 +137,14 @@ export function AsamaPanel({
         </form>
       </div>
 
-      {/* taksit planı & ödeme hatırlatma (sulh/anlaşma sonrası) */}
-      {taksit && (
-        <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
-          <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-3">
-            <CreditCard className="h-4 w-4 text-kr" />
-            <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground">Taksit planı · ödeme hatırlatma</span>
-          </div>
-          <div className="px-5 py-4">
-            <TaksitPanel dosyaId={dosyaId} asamaId={taksit.asamaId} plan={taksit.plan} bugun={taksit.bugun} />
-          </div>
-        </div>
-      )}
-
-      {/* UYAP izleme + zaman çizelgesi (durum/finansal/evrak/olay) — tüm aşamalarda */}
+      {/* UYAP izleme + zaman çizelgesi (durum/finansal/olay) — tüm aşamalarda.
+          UYAP evrakları ve taksit artık Belge & Veri şeridindeki kendi kovalarında. */}
       <TakipSureci
         dosyaId={dosyaId}
         durum={takip.durum}
         olaylar={takip.olaylar}
         bakiye={takip.bakiye}
         uyap={takip.uyap}
-        evraklar={takip.evraklar}
         kicker="UYAP İZLEME · ZAMAN ÇİZELGESİ"
       />
     </section>
