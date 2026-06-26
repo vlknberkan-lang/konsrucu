@@ -22,6 +22,7 @@ import { CikarimDuzenle } from '@/components/akilli-giris/detay/cikarim-duzenle'
 import { MentorGeriBildirim } from '@/components/akilli-giris/detay/mentor-geri-bildirim'
 import { AciklamaDuzenle } from '@/components/akilli-giris/detay/aciklama-duzenle'
 import { BorclularDuzenle } from '@/components/akilli-giris/detay/borclular-duzenle'
+import { KaynakIzi } from '@/components/akilli-giris/detay/kaynak-izi'
 import { OnayButonu } from '@/components/akilli-giris/detay/onay-butonu'
 import { TakipSureci } from '@/components/akilli-giris/detay/takip-sureci'
 import { UyapXmlButon } from '@/components/akilli-giris/detay/uyap-xml-buton'
@@ -304,6 +305,27 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   }
   const borclularUi = dosya.borclular.map((b) => ({ id: b.id, adUnvan: b.adUnvan, tcVkn: b.tcVkn ?? '', telefon: b.telefon ?? '', adres: b.adres ?? '', rol: b.rol as string, kaynak: b.kaynak ?? '', teyit: b.teyitDurumu as string }))
 
+  // Alan-kaynak izi (şeffaflık): çıkarılan her bilgiyi tipik kaynak belge kategorisine bağla; o kategorideki
+  // GERÇEK belgeleri (açılabilir) göster. Bazı alanlar belgeden değil türetilir (yetkili icra ← kaza yeri;
+  // zamanaşımı ← hasar tarihi). Eşleşen belge yoksa bileşen "AI metinden çıkardı" der.
+  const belgeKaynak = (kats: string[]) =>
+    dosya.belgeler.filter((b) => kats.includes(b.kategori as string)).map((b) => ({ id: b.id, dosyaAdi: b.dosyaAdi, kategori: b.kategori as string, acilabilir: !!b.storagePath }))
+  const ktKaza = dosya.kazaTarihi ?? dosya.hasarTarihi
+  const kaynakRows = ([
+    { alan: 'Branş', deger: dosya.brans, kats: ['POLICE'] },
+    { alan: 'Sigortalı plaka', deger: dosya.sigortaliPlaka, kats: ['RUHSAT', 'POLICE'] },
+    { alan: 'Karşı taraf plaka', deger: dosya.karsiPlaka, kats: ['RUHSAT', 'TUTANAK'] },
+    { alan: 'Kusur durumu', deger: dosya.kusurDurumu, kats: ['TUTANAK', 'EKSPERTIZ'] },
+    { alan: 'Oluş şekli', deger: dosya.olusSekli, kats: ['TUTANAK'] },
+    { alan: 'Kaza yeri', deger: dosya.kazaYeri || dosya.il, kats: ['TUTANAK', 'POLICE'] },
+    { alan: 'Asıl alacak / rücu tutarı', deger: anapara != null ? fmtTRY(anapara) : null, kats: ['DEKONT', 'EKSPERTIZ'] },
+    { alan: 'Kaza tarihi', deger: ktKaza ? fmtDate(ktKaza) : null, kats: ['TUTANAK', 'POLICE'] },
+    { alan: 'Yetkili icra dairesi', deger: dosya.yetkiliIcra, turetilmis: 'Kaza yeri → Adli Rehber (otomatik eşleme)' },
+    { alan: 'Zamanaşımı', deger: dosya.zamanasimi ? fmtDate(dosya.zamanasimi) : null, turetilmis: 'Hasar tarihi + branş zamanaşımı süresi (hesaplanan)' },
+  ] as { alan: string; deger: string | null; kats?: string[]; turetilmis?: string }[])
+    .filter((r) => !!r.deger)
+    .map((r) => ({ alan: r.alan, deger: r.deger as string, turetilmis: r.turetilmis ?? null, belgeler: r.kats ? belgeKaynak(r.kats) : [] }))
+
   const TIP_META: Record<TL['tip'], { icon: typeof Clock; cls: string }> = {
     not: { icon: StickyNote, cls: 'bg-kr-soft text-kr-ink' },
     aktivite: { icon: Clock, cls: 'bg-surface-muted text-muted-foreground' },
@@ -417,8 +439,13 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
       <div className="dd-grid mt-5">
         {/* SOL KOLON — Hasar evrakı, UYAP evrakı ve taksit artık üstteki "Belge & Veri" şeridinin kovalarında. */}
         <div className="flex flex-col gap-[18px]">
-          {/* 1 · AI ÇIKARIM */}
-          <Section kicker="1 · AI ÇIKARIM" title="Yapay Zeka Çıkarımı" accent="text-kr" sub="Yüklü evraktan borçlular, durum önerisi, özet ve riskler çıkarılır. Çıkarım motoru: bizim AI asistanı (Katman 3)." right={cikarimVar ? <AiCikarButton dosyaId={dosya.id} variant="ghost" icon="reset" size="sm" label="Yeniden çalıştır" /> : undefined}>
+          {/* 1 · BORÇLULAR — en üstte (sonuç: takip kime açılacak) */}
+          <Section kicker="1 · BORÇLULAR" title="Borçlular" sub="İcra takibinin açılacağı kişiler. AI çıkardı; elle düzeltilebilir/eklenebilir. Sürücü ve araç sahibi farklıysa müteselsil sorumluluk için ikisi de eklenir.">
+            <BorclularDuzenle dosyaId={dosya.id} borclular={borclularUi} />
+          </Section>
+
+          {/* 2 · DOSYA BİLGİLERİ — çıkarılan gerçekler + düzenleme + UYAP takip açıklaması */}
+          <Section kicker="2 · DOSYA BİLGİLERİ" title="Dosya Bilgileri" sub="Dosyanın künyesi: branş, kusur, tutar, plakalar, tarihler ve yetkili icra. AI evraktan çıkardı; her alan elle düzeltilebilir. Bu bilgilere nereden vardığımız en alttaki “Kaynak & Gerekçe”de.">
             <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-border-subtle bg-surface-muted/40 px-3.5 py-2.5">
               <span className="text-[12px] text-muted-foreground">AI'ın çıkardığı alanlar <b className="text-foreground">elle düzeltilebilir</b> — takip öncesi her şeyi kontrol edin.</span>
               <CikarimDuzenle dosyaId={dosya.id} v={alanlarV} />
@@ -431,6 +458,76 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
                 {evrakVar ? <AiCikarButton dosyaId={dosya.id} label="Çıkarım Yap" /> : <button type="button" disabled className="inline-flex cursor-not-allowed items-center gap-2 rounded-[10px] bg-kr px-4 py-2.5 text-[13px] font-semibold text-kr-foreground opacity-60"><Sparkles className="h-4 w-4" /> Çıkarım Yap</button>}
               </div>
             ) : (
+              <div className="flex flex-col gap-4">
+                {alanlar.length > 0 && (
+                  <div>
+                    <div className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Çıkarılan Alanlar</div>
+                    <div className="overflow-hidden rounded-xl border border-border">
+                      {alanlar.map(([k, v], i) => (
+                        <div key={k} className={`flex items-center gap-3 p-[10px_13px] ${i > 0 ? 'border-t border-border-subtle' : ''}`}>
+                          <span className="w-[168px] shrink-0 text-[12px] text-muted-foreground">{k}</span>
+                          <span className="flex-1 text-[13px] font-semibold text-foreground">{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="rounded-xl border border-border-subtle bg-surface-muted/50 p-[13px_15px]">
+                  <div className="flex items-center gap-2"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">UYAP Takip Açıklaması</div><span className="ml-auto"><Kopyala metin={aciklamaMetni} /></span></div>
+                  <AciklamaDuzenle
+                    dosyaId={dosya.id}
+                    init={cj.aciklama ?? ''}
+                    alan={{
+                      kazaTarihi: (dosya.kazaTarihi ?? dosya.hasarTarihi)?.toISOString() ?? '',
+                      sigortaliPlaka: dosya.sigortaliPlaka ?? '',
+                      karsiPlaka: dosya.karsiPlaka ?? '',
+                      alacakliUnvan: ayarlar?.alacakliUnvan ?? '',
+                    }}
+                  />
+                  {footer
+                    ? <pre className="mt-2 whitespace-pre-wrap border-t border-border-subtle pt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">{footer}</pre>
+                    : <div className="mt-1.5 text-[11px] text-muted-foreground">Footer (alacaklı/MERSİS/IBAN) için <b>Şirket Bilgileri</b>'ni doldurun.</div>}
+                </div>
+              </div>
+            )}
+          </Section>
+
+          {/* 3 · FAİZ & DAVA TUTARI */}
+          <Section kicker="3 · FAİZ & DAVA TUTARI" title="Faiz Hesabı" accent="text-kr" sub="Dava tutarı (rücu/kusur payı) ve işlemiş faiz. Dekontlar yüklü evraktan çıkarılır; ekspertiz ücreti anaparaya katılmaz. Birden fazla parçalı ödemede faiz son dekont tarihinden işler. Tutar ve tarihler elle düzenlenebilir.">
+            <FaizPanel dosyaId={dosya.id} init={faizInit} oranlar={faizOranlar} bugun={bugun} />
+          </Section>
+
+          {/* 4 · ZAMAN ÇİZELGESİ */}
+          <Section kicker="4 · ZAMAN ÇİZELGESİ" title="Geçmiş ve Notlar" sub="Dosyanın tüm olayları: tevdiye, çekim, çıkarım, teyit ve eklenen notlar — kronolojik.">
+            <NotForm dosyaId={dosya.id} init={initials(dbUser.ad)} />
+            {tl.length === 0 ? (
+              <div className="text-[13px] text-muted-foreground">Henüz işlem yok.</div>
+            ) : (
+              <ol className="relative">
+                <span className="absolute bottom-2 left-[15px] top-2 w-[1.5px] bg-border-subtle" />
+                {tl.map((o) => {
+                  const M = TIP_META[o.tip]
+                  return (
+                    <li key={o.id} className="relative flex gap-3 pb-4 last:pb-0">
+                      <span className={`z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-surface ${M.cls}`}><M.icon className="h-4 w-4" /></span>
+                      <div className="min-w-0 pt-1">
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <span className="text-[12.5px] font-bold text-foreground">{o.kim}</span>
+                          {o.tip === 'not' && <span className="font-mono rounded-full bg-kr-soft px-1.5 py-[1px] text-[9px] uppercase text-kr-ink">Not</span>}
+                          <span className="font-mono text-[10.5px] text-muted-foreground">{fmtDateTime(o.t)}</span>
+                        </div>
+                        <p className={`mt-0.5 text-[12.8px] leading-[1.5] ${o.tip === 'not' ? 'text-foreground' : 'text-muted-foreground'}`}>{o.metin}</p>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+          </Section>
+
+          {/* 5 · AI ÇIKARIMI · KAYNAK & GEREKÇE — en altta (şeffaflık: yukarıdaki bilgilere nereden vardık) */}
+          {cikarimVar && (
+            <Section kicker="5 · AI ÇIKARIMI · KAYNAK & GEREKÇE" title="Kaynak & Gerekçe" accent="text-kr" sub="Yukarıdaki bilgilere nasıl ve nereden vardık: AI'ın olay bağlamı, özet, riskler/öneriler ve her alanın dayandığı belge. Çıkarım motoru: bizim AI asistanı (Katman 3)." right={<AiCikarButton dosyaId={dosya.id} variant="ghost" icon="reset" size="sm" label="Yeniden çalıştır" />}>
               <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center gap-[9px]">
                   {olayTuru && <Badge tone="info">{olayTuru}</Badge>}
@@ -447,19 +544,6 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
                   <div className="rounded-xl border border-border-subtle bg-surface-muted p-[13px_15px]">
                     <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Özet</div>
                     <p className="mt-1 text-[13px] leading-[1.55] text-foreground">{dosya.yolNeden || cj.aciklama}</p>
-                  </div>
-                )}
-                {alanlar.length > 0 && (
-                  <div>
-                    <div className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Çıkarılan Alanlar</div>
-                    <div className="overflow-hidden rounded-xl border border-border">
-                      {alanlar.map(([k, v], i) => (
-                        <div key={k} className={`flex items-center gap-3 p-[10px_13px] ${i > 0 ? 'border-t border-border-subtle' : ''}`}>
-                          <span className="w-[168px] shrink-0 text-[12px] text-muted-foreground">{k}</span>
-                          <span className="flex-1 text-[13px] font-semibold text-foreground">{v}</span>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 )}
                 {teyitler.length > 0 && (
@@ -497,63 +581,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
                     </ol>
                   </div>
                 )}
-                <div className="rounded-xl border border-border-subtle bg-surface-muted/50 p-[13px_15px]">
-                  <div className="flex items-center gap-2"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">UYAP Takip Açıklaması</div><span className="ml-auto"><Kopyala metin={aciklamaMetni} /></span></div>
-                  <AciklamaDuzenle
-                    dosyaId={dosya.id}
-                    init={cj.aciklama ?? ''}
-                    alan={{
-                      kazaTarihi: (dosya.kazaTarihi ?? dosya.hasarTarihi)?.toISOString() ?? '',
-                      sigortaliPlaka: dosya.sigortaliPlaka ?? '',
-                      karsiPlaka: dosya.karsiPlaka ?? '',
-                      alacakliUnvan: ayarlar?.alacakliUnvan ?? '',
-                    }}
-                  />
-                  {footer
-                    ? <pre className="mt-2 whitespace-pre-wrap border-t border-border-subtle pt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">{footer}</pre>
-                    : <div className="mt-1.5 text-[11px] text-muted-foreground">Footer (alacaklı/MERSİS/IBAN) için <b>Şirket Bilgileri</b>'ni doldurun.</div>}
-                </div>
+                <KaynakIzi alanlar={kaynakRows} />
               </div>
-            )}
-          </Section>
-
-          {/* 2 · BORÇLULAR — ekle/düzelt/sil */}
-          <Section kicker="2 · BORÇLULAR" title="Borçlular" sub="İcra takibinin açılacağı kişiler. AI çıkardı; elle düzeltilebilir/eklenebilir. Sürücü ve araç sahibi farklıysa müteselsil sorumluluk için ikisi de eklenir.">
-            <BorclularDuzenle dosyaId={dosya.id} borclular={borclularUi} />
-          </Section>
-
-          {/* 3 · FAİZ & DAVA TUTARI */}
-          <Section kicker="3 · FAİZ & DAVA TUTARI" title="Faiz Hesabı" accent="text-kr" sub="Dava tutarı (rücu/kusur payı) ve işlemiş faiz. Dekontlar yüklü evraktan çıkarılır; ekspertiz ücreti anaparaya katılmaz. Birden fazla parçalı ödemede faiz son dekont tarihinden işler. Tutar ve tarihler elle düzenlenebilir.">
-            <FaizPanel dosyaId={dosya.id} init={faizInit} oranlar={faizOranlar} bugun={bugun} />
-          </Section>
-
-          {/* 4 · ZAMAN ÇİZELGESİ */}
-          <Section kicker="4 · ZAMAN ÇİZELGESİ" title="Geçmiş ve Notlar" sub="Dosyanın tüm olayları: tevdiye, çekim, çıkarım, teyit ve eklenen notlar — kronolojik.">
-            <NotForm dosyaId={dosya.id} init={initials(dbUser.ad)} />
-            {tl.length === 0 ? (
-              <div className="text-[13px] text-muted-foreground">Henüz işlem yok.</div>
-            ) : (
-              <ol className="relative">
-                <span className="absolute bottom-2 left-[15px] top-2 w-[1.5px] bg-border-subtle" />
-                {tl.map((o) => {
-                  const M = TIP_META[o.tip]
-                  return (
-                    <li key={o.id} className="relative flex gap-3 pb-4 last:pb-0">
-                      <span className={`z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-surface ${M.cls}`}><M.icon className="h-4 w-4" /></span>
-                      <div className="min-w-0 pt-1">
-                        <div className="flex flex-wrap items-baseline gap-2">
-                          <span className="text-[12.5px] font-bold text-foreground">{o.kim}</span>
-                          {o.tip === 'not' && <span className="font-mono rounded-full bg-kr-soft px-1.5 py-[1px] text-[9px] uppercase text-kr-ink">Not</span>}
-                          <span className="font-mono text-[10.5px] text-muted-foreground">{fmtDateTime(o.t)}</span>
-                        </div>
-                        <p className={`mt-0.5 text-[12.8px] leading-[1.5] ${o.tip === 'not' ? 'text-foreground' : 'text-muted-foreground'}`}>{o.metin}</p>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ol>
-            )}
-          </Section>
+            </Section>
+          )}
 
           {takipAcik && <TakipSureci dosyaId={dosya.id} durum={dosya.durum} olaylar={olaylarUi} bakiye={bakiye} />}
         </div>
