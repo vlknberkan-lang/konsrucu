@@ -91,6 +91,26 @@ export async function senkronTokenSil(musteriId: string): Promise<{ ok: boolean;
   return { ok: true }
 }
 
+/** Mentor öğrenilen kuralı sil (tenant doğrulanır). */
+export async function mentorKuralSil(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  const k = await prisma.mentorKural.findUnique({ where: { id }, select: { musteriId: true } })
+  if (!k || !izinli.includes(k.musteriId)) return { ok: false, error: 'Yetki yok' }
+  await prisma.mentorKural.delete({ where: { id } })
+  revalidatePath('/ayarlar')
+  return { ok: true }
+}
+
+/** Mentor kuralını aç/kapat — kapalı kural çıkarımda enjekte edilmez (silmeden devre dışı). */
+export async function mentorKuralKapat(id: string, aktif: boolean): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  const k = await prisma.mentorKural.findUnique({ where: { id }, select: { musteriId: true } })
+  if (!k || !izinli.includes(k.musteriId)) return { ok: false, error: 'Yetki yok' }
+  await prisma.mentorKural.update({ where: { id }, data: { aktif } })
+  revalidatePath('/ayarlar')
+  return { ok: true }
+}
+
 /** Dönemsel faiz oranlarını kaydet (faizJson = { oranlar: [...] }). */
 export async function faizOranlariKaydet(musteriId: string, oranlar: { baslangic: string; oran: number }[]): Promise<{ ok: boolean; error?: string }> {
   const { izinli } = await ctx()

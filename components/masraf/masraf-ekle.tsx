@@ -4,7 +4,7 @@
  * KonsRücü — Masraf ekle modalı · iki yol: "Manuel" tek kalem | "Makbuz oku" (PDF/foto → Claude çıkarımı).
  * Dosya seçimi aranabilir. taksit-plani-ekle.tsx kalıbını izler (overlay + useTransition).
  */
-import { useMemo, useRef, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Loader2, Check, Search, FileUp, AlertTriangle } from 'lucide-react'
 import { MASRAF_CINSLERI, MASRAF_TARAF, type MasrafTarafKod } from '@/lib/konsrucu/masraf'
@@ -37,6 +37,13 @@ function Modal({ dosyalar, onKapat }: { dosyalar: DosyaSecenek[]; onKapat: () =>
   const [pending, start] = useTransition()
   const [hata, setHata] = useState<string | null>(null)
   const [bilgi, setBilgi] = useState<string | null>(null)
+  const makbuzFormRef = useRef<HTMLFormElement>(null)
+
+  useEffect(() => {
+    const f = (e: KeyboardEvent) => { if (e.key === 'Escape') onKapat() }
+    window.addEventListener('keydown', f)
+    return () => window.removeEventListener('keydown', f)
+  }, [onKapat])
 
   // aranabilir dosya seçimi
   const [ara, setAra] = useState('')
@@ -65,16 +72,16 @@ function Modal({ dosyalar, onKapat }: { dosyalar: DosyaSecenek[]; onKapat: () =>
     fd.set('dosyaId', dosyaId)
     start(async () => {
       const r = await makbuzYukleOku(fd)
-      if (r.ok) { setBilgi(`${r.eklendi ?? 0} masraf eklendi${r.atlandi ? `, ${r.atlandi} mükerrer atlandı` : ''}.`); router.refresh() }
+      if (r.ok) { setBilgi(`${r.eklendi ?? 0} masraf eklendi${r.atlandi ? `, ${r.atlandi} mükerrer atlandı` : ''}.`); makbuzFormRef.current?.reset(); router.refresh() }
       else setHata(r.error ?? 'Okunamadı')
     })
   }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onKapat}>
-      <div className="w-full max-w-[560px] rounded-2xl border border-border bg-surface shadow-float" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="masraf-ekle-baslik" className="w-full max-w-[560px] rounded-2xl border border-border bg-surface shadow-float" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3.5">
-          <h2 className="font-display text-[16px] font-extrabold">Masraf ekle</h2>
+          <h2 id="masraf-ekle-baslik" className="font-display text-[16px] font-extrabold">Masraf ekle</h2>
           <button type="button" onClick={onKapat} aria-label="Kapat" className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-surface-muted"><X className="h-4 w-4" /></button>
         </div>
 
@@ -82,7 +89,7 @@ function Modal({ dosyalar, onKapat }: { dosyalar: DosyaSecenek[]; onKapat: () =>
           {/* mod sekmeleri */}
           <div className="mb-4 inline-flex gap-1 rounded-xl border border-border bg-surface-muted p-1">
             {([['manuel', 'Manuel'], ['makbuz', 'Makbuz oku (PDF)']] as const).map(([k, l]) => (
-              <button key={k} type="button" onClick={() => { setMod(k); setHata(null); setBilgi(null) }}
+              <button key={k} type="button" aria-pressed={mod === k} onClick={() => { setMod(k); setHata(null); setBilgi(null) }}
                 className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${mod === k ? 'bg-surface text-kr shadow-card' : 'text-muted-foreground hover:text-foreground'}`}>{l}</button>
             ))}
           </div>
@@ -99,7 +106,7 @@ function Modal({ dosyalar, onKapat }: { dosyalar: DosyaSecenek[]; onKapat: () =>
               <div>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input value={ara} onChange={(e) => setAra(e.target.value)} placeholder="Hukuk/hasar no ya da borçlu ara…" className={`${ALAN} pl-9`} />
+                  <input autoFocus value={ara} onChange={(e) => setAra(e.target.value)} placeholder="Hukuk/hasar no ya da borçlu ara…" className={`${ALAN} pl-9`} />
                 </div>
                 {ara.trim() && (
                   <div className="mt-1 max-h-[180px] overflow-auto rounded-[10px] border border-border bg-surface">

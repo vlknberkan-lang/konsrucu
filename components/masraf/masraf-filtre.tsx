@@ -3,7 +3,7 @@
 /**
  * KonsRücü — Masraflar · filtre çubuğu · components/masraf/masraf-filtre.tsx
  * Arama + durum/taraf/cins + tarih (tek gün / aralık) → tümü URL parametresine yazılır (server yeniden sorgular).
- * "Excel indir" o anki filtre kümesini /masraf/export'a taşır. atanan-dosyalar/filtre-bar kalıbı.
+ * "Excel indir" o anki filtre kümesini /api/masraf/export'a taşır. atanan-dosyalar/filtre-bar kalıbı.
  */
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useRef, useState } from 'react'
@@ -51,7 +51,7 @@ export function MasrafFiltre({ deger }: { deger: FiltreDeger }) {
         </form>
 
         {/* Excel indir */}
-        <a href={`/masraf/export${sp.toString() ? `?${sp.toString()}` : ''}`} title="Görünen listeyi RAY MASRAF FORMU olarak indir"
+        <a href={`/api/masraf/export${sp.toString() ? `?${sp.toString()}` : ''}`} title="Görünen listeyi RAY MASRAF FORMU olarak indir"
           className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-border bg-surface px-3.5 py-2.5 text-[13px] font-semibold text-foreground shadow-card transition hover:border-kr/40 hover:text-kr-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50 motion-reduce:transition-none">
           <FileDown className="h-4 w-4 text-kr" /> Excel indir
         </a>

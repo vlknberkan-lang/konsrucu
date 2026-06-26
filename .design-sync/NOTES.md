@@ -25,6 +25,19 @@ Supabase / Prisma / server actions — into the bundle).
   300×700; Rail 112×640; GlobalHeader 1080×300). Screenshots are full-page, so width matters.
 
 ## Gotchas (learned the hard way)
+- **Windows `cpSync` guidelines crash on re-sync.** `emitGuidelines` (`lib/docs.mjs:259`)
+  copies the `guidelinesGlob` docs with `fs.cpSync`. The converter overwrites a prior
+  `ds-bundle/` **in place** (it does not wipe it first), so on every re-sync the destination
+  `ds-bundle/guidelines/docs/*.md` already exist; `cpSync` then tries to `unlink` the old file
+  and Node throws a bogus `errno:0 / code:'' / "The operation completed successfully"` on the
+  `\\?\C:\…` extended-length path → build exit 1 (everything else — 11 components, bundle —
+  had already succeeded). **Fix: `rm -rf ds-bundle` before running the driver** so cpSync writes
+  to a clean tree (no unlink). Grades (`.design-sync/.cache/review/`) and the remote anchor live
+  outside `ds-bundle/`, so a clean rebuild loses nothing. (A durable alternative would be forking
+  `lib/docs.mjs` to `rmSync(dest,{force:true})` before each `cpSync`, but the rm is lighter.)
+- **`finalize_plan` localDir cwd quirk.** The DesignSync tool resolves a relative `localDir`
+  against the shell's *persisted* cwd — if a prior Bash step `cd`'d into `ds-bundle`, `./ds-bundle`
+  doubles to `…/ds-bundle/ds-bundle` (ENOENT). **Pass the absolute bundle path as `localDir`.**
 - **`cfg.tsconfig` must be comment-free JSON.** A `"//": "..."` key broke the converter's
   comment-stripper (`/(^|[^:])\/\/.*$/` ate the `//` inside the string), `JSON.parse` threw,
   the paths plugin silently returned null, and esbuild fell back to the repo tsconfig
@@ -44,6 +57,9 @@ Supabase / Prisma / server actions — into the bundle).
 - None. (11/11 render clean; no thin/variantsIdentical/fallback cards.)
 
 ## Re-sync risks (watch-list)
+- **`rm -rf ds-bundle` before every driver run on Windows** — otherwise the guidelines `cpSync`
+  unlink bug (see Gotchas) crashes the build at `emitGuidelines`. Clean rebuild is cheap and loses
+  nothing (grades + anchor are outside the bundle).
 - **`ds-styles.css` is generated and gitignored** — run `cfg.buildCmd` (or the `resync`
   driver's rebuild) before the converter, or `cssEntry` won't exist and components ship unstyled.
 - **Shims track upstream component APIs.** If Rail/Sidebar start reading more of

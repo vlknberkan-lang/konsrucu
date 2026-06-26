@@ -104,7 +104,7 @@ export function MasrafListe({ satirlar, kpi }: { satirlar: MasrafUi[]; kpi: Masr
             return (
               <div key={k}>
                 <div className="mb-2 flex items-baseline gap-2">
-                  <button type="button" onClick={() => grupToggle(list, hepsiSecili)} className="font-mono text-[10.5px] text-muted-foreground hover:text-kr">{hepsiSecili ? '☑' : '☐'}</button>
+                  <input type="checkbox" checked={hepsiSecili} onChange={() => grupToggle(list, hepsiSecili)} aria-label={`${ayLabel(k)} ayındaki tüm kalemleri seç`} className="h-4 w-4 accent-[hsl(var(--kr))]" />
                   <h3 className="font-display text-[15px] font-extrabold">{ayLabel(k)}</h3>
                   <span className="font-mono text-[11.5px] text-muted-foreground">· {list.length} kalem · {money(toplam)}</span>
                 </div>
@@ -119,7 +119,7 @@ export function MasrafListe({ satirlar, kpi }: { satirlar: MasrafUi[]; kpi: Masr
                       onTaraf={(t) => calistir(() => masrafTarafAta(m.id, t), m.id)}
                       onDurum={(d) => calistir(() => masrafDurumAta(m.id, d), m.id)}
                       onSil={() => { if (confirm('Bu masraf kaydı silinsin mi?')) calistir(() => masrafSil(m.id), m.id) }}
-                      onOnizle={() => m.belgeId && setOnizleme({ id: m.belgeId, dosyaAdi: m.belgeAdi ?? 'Makbuz' })}
+                      onOnizle={() => m.belgeId && setOnizleme({ id: m.belgeId, dosyaAdi: m.belgeAdi ?? 'makbuz.pdf' })}
                     />
                   ))}
                 </div>
@@ -146,7 +146,7 @@ function Satir({ m, ilk, secili, isleyen, pending, duzenle, onSec, onDuzenle, on
 
   return (
     <div className={`flex flex-wrap items-center gap-3 px-4 py-2.5 text-[13px] ${ilk ? '' : 'border-t border-border-subtle'} ${secili ? 'bg-kr-soft/25' : ''}`}>
-      <input type="checkbox" checked={secili} onChange={onSec} aria-label="Seç" className="h-4 w-4 shrink-0 accent-[hsl(var(--kr))]" />
+      <input type="checkbox" checked={secili} onChange={onSec} aria-label={`${dosyaEt} masraf kaydını seç`} className="h-4 w-4 shrink-0 accent-[hsl(var(--kr))]" />
       <div className="w-[56px] shrink-0 text-center"><div className="font-mono text-[12.5px] font-bold tabular-nums text-kr-ink">{gunLabel(m.tarih)}</div></div>
 
       <div className="min-w-[150px] flex-1">
@@ -157,8 +157,8 @@ function Satir({ m, ilk, secili, isleyen, pending, duzenle, onSec, onDuzenle, on
       {/* cins */}
       <div className="min-w-[170px] flex-1">
         {duzenle === 'cins' ? (
-          <select autoFocus defaultValue={m.cins ?? ''} onBlur={onKapatDuzenle} onChange={(e) => e.target.value && onCins(e.target.value)} className="w-full rounded-[8px] border border-kr/50 bg-surface px-2 py-1 text-[12px] outline-none ring-2 ring-kr/20">
-            <option value="">— seç —</option>
+          <select autoFocus defaultValue={m.cins ?? ''} onBlur={onKapatDuzenle} onChange={(e) => onCins(e.target.value)} className="w-full rounded-[8px] border border-kr/50 bg-surface px-2 py-1 text-[12px] outline-none ring-2 ring-kr/20">
+            <option value="">— Eşleştirilmedi —</option>
             {MASRAF_CINSLERI.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         ) : m.cins ? (

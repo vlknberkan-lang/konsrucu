@@ -146,6 +146,18 @@ enum OnemliOlayTip {
   BORCA_ITIRAZ
 }
 
+// mentor geri bildirim — AI'ın hangi çıktısı düzeltildi (Önerilen Adımlar / Riskler ve Öneriler)
+enum MentorKaynak {
+  ADIM // "Önerilen Adımlar · mentor" (sonrakiAdimlar)
+  TEYIT // "Riskler ve Öneriler" (teyit notları)
+}
+
+// kural türü — bu tarz öneriyi bir daha verme (KALDIR) | öneri şöyle olmalı (DUZELT)
+enum MentorKuralTur {
+  KALDIR
+  DUZELT
+}
+
 // Açık → İşlemde (üstlenildi/kilitli) → Tamamlandı (resmî teyit) | İptal (mükerrer/yanlış)
 enum OnemliOlayDurum {
   ACIK
@@ -164,6 +176,7 @@ model Musteri {
   dosyalar     RucuDosyasi[]
   projeler     Proje[]
   kullanicilar MusteriKullanici[]
+  mentorKurallar MentorKural[]
 }
 
 model Kullanici {
@@ -178,6 +191,7 @@ model Kullanici {
   onemliOlaylar  OnemliOlay[]       @relation("OnemliOlaySorumlu")
   notlar         Not[]
   aktiviteler    Aktivite[]
+  mentorKurallar MentorKural[]      @relation("MentorKuralYazan")
 }
 
 model MusteriKullanici {
@@ -440,7 +454,9 @@ model Belge {
   genislik      Int?
   yukseklik     Int?
   confidence    Float?
-  kaynakRef     String? // dış kaynak referansı (ör. UYAP evrakId) — otomatik içe aktarımda tekrarı önler
+  kaynakRef     String? // dış kaynak referansı (ör. UYAP evrakId) — UYAP her senkronda YENİ şifreli id verir → dedup'ta GÜVENİLMEZ, yalnız bilgi
+  icerikHash    String? // içerik MD5 (hex) — UYAP evrak dedup'unun GERÇEK anahtarı (değişen evrakId yerine). Supabase Storage eTag ile aynı.
+  belgeTarihi   DateTime? // belgenin GERÇEK tarihi (UYAP ad sonundan: "... 2026-06-12.pdf") — indirme/createdAt değil; sıralama bunu kullanır
   createdAt     DateTime      @default(now())
   ciktiBaglari  CiktiKaynak[]
   masraflar     Masraf[] // bu belge bir makbuz ise: ondan çıkan masraf kalemleri
@@ -448,6 +464,7 @@ model Belge {
   @@index([dosyaId])
   @@index([kategori])
   @@index([dosyaId, kaynakRef])
+  @@index([dosyaId, icerikHash])
 }
 
 model UretilenCikti {
@@ -637,6 +654,28 @@ model Not {
   createdAt   DateTime    @default(now())
 
   @@index([dosyaId])
+}
+
+// mentor öğrenilen kural — avukat, AI'ın "Önerilen Adımlar"/"Riskler ve Öneriler" çıktısını düzeltir.
+// Manuel MVP: kural metni analizEt sistem promptuna OLDUĞU GİBİ enjekte edilir (AI damıtma yok) →
+// sonraki çıkarımlar bu düzeltmelere uyar. Tenant kapsamlı; olayTuru doluysa yalnız o türde uygulanır.
+model MentorKural {
+  id          String         @id @default(uuid())
+  musteriId   String
+  musteri     Musteri        @relation(fields: [musteriId], references: [id], onDelete: Cascade)
+  kaynak      MentorKaynak   @default(ADIM)
+  tur         MentorKuralTur @default(KALDIR)
+  hedef       String?        @db.Text // geri bildirim verilen orijinal öneri metni (bağlam)
+  yorum       String         @db.Text // kullanıcının düzeltmesi / yönergesi (prompta giren asıl kural)
+  olayTuru    String? // null = tüm dosyalar; dolu = yalnız bu olay türünde uygula
+  aktif       Boolean        @default(true)
+  dosyaId     String? // iz: hangi dosyada verildi (FK yok — dosya silinse de kural yaşar)
+  kullaniciId String?
+  kullanici   Kullanici?     @relation("MentorKuralYazan", fields: [kullaniciId], references: [id])
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([musteriId, aktif])
 }
 
 // audit — "kim ne zaman ne yaptı" (Dosya Detay / Yelda senaryosu)

@@ -33,8 +33,8 @@ const DURUM_BADGE: Record<'ACIK' | 'ISLEMDE', { label: string; tone: Tone }> = {
   ISLEMDE: { label: 'İşlemde', tone: 'info' },
 }
 
-const COLS = 'grid-cols-[150px_minmax(150px,1fr)_118px_104px_150px_124px_106px_minmax(212px,232px)]'
-const MINW = 'min-w-[1180px]'
+const COLS = 'grid-cols-[150px_minmax(150px,1fr)_118px_128px_150px_124px_106px_minmax(212px,232px)]'
+const MINW = 'min-w-[1204px]'
 
 /** Mevcut searchParams'ı koruyarak chip linki üret. */
 function chipHref(sp: SP, patch: Partial<SP>): string {
@@ -154,7 +154,7 @@ export default async function OnemliOlaylarPage({ searchParams }: { searchParams
                   <span>Dosya / Esas</span>
                   <span>Sigortalı / Müvekkil</span>
                   <span>Olay Türü</span>
-                  <span>Tetik Tarihi</span>
+                  <span>İtiraz Talebi Tarihi</span>
                   <span>Son Tarih / Kalan</span>
                   <span>Sorumlu</span>
                   <span>Durum</span>
@@ -181,7 +181,7 @@ export default async function OnemliOlaylarPage({ searchParams }: { searchParams
                       </div>
                       {/* olay türü */}
                       <div className="min-w-0"><Badge tone="danger" dot>Borca İtiraz</Badge></div>
-                      {/* tetik tarihi */}
+                      {/* itiraz talebi tarihi (belge adındaki gerçek tarih) */}
                       <div className="font-mono text-[11.5px] text-muted-foreground">{fmtDate(r.tetikTarihi)}</div>
                       {/* son tarih / kalan */}
                       <div className="min-w-0">

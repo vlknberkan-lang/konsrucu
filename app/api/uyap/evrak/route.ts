@@ -1,15 +1,19 @@
 /**
  * KonsRücü — UYAP senkron · POST /api/uyap/evrak
  * Eklenti, UYAP'ta indirdiği YENİ evrak PDF'ini buraya yükler → Supabase 'evrak' bucket → Belge.
- * Dedup: kaynakRef (UYAP evrakId) ile aynı evrak tekrar eklenmez. Tenant-kapsamlı (Bearer oturum).
+ *
+ * Dedup: İÇERİK MD5 (icerikHash) ile. UYAP, AYNI evrak için her senkronda YENİ şifreli evrakId verir
+ * (kaynakRef değişken → güvenilmez); bu yüzden tekrar tespiti içeriğin MD5'ine dayanır (Storage eTag ile birebir).
+ * Aynı içerik bu dosyada zaten varsa atlanır → mükerrer evrak/yükleme/masraf-çıkarımı önlenir. Tenant-kapsamlı.
  *
  * Gövde: { icraDosyaNo, uyapEvrakId, dosyaAdi, tur?, contentBase64, mime? }
  */
+import { createHash } from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { siniflandir } from '@/lib/konsrucu/belge-siniflandir'
+import { siniflandir, belgeAdindanTarih } from '@/lib/konsrucu/belge-siniflandir'
 import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
-import { belgeBorcaItirazMi, onemliOlayTespit } from '@/lib/konsrucu/onemli-olay'
+import { belgeBorcaItirazMi, belgeItirazTarihiCikar, onemliOlayTespit } from '@/lib/konsrucu/onemli-olay'
 import { belgedenMasrafCikar } from '@/lib/konsrucu/masraf-cikar'
 
 export const dynamic = 'force-dynamic'
@@ -36,10 +40,6 @@ export async function POST(req: Request) {
   const dosya = await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true } })
   if (!dosya) return corsJson({ ok: false, error: 'dosya bulunamadı (icraDosyaNo)' }, 404)
 
-  // dedup — bu evrak daha önce indiyse atla
-  const mevcut = await prisma.belge.findFirst({ where: { dosyaId: dosya.id, kaynakRef: uyapEvrakId }, select: { id: true } })
-  if (mevcut) return corsJson({ ok: true, atlandi: true, sebep: 'zaten var' })
-
   if (!b64) return corsJson({ ok: false, error: 'contentBase64 gerekli' }, 400)
   if (b64.length > MAX_B64) return corsJson({ ok: false, atlandi: true, sebep: 'dosya çok büyük (elle ekleyin)' }, 413)
 
@@ -47,10 +47,17 @@ export async function POST(req: Request) {
   try { bytes = Buffer.from(b64, 'base64') } catch { return corsJson({ ok: false, error: 'base64 çözülemedi' }, 400) }
   if (!bytes.length) return corsJson({ ok: false, error: 'boş içerik' }, 400)
 
+  // İÇERİK MD5 — dedup'un GERÇEK anahtarı (UYAP'ın değişen evrakId'si değil). Storage eTag ile aynı değer.
+  const icerikHash = createHash('md5').update(bytes).digest('hex')
+
+  // dedup — bu İÇERİK bu dosyada zaten varsa atla (her senkronda evrakId değişse de tekrar oluşmaz)
+  const mevcut = await prisma.belge.findFirst({ where: { dosyaId: dosya.id, icerikHash }, select: { id: true } })
+  if (mevcut) return corsJson({ ok: true, atlandi: true, sebep: 'zaten var (içerik)' })
+
   const mime = String(body?.mime ?? 'application/pdf')
   const safe = dosyaAdi.replace(/[^\w.\-]+/g, '_').slice(0, 80)
-  const safeId = (uyapEvrakId.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 60)) || 'evrak' // storage anahtarı yalnız güvenli karakter
-  const sp = `${dosya.id}/uyap-${safeId}-${safe}`
+  const sp = `${dosya.id}/uyap-${icerikHash}-${safe}` // içerik-belirli yol → aynı evrak hep aynı dosyaya yazar (orphan olmaz)
+  const belgeTarihi = belgeAdindanTarih(dosyaAdi) // belgenin gerçek tarihi (ad sonundan); yoksa null → createdAt
 
   const admin = createAdminClient()
   const { error: upErr } = await admin.storage.from('evrak').upload(sp, bytes, { contentType: mime, upsert: false })
@@ -58,15 +65,17 @@ export async function POST(req: Request) {
 
   const snf = siniflandir({ dosyaAdi: `${dosyaAdi} ${body?.tur ?? ''}`.trim(), metin: null, foto: false })
   const belge = await prisma.belge.create({
-    data: { dosyaId: dosya.id, kategori: snf.kategori as never, confidence: snf.guven, dosyaAdi, storagePath: sp, kaynakRef: uyapEvrakId },
+    data: { dosyaId: dosya.id, kategori: snf.kategori as never, confidence: snf.guven, dosyaAdi, storagePath: sp, kaynakRef: uyapEvrakId, icerikHash, belgeTarihi },
     select: { id: true },
   })
   await prisma.aktivite.create({ data: { dosyaId: dosya.id, kullaniciId: k.userId, eylem: `UYAP'tan evrak indi: ${dosyaAdi}` } })
 
-  // Borca itiraz dilekçesi indiyse → Önemli Olaylar kuyruğu (idempotent; tespit hatası evrak kaydını bozmaz).
+  // Borca itiraz dilekçesi indiyse → Önemli Olaylar kuyruğu. İtiraz TARİHİ belge ADINDAN okunur
+  // (UYAP belgesi ad sonunda tarih taşır: "Borca İtiraz Talebi 2026-06-12.pdf"); go-live süzgeci buna göre
+  // çalışır (eski itirazlar gelmez). Tarih okunamazsa now() varsayılır. Tespit hatası evrak kaydını bozmaz.
   if (belgeBorcaItirazMi(dosyaAdi) || belgeBorcaItirazMi(body?.tur)) {
     try {
-      await onemliOlayTespit({ dosyaId: dosya.id, kaynakBelgeId: belge.id, baslik: dosyaAdi, kullaniciId: k.userId })
+      await onemliOlayTespit({ dosyaId: dosya.id, tetikTarihi: belgeItirazTarihiCikar(dosyaAdi), kaynakBelgeId: belge.id, baslik: dosyaAdi, kullaniciId: k.userId })
     } catch {
       /* sessiz — tespit başarısız olsa da evrak yüklendi */
     }

@@ -148,7 +148,7 @@ Hepsi Türkçe.`
 
 export type Gorsel = { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; b64: string }
 
-export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[]): Promise<AnalizSonuc | null> {
+export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[], ogrenilenKurallar?: string): Promise<AnalizSonuc | null> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key || !metin.trim()) return null
   const client = new Anthropic({ apiKey: key })
@@ -160,7 +160,7 @@ export async function analizEt(metin: string, footer?: string, gorseller?: Gorse
     const res = await client.messages.create({
       model: MODEL,
       max_tokens: 4500,
-      system: SISTEM + (footer ? `\nAçıklama footer'ı (sonuna ekle): ${footer}` : '\nFooter yoksa "K/Partners" iletişim satırı bırak.'),
+      system: SISTEM + (footer ? `\nAçıklama footer'ı (sonuna ekle): ${footer}` : '\nFooter yoksa "K/Partners" iletişim satırı bırak.') + (ogrenilenKurallar ?? ''),
       messages: [{ role: 'user', content }],
       tools: [{ name: 'kaydet', description: 'Çıkarılan rücu alanlarını kaydet', input_schema: SCHEMA as Anthropic.Tool.InputSchema }],
       tool_choice: { type: 'tool', name: 'kaydet' },

@@ -15,6 +15,18 @@ import { prisma } from '@/lib/prisma'
 /** Tetik desenleri (normalize/ascii). Ayarlar.onemliOlayAyarJson ile genişletilebilir. */
 export const VARSAYILAN_TETIK_DESENLER = ['borca itiraz', 'odeme emrine itiraz', 'itiraz dilek'] as const
 
+/**
+ * Devreye-alma (go-live) tarihi: YALNIZ bu tarih VE sonrasındaki itirazlar kuyruğa düşer.
+ * Geçmiş itirazlar için ekip büyük olasılıkla arabuluculuğu zaten başlatmıştır → otomatik düşmesin.
+ * İtirazın (olayın) tarihine göre süzülür. Env ile değiştirilebilir: ONEMLI_OLAY_BASLANGIC=YYYY-MM-DD.
+ */
+export const ONEMLI_OLAY_BASLANGIC: Date = (() => {
+  const raw = (process.env.ONEMLI_OLAY_BASLANGIC ?? '2026-06-25').trim()
+  const gecerli = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '2026-06-25'
+  const d = new Date(`${gecerli}T00:00:00Z`) // UTC — tarih-yalnız kanonik (gün kayması olmasın)
+  return Number.isNaN(d.getTime()) ? new Date('2026-06-25T00:00:00Z') : d
+})()
+
 /** Türkçe-duyarlı normalize: küçük harf (tr) + aksan sadeleştir + birleşik nokta (İ) temizle. */
 function norm(s: string | null | undefined): string {
   return (s ?? '')
@@ -46,9 +58,58 @@ export function belgeBorcaItirazMi(dosyaAdi: string | null | undefined, desenler
   return a.length > 0 && desenler.some((d) => a.includes(d))
 }
 
+/**
+ * Evrak adından itiraz TARİHİNİ çıkar. UYAP belgesi ad sonunda tarih taşır
+ * (ör. "Borca İtiraz Talebi 2026-06-12.pdf"). ISO (YYYY-MM-DD) ve TR (DD.MM.YYYY / DD-MM-YYYY) kabul.
+ * Belge tarihsiz olduğundan go-live süzgeci bu tarihe göre çalışır. Bulunamazsa null.
+ */
+export function belgeItirazTarihiCikar(dosyaAdi: string | null | undefined): Date | null {
+  const s = dosyaAdi ?? ''
+  const iso = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) {
+    const d = new Date(Date.UTC(+iso[1], +iso[2] - 1, +iso[3])) // UTC — tarih-yalnız kanonik
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  const tr = s.match(/(\d{2})[.\-/](\d{2})[.\-/](\d{4})/)
+  if (tr) {
+    const d = new Date(Date.UTC(+tr[3], +tr[2] - 1, +tr[1]))
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  return null
+}
+
 /** tekilAnahtar = dosya + tip + tetik GÜNÜ (YYYY-MM-DD). */
 function tekilAnahtarHesapla(dosyaId: string, tetik: Date): string {
   return `${dosyaId}:BORCA_ITIRAZ:${tetik.toISOString().slice(0, 10)}`
+}
+
+/**
+ * Dosya üzerinden arabuluculuk başlatıldığında (örn. AsamaPanel → asamaKaydet) o dosyadaki AÇIK/İŞLEMDE
+ * önemli olayları TAMAMLANDI'ya çevirir → kuyruktan kalkar, Tamamlanan Olaylar'a geçer. Açık olay yoksa no-op.
+ * Dönüş: tamamlanan olay sayısı.
+ */
+export async function onemliOlayDosyadanTamamla(input: {
+  dosyaId: string
+  basvuruNo?: string | null
+  basvuruTarihi?: Date | null
+  kullaniciId?: string | null
+}): Promise<number> {
+  const acik = await prisma.onemliOlay.findMany({ where: { dosyaId: input.dosyaId, durum: { in: ['ACIK', 'ISLEMDE'] } }, select: { id: true } })
+  if (acik.length === 0) return 0
+  await prisma.onemliOlay.updateMany({
+    where: { id: { in: acik.map((o) => o.id) } },
+    data: {
+      durum: 'TAMAMLANDI',
+      basvuruNo: input.basvuruNo || undefined,
+      basvuruTarihi: input.basvuruTarihi ?? undefined,
+      tamamlayanId: input.kullaniciId ?? undefined,
+      tamamlanmaAt: new Date(),
+    },
+  })
+  await prisma.aktivite.create({
+    data: { dosyaId: input.dosyaId, kullaniciId: input.kullaniciId ?? null, eylem: `Arabuluculuk dosyadan başlatıldı → önemli olay tamamlandı${input.basvuruNo ? ' · başvuru ' + input.basvuruNo : ''}` },
+  })
+  return acik.length
 }
 
 /**
@@ -65,6 +126,10 @@ export async function onemliOlayTespit(input: {
   kullaniciId?: string | null
 }): Promise<{ olusturuldu: boolean; id: string } | null> {
   const tetik = input.tetikTarihi && !Number.isNaN(input.tetikTarihi.getTime()) ? input.tetikTarihi : new Date()
+
+  // Go-live süzgeci: itiraz tarihi devreye-alma tarihinden önceyse kuyruğa düşürme (geçmiş itirazlar gelmesin).
+  if (tetik.getTime() < ONEMLI_OLAY_BASLANGIC.getTime()) return null
+
   const tekilAnahtar = tekilAnahtarHesapla(input.dosyaId, tetik)
 
   const mevcut = await prisma.onemliOlay.findUnique({ where: { tekilAnahtar }, select: { id: true } })

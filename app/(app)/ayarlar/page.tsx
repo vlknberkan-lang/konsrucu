@@ -2,13 +2,14 @@
  * KonsRücü — Şirket Bilgileri (Ayarlar) · app/(app)/ayarlar/page.tsx
  * Alacaklı / MERSİS / IBAN / vekil / faiz — takip açıklaması ve dilekçeler bunları kullanır.
  */
-import { Check, Building2, Percent, FileSignature, Puzzle } from 'lucide-react'
+import { Check, Building2, Percent, FileSignature, Puzzle, GraduationCap } from 'lucide-react'
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { oranlariOku } from '@/lib/konsrucu/faiz'
 import { FaizOranlari } from '@/components/ayarlar/faiz-oranlari'
 import { Vekaletname } from '@/components/ayarlar/vekaletname'
 import { SenkronAnahtar } from '@/components/ayarlar/senkron-anahtar'
+import { MentorKurallar, type KuralUI } from '@/components/ayarlar/mentor-kurallar'
 import { ayarlarKaydet } from './actions'
 
 const PROGRAM_URL = 'https://konsrucu.vercel.app'
@@ -21,10 +22,19 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
   if (!aktifMusteriId) {
     return <div className="mx-auto max-w-[820px] px-7 py-6"><p className="text-sm text-muted-foreground">Aktif müşteri seçili değil — üst menüden müşteri seçin.</p></div>
   }
-  const [musteri, ayarlar] = await Promise.all([
+  const [musteri, ayarlar, mentorRows] = await Promise.all([
     prisma.musteri.findUnique({ where: { id: aktifMusteriId }, select: { ad: true } }),
     prisma.ayarlar.findUnique({ where: { musteriId: aktifMusteriId } }),
+    prisma.mentorKural.findMany({
+      where: { musteriId: aktifMusteriId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, kaynak: true, tur: true, hedef: true, yorum: true, olayTuru: true, aktif: true, createdAt: true, kullanici: { select: { ad: true } } },
+    }),
   ])
+  const mentorKurallar: KuralUI[] = mentorRows.map((k) => ({
+    id: k.id, kaynak: k.kaynak, tur: k.tur, hedef: k.hedef, yorum: k.yorum, olayTuru: k.olayTuru,
+    aktif: k.aktif, createdAt: k.createdAt.toISOString(), yazan: k.kullanici?.ad ?? null,
+  }))
 
   const alanlar: [string, string, string | null, boolean?][] = [
     ['alacakliUnvan', 'Alacaklı ünvanı', ayarlar?.alacakliUnvan ?? musteri?.ad ?? null],
@@ -113,6 +123,19 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
           <Puzzle className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">UYAP Eklenti Senkron Anahtarı</h2>
         </div>
         <div className="p-5"><SenkronAnahtar musteriId={aktifMusteriId} init={{ yuklu: !!ayarlar?.senkronToken }} programUrl={PROGRAM_URL} /></div>
+      </div>
+
+      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-4">
+          <GraduationCap className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">Mentor Kuralları</h2>
+          <span className="ml-auto text-[11.5px] text-muted-foreground">AI çıkarımına öğretilenler · {mentorKurallar.filter((k) => k.aktif).length} aktif</span>
+        </div>
+        <div className="p-5">
+          <p className="mb-3 max-w-[68ch] text-[12.5px] leading-[1.5] text-muted-foreground">
+            Dosya detayında “Önerilen Adımlar” veya “Riskler ve Öneriler” notlarının altından <b>Mentor'a öğret</b> ile yazdığınız düzeltmeler. Aktif kurallar her yeni AI çıkarımının promptuna eklenir; devre dışı bıraktığınız ya da sildiğiniz kural artık uygulanmaz.
+          </p>
+          <MentorKurallar init={mentorKurallar} />
+        </div>
       </div>
 
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">

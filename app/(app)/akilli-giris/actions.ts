@@ -8,7 +8,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
 import { analizEt } from '@/lib/konsrucu/analiz'
+import { mentorKurallariOku, mentorKurallariMetne } from '@/lib/konsrucu/mentor-kural'
 import { takipOlayKaydet } from '@/lib/konsrucu/takip-olay'
+import { onemliOlayDosyadanTamamla } from '@/lib/konsrucu/onemli-olay'
 import { faizHesapla, oranlariOku, sonDekontTarihi, type DekontGirdi } from '@/lib/konsrucu/faiz'
 import { yetkiliIcraOner } from '@/lib/konsrucu/adli-rehber'
 import { aciklamaUret } from '@/lib/konsrucu/takip'
@@ -86,8 +88,11 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
   if (!musteriId) redirect('/dashboard')
 
   // Katman 3 — LLM asistanı: belge metninden triyaj + borçlular + açıklama + teyit
-  const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId }, select: { aciklamaFooter: true } })
-  const analiz = payload.metin ? await analizEt(payload.metin, ayarlar?.aciklamaFooter ?? undefined) : null
+  const [ayarlar, mentorKurallar] = await Promise.all([
+    prisma.ayarlar.findUnique({ where: { musteriId }, select: { aciklamaFooter: true } }),
+    mentorKurallariOku(musteriId),
+  ])
+  const analiz = payload.metin ? await analizEt(payload.metin, ayarlar?.aciklamaFooter ?? undefined, undefined, mentorKurallariMetne(mentorKurallar)) : null
 
   const durum: DosyaDurum = analiz ? (analiz.yol === 'idari' ? DosyaDurum.IDARI_YOL : DosyaDurum.INCELENIYOR) : DosyaDurum.INCELENIYOR
   const yeniOdemeler = dekontlardanOdemeler(analiz?.dekontlar)
@@ -244,8 +249,11 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
     }
   }
 
-  const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { aciklamaFooter: true } })
-  const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined, gorseller)
+  const [ayarlar, mentorKurallar] = await Promise.all([
+    prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { aciklamaFooter: true } }),
+    mentorKurallariOku(dosya.musteriId),
+  ])
+  const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined, gorseller, mentorKurallariMetne(mentorKurallar))
   if (!analiz) return { ok: false, error: 'AI çıkarımı sonuç vermedi (API anahtarı yok ya da model yanıtı boş).' }
 
   // Rücu oranını TUTARLARDAN deterministik türet (LLM yaya→%100 derken tutarı yarı verebiliyor).
@@ -618,6 +626,12 @@ export async function asamaKaydet(formData: FormData): Promise<void> {
     await prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { durum: durumMap[tur] } })
   }
   await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `${tur} aşaması kaydedildi${kimlikNo ? ' · ' + kimlikNo : ''}` } })
+
+  // Dosya üzerinden arabuluculuk başlatıldıysa → açık önemli olayı da Tamamlanan'a geçir (kuyruktan kalksın).
+  if (tur === 'ARABULUCULUK') {
+    const kapatilan = await onemliOlayDosyadanTamamla({ dosyaId, basvuruNo: kimlikNo, basvuruTarihi: baslangic, kullaniciId: dbUser.id })
+    if (kapatilan > 0) { revalidatePath('/onemli-olaylar'); revalidatePath('/tamamlanan-olaylar') }
+  }
   revalidatePath(`/akilli-giris/${dosyaId}`)
 }
 
@@ -932,6 +946,44 @@ export async function dosyaOnayla(dosyaId: string, onay: boolean): Promise<{ ok:
   await prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { cikarimJson: cj as Prisma.InputJsonValue } })
   await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: onay ? 'Dosya avukat onayından geçti — takibe hazır' : 'Avukat onayı geri alındı' } })
   revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
+}
+
+/**
+ * Mentor geri bildirimi → öğrenilen kural. Avukat, AI'ın "Önerilen Adımlar"/"Riskler ve Öneriler"
+ * çıktısını düzeltir; kural tenant'a yazılır ve sonraki çıkarımlarda sistem promptuna enjekte edilir.
+ * geneleUygula=false ise kural yalnız bu dosyanın olay türünde geçerli olur.
+ */
+export async function mentorKuralEkle(p: {
+  dosyaId: string
+  kaynak: 'ADIM' | 'TEYIT'
+  tur: 'KALDIR' | 'DUZELT'
+  hedef?: string
+  yorum?: string
+  geneleUygula?: boolean
+}): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: p.dosyaId }, select: { musteriId: true, cikarimJson: true } })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
+
+  const kaynak = p.kaynak === 'TEYIT' ? 'TEYIT' : 'ADIM'
+  const tur = p.tur === 'DUZELT' ? 'DUZELT' : 'KALDIR'
+  const hedef = (p.hedef ?? '').trim().slice(0, 1000) || null
+  const yorum = (p.yorum ?? '').trim().slice(0, 2000)
+  // DÜZELT yönerge ister; KALDIR'da yorum yoksa hedeften türet (en azından "şunu kaldır" bağlamı kalsın).
+  if (tur === 'DUZELT' && !yorum) return { ok: false, error: 'Düzeltme için bir yönerge yazın.' }
+  if (!yorum && !hedef) return { ok: false, error: 'Geri bildirim boş olamaz.' }
+
+  const cj = (dosya.cikarimJson ?? {}) as { olayTuru?: string | null }
+  const olayTuru = p.geneleUygula ? null : (typeof cj.olayTuru === 'string' && cj.olayTuru.trim() ? cj.olayTuru.trim().slice(0, 200) : null)
+
+  await prisma.mentorKural.create({
+    data: { musteriId: dosya.musteriId, kaynak, tur, hedef, yorum: yorum || (hedef ?? ''), olayTuru, dosyaId: p.dosyaId, kullaniciId: dbUser.id },
+  })
+  await prisma.aktivite.create({
+    data: { dosyaId: p.dosyaId, kullaniciId: dbUser.id, eylem: `Mentor'a kural öğretildi (${tur === 'KALDIR' ? 'bu öneriyi verme' : 'düzeltme'}${olayTuru ? `; yalnız "${olayTuru}"` : '; tüm dosyalar'})` },
+  })
+  revalidatePath(`/akilli-giris/${p.dosyaId}`)
   return { ok: true }
 }
 

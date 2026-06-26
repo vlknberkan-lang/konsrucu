@@ -82,6 +82,26 @@ function icerikSkor(metin: string | null | undefined): { kat: BelgeKat; guclu: b
   return en ? { kat: en.kat, guclu: en.guclu } : null
 }
 
+/**
+ * UYAP evrak adı sonunda belgenin GERÇEK tarihini taşır (ör. "Borca İtiraz Talebi 2026-06-12.pdf").
+ * ISO (YYYY-MM-DD) ve TR (DD.MM.YYYY / DD-MM-YYYY) kabul; tarih-yalnız UTC kanonik (gün kayması olmaz).
+ * Bulunamazsa null → çağıran indirme tarihine (createdAt) düşer. Evrak feed'i bu tarihe göre sıralanır.
+ */
+export function belgeAdindanTarih(ad: string | null | undefined): Date | null {
+  const s = ad ?? ''
+  const iso = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) {
+    const d = new Date(Date.UTC(+iso[1], +iso[2] - 1, +iso[3]))
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  const tr = s.match(/(\d{2})[.\-/](\d{2})[.\-/](\d{4})/)
+  if (tr) {
+    const d = new Date(Date.UTC(+tr[3], +tr[2] - 1, +tr[1]))
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  return null
+}
+
 /** Dosya adından kategori (içerik boş/çıkmazsa yedek). */
 export function adKategori(ad: string): BelgeKat | null {
   const s = trSade(ad)
