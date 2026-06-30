@@ -57,16 +57,20 @@ export const ADRES_TURU = {
 } as const
 
 /**
- * ⚠ PİLOTTA DOĞRULANACAK — exchange.dtd'de etiketsiz enum'lar.
- * İlamsız genel haciz yolu (Örnek 7) için en olası değerler; ilk gerçek yüklemede UYAP doğrulamasıyla kesinleşir.
+ * Rücu takibi preset'i. ✅ DOĞRULANDI (KodluBilgilerData.xml kod tabloları, 06.03.2026 paketi):
+ *   takipTuru=1 → "İlamsız Takip" · takipYolu=0 → "Genel Haciz Yoluyla Takip"
+ *   takipSekli=0 → "İlamsız Takiplerde Ödeme Emri (Örnek 7 / eski 49)" · dosyaTuru=0 (DTD'de tek geçerli)
+ * `dosyaTipi` (DTD'de #REQUIRED, CDATA) → "35" "Esas Dosyası" (icraDosyaTurleri tablosu, satır 2187).
+ *   Tablo-destekli seçim: "0" tabloda yok (placeholder'dı); rücu ilamsız takip = esas dosyası. Nihai onay
+ *   ilk gerçek yükleme (pilot) ile gelir — UYAP ret verirse buradan değiştir.
  */
 export const TAKIP_PRESET = {
-  dosyaTipi: '0', // DTD'de tek #REQUIRED alan — gerçek değeri örnek/pilot XML'den teyit edilecek
-  dosyaTuru: '0',
-  takipTuru: '1', // DTD default; 1 = ilamsız
-  takipYolu: '0', // 0..5 — genel haciz yolu
-  takipSekli: '0', // 0..6
-  mahiyetKodu: MAHIYET.DIGER_ORNEK7, // rücu → "Diğer - Örnek 7" (alternatif: Belgesiz 1307)
+  dosyaTipi: '35', // ✅ icraDosyaTurleri kod 35 "Esas Dosyası" (pilotla nihai teyit)
+  dosyaTuru: '0', // ✅ DTD: yalnız "0" geçerli
+  takipTuru: '1', // ✅ "İlamsız Takip"
+  takipYolu: '0', // ✅ "Genel Haciz Yoluyla Takip"
+  takipSekli: '0', // ✅ "İlamsız Takiplerde Ödeme Emri (Örnek 7)"
+  mahiyetKodu: MAHIYET.DIGER_ORNEK7, // ✅ 1407 "Diğer - Örnek 7" (rücu = genel para alacağı; Yelda hukuken teyit etsin: 1307 Belgesiz alternatifi)
   BK84MaddeUygulansin: 'H',
   BSMVUygulansin: 'H',
   KKDFUygulansin: 'H',
