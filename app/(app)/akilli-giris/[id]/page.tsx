@@ -25,15 +25,18 @@ import { BorclularDuzenle } from '@/components/akilli-giris/detay/borclular-duze
 import { KaynakIzi } from '@/components/akilli-giris/detay/kaynak-izi'
 import { OnayButonu } from '@/components/akilli-giris/detay/onay-butonu'
 import { TakipSureci } from '@/components/akilli-giris/detay/takip-sureci'
-import { UyapXmlButon } from '@/components/akilli-giris/detay/uyap-xml-buton'
 import { AsamaPanel } from '@/components/akilli-giris/detay/asama-panel'
 import { ArabuluculukBaslat } from '@/components/akilli-giris/detay/arabuluculuk-baslat'
+import { IcraHazirlik } from '@/components/akilli-giris/detay/icra-hazirlik'
+import { dayanakSec, type DayanakGirdi } from '@/lib/konsrucu/dayanak-sec'
 import { TaksitPanel, type PlanUI } from '@/components/akilli-giris/detay/taksit-panel'
 import { SurecSerit } from '@/components/akilli-giris/detay/surec-serit'
 import { BelgeSerit, type BelgeKey } from '@/components/akilli-giris/detay/belge-serit'
 import { UyapEvraklar } from '@/components/akilli-giris/detay/uyap-evraklar'
 import { DosyaSor } from '@/components/akilli-giris/detay/dosya-sor'
 import { DosyaOzet, ozetKur } from '@/components/konsrucu/dosya-ozet'
+import { GorevEkle } from '@/components/takip-gorevi/gorev-ekle'
+import { tenantKullanicilari } from '@/lib/konsrucu/db'
 
 const fmtTRY = (n: number | null | undefined) =>
   n != null && Number.isFinite(Number(n)) ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)) + ' ₺' : null
@@ -100,6 +103,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   })
   if (!dosya) notFound()
   const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId } })
+  const kullanicilar = await tenantKullanicilari(dosya.musteriId)
 
   const cj = (dosya.cikarimJson ?? {}) as { aciklama?: string | null; olayTuru?: string | null; olayBaglami?: string | null; sonrakiAdimlar?: string[]; teyit?: { not: string; tip: 'oneri' | 'uyari' | 'ok' }[]; onay?: { ok?: boolean; kim?: string; tarih?: string } }
   const teyitler = Array.isArray(cj.teyit) ? cj.teyit : []
@@ -161,6 +165,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const dilekceCikti = aktifSekme === 'dava'
     ? await prisma.uretilenCikti.findFirst({ where: { dosyaId: dosya.id, tip: 'DILEKCE' }, orderBy: { createdAt: 'desc' }, select: { id: true, icerik: true, durum: true } })
     : null
+  // Dava sekmesi için dosyaya özel Yargıtay emsalleri (EmsalKarar)
+  const emsaller = aktifSekme === 'dava'
+    ? await prisma.emsalKarar.findMany({ where: { dosyaId: dosya.id }, orderBy: { createdAt: 'asc' }, select: { id: true, yargitayId: true, daire: true, esasNo: true, kararNo: true, kararTarihi: true, alaka: true, secili: true, aramaKelime: true } })
+    : []
 
   // Önemli Olay (borca itiraz) — arabuluculuk sekmesinde "başvuru hazırlığı + tamamla" paneli
   const acikOlaylar = dosya.onemliOlaylar
@@ -241,6 +249,34 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const evrakVar = dosya.belgeler.length > 0
   const cikarimVar = !!dosya.yol || dosya.borclular.length > 0 || !!cj.aciklama
   const takipAcik = dosya.durum === 'TAKIP_ACILDI' || !!dosya.icraDosyaNo
+
+  // İcra Takibine Hazırlık (icra sekmesi): dayanak belgeler + hap bilgiler. Takip açıldıktan SONRA da
+  // referans olarak görünür kalır (Yelda onayı: "orası hep kalsın") — metin duruma göre değişir.
+  const dayanakRes = aktifSekme === 'icra' ? dayanakSec(dosya.belgeler as DayanakGirdi[]) : null
+  const fotoIds = Array.isArray((cj as { dayanakFotoIds?: unknown }).dayanakFotoIds)
+    ? ((cj as { dayanakFotoIds?: unknown[] }).dayanakFotoIds!.filter((x): x is string => typeof x === 'string'))
+    : []
+  const icraHazirlikProps = dayanakRes
+    ? {
+        dosyaId: dosya.id,
+        takipAcik,
+        hap: {
+          hukukNo: dosya.hukukDosyaNo, hasarNo: dosya.hasarDosyaNo,
+          alacakliUnvan: ayarlar?.alacakliUnvan ?? dosya.musteri.ad,
+          mersisVkn: ayarlar?.mersis ?? ayarlar?.davaciVkn ?? null,
+          vekil: ayarlar?.vekilAd ?? null,
+          borclular: dosya.borclular.map((b) => ({ adUnvan: b.adUnvan, tcVkn: b.tcVkn, adres: b.adres, teyitli: b.teyitDurumu === 'TEYIT_EDILDI' })),
+          anapara: fmtTRY(faizAnapara), rucuOrani: dosya.rucuOrani, islemisFaiz: fmtTRY(faizEff), toplam: fmtTRY(faizToplam ?? faizAnapara),
+          faizAralik: faizBasEff ? `Faiz: ${fmtDate(new Date(faizBasEff))} → ${fmtDate(new Date(faizBitEff))}` : null,
+          kazaTarihi: fmtDate(dosya.kazaTarihi ?? dosya.hasarTarihi), kazaYeri: dosya.kazaYeri ?? dosya.il ?? '—',
+          brans: dosya.brans, rucuSebebi: dosya.rucuSebebi, yetkiliIcra: dosya.yetkiliIcra ?? dosya.icraDairesi ?? null,
+          zamanasimi: fmtDate(dosya.zamanasimi), aciklama: aciklamaMetni,
+        },
+        dayanak: dayanakRes.secilenler.map((d) => ({ id: d.id, dosyaAdi: d.dosyaAdi, rolLabel: d.rolLabel, acilabilir: d.acilabilir, belgeTarihi: d.belgeTarihi, not: d.not })),
+        notlar: dayanakRes.notlar,
+        hasar: dayanakRes.hasarAdaylar.map((h) => ({ id: h.id, dosyaAdi: h.dosyaAdi, secili: fotoIds.includes(h.id) })),
+      }
+    : null
 
   const teyitliBorclu = dosya.borclular.some((b) => b.teyitDurumu === 'TEYIT_EDILDI')
   const teyitGerek = dosya.borclular.some((b) => b.teyitDurumu === 'TEYIT_GEREK')
@@ -407,6 +443,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
       ) : aktifSekme !== 'oncesi' ? (
         <>
           {aktifSekme === 'arabuluculuk' && arabuluculukOlayProps && <ArabuluculukBaslat {...arabuluculukOlayProps} />}
+          {aktifSekme === 'icra' && icraHazirlikProps && <IcraHazirlik {...icraHazirlikProps} />}
           <AsamaPanel
             sekme={aktifSekme}
             dosyaId={dosya.id}
@@ -415,6 +452,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
             prefill={aktifSekme === 'icra' ? { no: dosya.icraDosyaNo, birim: dosya.icraDairesi ?? dosya.yetkiliIcra } : undefined}
             takip={takipProp}
             dilekce={dilekceCikti}
+            emsaller={emsaller}
           />
         </>
       ) : (
@@ -498,7 +536,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
           </Section>
 
           {/* 4 · ZAMAN ÇİZELGESİ */}
-          <Section kicker="4 · ZAMAN ÇİZELGESİ" title="Geçmiş ve Notlar" sub="Dosyanın tüm olayları: tevdiye, çekim, çıkarım, teyit ve eklenen notlar — kronolojik.">
+          <Section kicker="4 · ZAMAN ÇİZELGESİ" title="Geçmiş ve Notlar" sub="Dosyanın tüm olayları: tevdiye, çekim, çıkarım, teyit ve eklenen notlar — kronolojik." right={<GorevEkle dosyaId={dosya.id} kullanicilar={kullanicilar} variant="ghost" label="Görev Ekle" />}>
             <NotForm dosyaId={dosya.id} init={initials(dbUser.ad)} />
             {tl.length === 0 ? (
               <div className="text-[13px] text-muted-foreground">Henüz işlem yok.</div>
@@ -626,7 +664,6 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
               ) : (
                 <>
                   <OnayButonu dosyaId={dosya.id} onayli={onayli} onayKim={onay?.kim} onayTarih={onay?.tarih} />
-                  <UyapXmlButon dosyaId={dosya.id} />
                   {hazir ? (
                     <form action={takipAcildi} className="flex flex-col gap-2.5">
                       <input type="hidden" name="dosyaId" value={dosya.id} />

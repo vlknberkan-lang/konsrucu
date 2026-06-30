@@ -14,11 +14,11 @@ import { onemliOlayDosyadanTamamla } from '@/lib/konsrucu/onemli-olay'
 import { faizHesapla, oranlariOku, sonDekontTarihi, type DekontGirdi } from '@/lib/konsrucu/faiz'
 import { yetkiliIcraOner } from '@/lib/konsrucu/adli-rehber'
 import { aciklamaUret } from '@/lib/konsrucu/takip'
-import { takipXmlUret, type TakipXmlGirdi, type TakipXmlBorclu, type TakipXmlOnizleme } from '@/lib/konsrucu/uyap-etakip/xml'
 import { kanonik, paraTR, tarihTR } from '@/lib/import/hugo'
 import { dilekceMetni, type DilekceGirdi } from '@/lib/konsrucu/dilekce'
 import { dilekceAnlatim } from '@/lib/konsrucu/dilekce-ai'
 import { taksitProgrami } from '@/lib/konsrucu/taksit'
+import { dosyadanEmsal } from '@/lib/konsrucu/emsal-ara'
 
 type DosyaPayload = {
   hasarNo?: string
@@ -538,150 +538,6 @@ export async function faizKaydet(dosyaId: string, p: FaizPayload): Promise<{ ok:
   return { ok: true }
 }
 
-/** UYAP e-Takip XML üret (tek dosya). Borçlu adresi MERNİS'e bırakılır (yalnız TC). e-imza+harç kullanıcıda. */
-export async function takipXmlOlustur(
-  dosyaId: string,
-): Promise<{ ok: boolean; xml?: string; fileName?: string; uyarilar?: string[]; error?: string }> {
-  const { izinli } = await ctx()
-  const dosya = await prisma.rucuDosyasi.findFirst({
-    where: { OR: [{ id: dosyaId }, { id: { startsWith: dosyaId } }, { hukukDosyaNo: dosyaId }, { hasarDosyaNo: dosyaId }] },
-    include: { borclular: true, odemeler: true },
-  })
-  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
-  const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId } })
-
-  const uyarilar: string[] = []
-  const alacakliUnvan = (ayarlar?.alacakliUnvan ?? dosya.sigortaliUnvan ?? '').trim()
-  if (!alacakliUnvan) uyarilar.push('Alacaklı ünvanı yok — Şirket Bilgileri’nden girin.')
-  if (!ayarlar?.vekilAdres) uyarilar.push('Alacaklı/vekil adresi yok — UYAP alacaklı adresini zorunlu tutuyor; Şirket Bilgileri’nden girin.')
-
-  const borclular = dosya.borclular.map((b) => {
-    const tc = (b.tcVkn ?? '').replace(/\D/g, '')
-    return { adUnvan: b.adUnvan, tcVkn: tc || null, kurumMu: tc.length === 10, adres: null }
-  })
-  if (!borclular.length) uyarilar.push('Borçlu yok — takip açılamaz.')
-  else if (borclular.some((b) => !b.tcVkn)) uyarilar.push('Bazı borçluların TC/VKN’si yok — MERNİS için TC şart.')
-
-  const asil = dosya.rucuTutari != null ? Number(dosya.rucuTutari) : dosya.asilAlacak != null ? Number(dosya.asilAlacak) : 0
-  if (!(asil > 0)) uyarilar.push('Rücu/asıl alacak tutarı yok.')
-  if (!dosya.yetkiliIcra && !dosya.icraDairesi) uyarilar.push('Yetkili icra dairesi belirsiz — yükleme sırasında İl/Adliye’yi buna göre seçin.')
-
-  const dekontGirdi: DekontGirdi[] = dosya.odemeler.map((o) => ({ tarih: o.tarih ? isoGun(o.tarih) : null, tutar: o.tutar != null ? Number(o.tutar) : 0, haricMi: o.haricMi }))
-  const faizBas = dosya.faizBaslangic ? isoGun(dosya.faizBaslangic) : sonDekontTarihi(dekontGirdi) || null
-
-  const cj = (dosya.cikarimJson ?? {}) as { aciklama?: string | null }
-  const aciklama = (cj.aciklama ?? '').trim() || aciklamaUret({
-    kazaTarihi: dosya.kazaTarihi ?? dosya.hasarTarihi, sigortaliPlaka: dosya.sigortaliPlaka, karsiPlaka: dosya.karsiPlaka, alacakliUnvan,
-  })
-
-  const vekilTam = (ayarlar?.vekilAd ?? '').trim()
-  const vekilParca = vekilTam ? vekilTam.split(/\s+/) : []
-  const vekil = vekilTam ? { ad: vekilParca.slice(0, -1).join(' ') || vekilParca[0], soyad: vekilParca.length > 1 ? vekilParca[vekilParca.length - 1] : '', adres: ayarlar?.vekilAdres ?? null } : null
-
-  const girdi: TakipXmlGirdi = {
-    alacakli: { unvan: alacakliUnvan, mersis: ayarlar?.mersis ?? null, iban: ayarlar?.iban ?? null, adres: ayarlar?.vekilAdres ?? null },
-    vekil,
-    borclular,
-    asilAlacak: asil,
-    faiz: faizBas ? { baslangic: faizBas, faizTuru: ayarlar?.faizTuru ?? 'Yasal faiz' } : null,
-    aciklama,
-    dosyaBelirleyici: dosya.hukukDosyaNo ?? dosya.id,
-  }
-  const xml = takipXmlUret(girdi)
-  const no = (dosya.hukukDosyaNo ?? dosya.hasarDosyaNo ?? dosya.id).replace(/[^\w.-]/g, '_')
-  return { ok: true, xml, fileName: `takip_${no}.xml`, uyarilar }
-}
-
-/** "Takip XML hazırla" önizlemesi: taraflar, icra dairesi, tutar, faiz başlangıç/tür/tutar (hesaplı), açıklama + uyarılar.
- *  Kullanıcı bunları gözden geçirip düzeltir; sonra takipXmlIndir ile düzeltilmiş XML üretilir. */
-export async function takipXmlVeri(dosyaId: string): Promise<TakipXmlOnizleme> {
-  const { izinli } = await ctx()
-  const dosya = await prisma.rucuDosyasi.findFirst({
-    where: { OR: [{ id: dosyaId }, { id: { startsWith: dosyaId } }, { hukukDosyaNo: dosyaId }, { hasarDosyaNo: dosyaId }] },
-    include: { borclular: true, odemeler: true },
-  })
-  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
-  const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId } })
-
-  const uyarilar: string[] = []
-  const alacakliUnvan = (ayarlar?.alacakliUnvan ?? dosya.sigortaliUnvan ?? '').trim()
-  if (!alacakliUnvan) uyarilar.push('Alacaklı ünvanı yok — Şirket Bilgileri’nden girin.')
-  if (!ayarlar?.vekilAdres) uyarilar.push('Alacaklı/vekil adresi yok — UYAP zorunlu tutuyor; Şirket Bilgileri’nden girin.')
-  if (!ayarlar?.mersis && !ayarlar?.davaciVkn) uyarilar.push('Alacaklı MERSİS/Vergi No yok — kurum kimliği için Şirket Bilgileri’nden girin.')
-  if (!ayarlar?.iban) uyarilar.push('Alacaklı IBAN’ı yok — UYAP zorunlu tutuyor (tahsilat hesabı); Şirket Bilgileri’nden girin.')
-
-  const borclular: TakipXmlBorclu[] = dosya.borclular.map((b) => {
-    const tc = (b.tcVkn ?? '').replace(/\D/g, '')
-    return { adUnvan: b.adUnvan, tcVkn: tc || null, kurumMu: tc.length === 10, adres: b.adres ?? null }
-  })
-  if (!borclular.length) uyarilar.push('Borçlu yok — takip açılamaz.')
-  else if (borclular.some((b) => !b.tcVkn)) uyarilar.push('Bazı borçluların TC/VKN’si yok — MERNİS için TC şart.')
-  if (borclular.some((b) => !(b.adres ?? '').trim())) uyarilar.push('Borçlu ADRESİ yok — UYAP XML import’u adresi ZORUNLU tutar (MERNİS otomatik doldurmaz). Aşağıdan girin.')
-
-  const asil = dosya.rucuTutari != null ? Number(dosya.rucuTutari) : dosya.asilAlacak != null ? Number(dosya.asilAlacak) : 0
-  if (!(asil > 0)) uyarilar.push('Rücu/asıl alacak tutarı yok.')
-  const yetkiliIcra = dosya.yetkiliIcra || dosya.icraDairesi || null
-  if (!yetkiliIcra) uyarilar.push('Yetkili icra dairesi belirsiz — yükleme sırasında İl/Adliye’yi buna göre seçin.')
-
-  const dekontGirdi: DekontGirdi[] = dosya.odemeler.map((o) => ({ tarih: o.tarih ? isoGun(o.tarih) : null, tutar: o.tutar != null ? Number(o.tutar) : 0, haricMi: o.haricMi }))
-  const faizBas = dosya.faizBaslangic ? isoGun(dosya.faizBaslangic) : sonDekontTarihi(dekontGirdi) || ''
-  const oranlar = oranlariOku(ayarlar?.faizJson)
-  const bugun = new Date().toISOString().slice(0, 10)
-  const hesap = asil > 0 && faizBas ? faizHesapla(asil, new Date(faizBas), new Date(bugun), oranlar) : null
-
-  const cj = (dosya.cikarimJson ?? {}) as { aciklama?: string | null }
-  const aciklama = (cj.aciklama ?? '').trim() || aciklamaUret({
-    kazaTarihi: dosya.kazaTarihi ?? dosya.hasarTarihi, sigortaliPlaka: dosya.sigortaliPlaka, karsiPlaka: dosya.karsiPlaka, alacakliUnvan,
-  })
-
-  return {
-    ok: true,
-    alacakliUnvan, alacakliMersis: ayarlar?.mersis ?? null, alacakliVergiNo: ayarlar?.davaciVkn ?? null, alacakliIban: ayarlar?.iban ?? null, vekilAd: ayarlar?.vekilAd ?? null,
-    borclular, yetkiliIcra,
-    asilAlacak: asil ? String(asil) : '', faizBaslangic: faizBas, faizTuru: ayarlar?.faizTuru ?? 'Yasal faiz',
-    faizTutar: hesap ? String(hesap.faiz) : '', aciklama,
-    faizOranlar: oranlar, bugun, uyarilar,
-  }
-}
-
-/** Düzeltilmiş önizleme değerlerinden XML üretir (alacaklı/vekil Ayarlar'dan sabit; taraflar/tutar/faiz/açıklama kullanıcıdan). */
-export async function takipXmlIndir(
-  dosyaId: string,
-  d: { borclular: { adUnvan: string; tcVkn: string | null; adres?: string | null }[]; asilAlacak: string; faizBaslangic: string; faizTuru: string; faizTutar: string; aciklama: string },
-): Promise<{ ok: boolean; xml?: string; fileName?: string; error?: string }> {
-  const { izinli } = await ctx()
-  const dosya = await prisma.rucuDosyasi.findFirst({
-    where: { OR: [{ id: dosyaId }, { id: { startsWith: dosyaId } }, { hukukDosyaNo: dosyaId }, { hasarDosyaNo: dosyaId }] },
-    select: { id: true, musteriId: true, sigortaliUnvan: true, hukukDosyaNo: true, hasarDosyaNo: true },
-  })
-  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
-  const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId } })
-
-  const vekilTam = (ayarlar?.vekilAd ?? '').trim()
-  const vp = vekilTam ? vekilTam.split(/\s+/) : []
-  const vekil = vekilTam ? { ad: vp.slice(0, -1).join(' ') || vp[0], soyad: vp.length > 1 ? vp[vp.length - 1] : '', adres: ayarlar?.vekilAdres ?? null } : null
-
-  const borclular = (d.borclular ?? []).filter((b) => (b.adUnvan ?? '').trim()).map((b) => {
-    const tc = (b.tcVkn ?? '').replace(/\D/g, '')
-    const adresMetni = (b.adres ?? '').trim()
-    return { adUnvan: b.adUnvan.trim(), tcVkn: tc || null, kurumMu: tc.length === 10, adres: adresMetni ? { acik: adresMetni } : null }
-  })
-  if (!borclular.length) return { ok: false, error: 'En az bir borçlu gerekli.' }
-
-  const girdi: TakipXmlGirdi = {
-    alacakli: { unvan: (ayarlar?.alacakliUnvan ?? dosya.sigortaliUnvan ?? '').trim(), vergiNo: ayarlar?.davaciVkn ?? null, mersis: ayarlar?.mersis ?? null, iban: ayarlar?.iban ?? null, adres: ayarlar?.vekilAdres ?? null },
-    vekil,
-    borclular,
-    asilAlacak: d.asilAlacak,
-    faiz: d.faizBaslangic ? { baslangic: d.faizBaslangic, faizTuru: d.faizTuru, tutar: d.faizTutar || null } : null,
-    aciklama: d.aciklama,
-    dosyaBelirleyici: dosya.hukukDosyaNo ?? dosya.id,
-  }
-  const xml = takipXmlUret(girdi)
-  const no = (dosya.hukukDosyaNo ?? dosya.hasarDosyaNo ?? dosya.id).replace(/[^\w.-]/g, '_')
-  return { ok: true, xml, fileName: `takip_${no}.xml` }
-}
-
 /** Aşama kaydet (İcra/Arabuluculuk/Dava/İnfaz) — form action. Yoksa oluşturur, varsa günceller; dosya durumunu senkronlar. */
 export async function asamaKaydet(formData: FormData): Promise<void> {
   const { dbUser, izinli } = await ctx()
@@ -1125,12 +981,71 @@ export async function hasarFotoSecAI(dosyaId: string): Promise<{ ok: boolean; se
   return { ok: true, secilen }
 }
 
+/** Bir EmsalKarar'ı dilekçeye yazılacak atıf cümlesine çevir. */
+function emsalAtif(e: { daire: string; kararTarihi: string; esasNo: string; kararNo: string; alaka: string }): string {
+  return `T.C. Yargıtay ${e.daire}'nin ${e.kararTarihi} tarihli, E. ${e.esasNo} K. ${e.kararNo} sayılı kararı uyarınca; ${e.alaka}`
+}
+
+/**
+ * Talep-anında Yargıtay emsali bul: dosya bağlamından (olay/branş/kusur) canlı arar, AI ile süzer,
+ * EmsalKarar olarak kaydeder (yargitayId ile dedup → korpus organik birikir). Dava sekmesi butonu.
+ */
+export async function emsalBul(dosyaId: string): Promise<{ ok: boolean; error?: string; kelime?: string; eklenen?: number }> {
+  const { dbUser, izinli } = await ctx()
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { id: true, musteriId: true, brans: true, kusurDurumu: true, cikarimJson: true } })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
+  const cj = (dosya.cikarimJson ?? {}) as { olayBaglami?: string | null; olayTuru?: string | null }
+  try {
+    const { kelime, emsaller } = await dosyadanEmsal({
+      olayBaglami: cj.olayBaglami ?? null, olayTuru: cj.olayTuru ?? null, brans: dosya.brans ?? null, kusurDurumu: dosya.kusurDurumu ?? null,
+    }, 4)
+    if (!emsaller.length) return { ok: true, kelime, eklenen: 0 }
+    for (const e of emsaller) {
+      await prisma.emsalKarar.upsert({
+        where: { dosyaId_yargitayId: { dosyaId, yargitayId: e.id } },
+        update: { alaka: e.alaka, metin: e.metin, aramaKelime: kelime }, // tekrar bulunduysa gerekçeyi tazele
+        create: { dosyaId, yargitayId: e.id, daire: e.daire, esasNo: e.esasNo, kararNo: e.kararNo, kararTarihi: e.kararTarihi, alaka: e.alaka, metin: e.metin, aramaKelime: kelime },
+      })
+    }
+    await prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `Yargıtay emsali arandı ("${kelime}") — ${emsaller.length} karar` } })
+    revalidatePath(`/akilli-giris/${dosyaId}`)
+    return { ok: true, kelime, eklenen: emsaller.length }
+  } catch (e) {
+    console.error('emsalBul hata:', e)
+    return { ok: false, error: 'Yargıtay araması başarısız (kaynak geçici erişilemez olabilir).' }
+  }
+}
+
+/** Emsalin dilekçeye dayanak olarak eklenip eklenmeyeceğini değiştir (checkbox). */
+export async function emsalSecimDegistir(emsalId: string, secili: boolean): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  const e = await prisma.emsalKarar.findUnique({ where: { id: emsalId }, select: { id: true, dosyaId: true, dosya: { select: { musteriId: true } } } })
+  if (!e || !izinli.includes(e.dosya.musteriId)) return { ok: false, error: 'Yetkiniz yok' }
+  await prisma.emsalKarar.update({ where: { id: emsalId }, data: { secili } })
+  revalidatePath(`/akilli-giris/${e.dosyaId}`)
+  return { ok: true }
+}
+
+/** Emsali dosyadan kaldır. */
+export async function emsalSil(emsalId: string): Promise<{ ok: boolean; error?: string }> {
+  const { izinli } = await ctx()
+  const e = await prisma.emsalKarar.findUnique({ where: { id: emsalId }, select: { id: true, dosyaId: true, dosya: { select: { musteriId: true } } } })
+  if (!e || !izinli.includes(e.dosya.musteriId)) return { ok: false, error: 'Yetkiniz yok' }
+  await prisma.emsalKarar.delete({ where: { id: emsalId } })
+  revalidatePath(`/akilli-giris/${e.dosyaId}`)
+  return { ok: true }
+}
+
 /** Dava dilekçesi taslağı üret: dosya verisi + faiz (takip çıkışı) + arabuluculuk + AI olay anlatımı → UretilenCikti TASLAK. */
 export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error?: string; metin?: string; ciktiId?: string }> {
   const { dbUser, izinli } = await ctx()
   const dosya = await prisma.rucuDosyasi.findUnique({
     where: { id: dosyaId },
-    include: { borclular: { orderBy: { id: 'asc' } }, odemeler: true, belgeler: { select: { id: true, extractedText: true, kategori: true, dosyaAdi: true, storagePath: true } }, asamalar: true },
+    include: {
+      borclular: { orderBy: { id: 'asc' } }, odemeler: true,
+      belgeler: { select: { id: true, extractedText: true, kategori: true, dosyaAdi: true, storagePath: true } }, asamalar: true,
+      emsaller: { where: { secili: true }, orderBy: { createdAt: 'asc' } },
+    },
   })
   if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
   const ayarlar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId } })
@@ -1212,6 +1127,7 @@ export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error
     arabulucuTarih: arab?.bitis ? arab.bitis.toISOString().slice(0, 10) : arab?.baslangic ? arab.baslangic.toISOString().slice(0, 10) : null,
     dekontlar,
     olayAnlatimi: anlatim || '⟨olay anlatımı — AI üretemedi, elle yazın⟩',
+    emsaller: dosya.emsaller.map(emsalAtif),
   }
   const metin = dilekceMetni(girdi)
 
