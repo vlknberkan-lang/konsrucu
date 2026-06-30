@@ -70,7 +70,7 @@ export const TAKIP_PRESET = {
   takipTuru: '1', // ✅ "İlamsız Takip"
   takipYolu: '0', // ✅ "Genel Haciz Yoluyla Takip"
   takipSekli: '0', // ✅ "İlamsız Takiplerde Ödeme Emri (Örnek 7)"
-  mahiyetKodu: MAHIYET.DIGER_ORNEK7, // ✅ 1407 "Diğer - Örnek 7" (rücu = genel para alacağı; Yelda hukuken teyit etsin: 1307 Belgesiz alternatifi)
+  mahiyetKodu: MAHIYET.DIGER_ORNEK7, // ✅ 1407 "Diğer - Örnek 7" — hukuken teyitli (rücu = genel para alacağı; 1307 Belgesiz DEĞİL)
   BK84MaddeUygulansin: 'H',
   BSMVUygulansin: 'H',
   KKDFUygulansin: 'H',
