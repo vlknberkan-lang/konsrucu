@@ -20,7 +20,31 @@ export type TakipXmlGirdi = {
   faiz?: XmlFaiz | null
   aciklama?: string | null
   mahiyetKodu?: string
+  talepEdilenHak?: string | null // dosya@alacaklininTalepEttigiHak (UYAP zorunlu) — varsayılan "Alacak"
   dosyaBelirleyici?: string | null // = hukukDosyaNo — geri eşleştirme için
+}
+
+// "Takip XML hazırla" önizleme/düzenleme veri şekli (server action ↔ client panel arası; saf modülde
+// tutulur çünkü actions.ts 'use server' yalnız async fonksiyon export edebilir).
+export type TakipXmlBorclu = { adUnvan: string; tcVkn: string | null; kurumMu: boolean; adres?: string | null }
+export type TakipXmlOnizleme = {
+  ok: boolean
+  error?: string
+  alacakliUnvan?: string
+  alacakliMersis?: string | null
+  alacakliVergiNo?: string | null
+  alacakliIban?: string | null
+  vekilAd?: string | null
+  borclular?: TakipXmlBorclu[]
+  yetkiliIcra?: string | null
+  asilAlacak?: string
+  faizBaslangic?: string
+  faizTuru?: string
+  faizTutar?: string
+  aciklama?: string
+  faizOranlar?: { baslangic: string; oran: number }[]
+  bugun?: string
+  uyarilar?: string[]
 }
 
 const esc = (s: unknown) =>
@@ -133,6 +157,7 @@ export function dosyaBlok(g: TakipXmlGirdi): string {
   const dosyaAttrs = attrs([
     ['dosyaTipi', P.dosyaTipi], ['dosyaTuru', P.dosyaTuru], ['takipTuru', P.takipTuru],
     ['takipYolu', P.takipYolu], ['takipSekli', P.takipSekli], ['mahiyetKodu', g.mahiyetKodu ?? P.mahiyetKodu],
+    ['alacaklininTalepEttigiHak', (g.talepEdilenHak ?? '').trim() || 'Alacak'], // UYAP: "Alacaklının talep ettiği hak" zorunlu
     ['BK84MaddeUygulansin', P.BK84MaddeUygulansin], ['BSMVUygulansin', P.BSMVUygulansin], ['KKDFUygulansin', P.KKDFUygulansin],
     ['dosyaBelirleyicisi', g.dosyaBelirleyici], ['aciklama48e9', g.aciklama],
   ])
