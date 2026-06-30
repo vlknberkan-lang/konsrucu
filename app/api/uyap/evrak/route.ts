@@ -2,23 +2,28 @@
  * KonsRücü — UYAP senkron · POST /api/uyap/evrak
  * Eklenti, UYAP'ta indirdiği YENİ evrak PDF'ini buraya yükler → Supabase 'evrak' bucket → Belge.
  *
- * Dedup: İÇERİK MD5 (icerikHash) ile. UYAP, AYNI evrak için her senkronda YENİ şifreli evrakId verir
- * (kaynakRef değişken → güvenilmez); bu yüzden tekrar tespiti içeriğin MD5'ine dayanır (Storage eTag ile birebir).
- * Aynı içerik bu dosyada zaten varsa atlanır → mükerrer evrak/yükleme/masraf-çıkarımı önlenir. Tenant-kapsamlı.
+ * Dedup: UYAP EVRAK KİMLİĞİ = uyapEvrakId'nin İLK 20 karakteri. UYAP aynı evrağı her indirişte
+ * byte-FARKLI PDF üretir (içerik MD5 her seferinde değişir → güvenilmez) VE evrakId'nin sonuna değişen
+ * bir oturum jetonu ekler; ama evrakId'nin ilk ~20 karakteri (şifre bloğu sınırı) evrak başına SABİTtir.
+ * Aynı (dosya + ad + evrak-kimliği) bu dosyada varsa atlanır → upload + AI + masraf-çıkarımı HİÇ çalışmaz.
+ * Aynı gün aynı adlı AYRI evraklar (ör. 3 borçluya 3 tebligat) farklı önek taşır → ayrı tutulur (kaybolmaz).
  *
  * Gövde: { icraDosyaNo, uyapEvrakId, dosyaAdi, tur?, contentBase64, mime? }
  */
 import { createHash } from 'node:crypto'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { siniflandir, belgeAdindanTarih } from '@/lib/konsrucu/belge-siniflandir'
 import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
 import { belgeBorcaItirazMi, belgeItirazTarihiCikar, onemliOlayTespit } from '@/lib/konsrucu/onemli-olay'
 import { belgedenMasrafCikar } from '@/lib/konsrucu/masraf-cikar'
+import { dosyaAktif } from '@/lib/konsrucu/aktiflik'
 
 export const dynamic = 'force-dynamic'
 
 const MAX_B64 = 4_400_000 // ~3.3 MB dosya (Vercel gövde sınırı altında kalsın)
+const EVRAK_ONEK = 20 // uyapEvrakId'nin stabil kimlik öneki (ilk şifre bloğu; 21+ = değişen oturum jetonu)
 
 export function OPTIONS() {
   return preflight()
@@ -37,8 +42,21 @@ export async function POST(req: Request) {
   const b64 = String(body?.contentBase64 ?? '')
   if (!icraDosyaNo || !uyapEvrakId || !dosyaAdi) return corsJson({ ok: false, error: 'icraDosyaNo + uyapEvrakId + dosyaAdi gerekli' }, 400)
 
-  const dosya = await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true } })
+  const dosya = await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true, durum: true, uyapDurum: true } })
   if (!dosya) return corsJson({ ok: false, error: 'dosya bulunamadı (icraDosyaNo)' }, 404)
+  const aktif = dosyaAktif(dosya) // kapalı dosya: evrak SAKLANIR ama masraf AI çalışmaz (boşa maliyet)
+
+  // DEDUP (pahalı işlemlerden ÖNCE) — UYAP aynı evrağı her indirişte byte-farklı üretir; gerçek kimlik
+  // = uyapEvrakId'nin ilk 20 karakteri (sonu değişen oturum jetonu). Aynı (dosya + ad + önek) varsa atla
+  // → base64 çöz + upload + masraf-AI HİÇ çalışmaz. LEFT(...) ile tam eşleşme (LIKE joker riski yok).
+  const evrakKimlik = uyapEvrakId.slice(0, EVRAK_ONEK)
+  const mevcut = await prisma.$queryRaw<{ x: number }[]>(
+    Prisma.sql`SELECT 1 AS x FROM "Belge"
+               WHERE "dosyaId" = ${dosya.id} AND "dosyaAdi" = ${dosyaAdi}
+                 AND LEFT("kaynakRef", ${Prisma.raw(String(EVRAK_ONEK))}) = ${evrakKimlik}
+               LIMIT 1`,
+  )
+  if (mevcut.length) return corsJson({ ok: true, atlandi: true, sebep: 'zaten var (UYAP evrak kimliği)' })
 
   if (!b64) return corsJson({ ok: false, error: 'contentBase64 gerekli' }, 400)
   if (b64.length > MAX_B64) return corsJson({ ok: false, atlandi: true, sebep: 'dosya çok büyük (elle ekleyin)' }, 413)
@@ -47,12 +65,8 @@ export async function POST(req: Request) {
   try { bytes = Buffer.from(b64, 'base64') } catch { return corsJson({ ok: false, error: 'base64 çözülemedi' }, 400) }
   if (!bytes.length) return corsJson({ ok: false, error: 'boş içerik' }, 400)
 
-  // İÇERİK MD5 — dedup'un GERÇEK anahtarı (UYAP'ın değişen evrakId'si değil). Storage eTag ile aynı değer.
+  // İÇERİK MD5 — yalnız storage yolu + bilgi amaçlı (dedup ARTIK evrak kimliğine dayanıyor, içeriğe değil).
   const icerikHash = createHash('md5').update(bytes).digest('hex')
-
-  // dedup — bu İÇERİK bu dosyada zaten varsa atla (her senkronda evrakId değişse de tekrar oluşmaz)
-  const mevcut = await prisma.belge.findFirst({ where: { dosyaId: dosya.id, icerikHash }, select: { id: true } })
-  if (mevcut) return corsJson({ ok: true, atlandi: true, sebep: 'zaten var (içerik)' })
 
   const mime = String(body?.mime ?? 'application/pdf')
   const safe = dosyaAdi.replace(/[^\w.\-]+/g, '_').slice(0, 80)
@@ -82,8 +96,9 @@ export async function POST(req: Request) {
   }
 
   // Makbuz/dekont indiyse → PDF'i otomatik oku, Masraf kalemlerini çıkar (hata evrak kaydını bozmaz).
+  // Kapalı dosyada YENİ masraf gerekmez → AI çağırma (Faz 0 maliyet kapısı; evrak yine saklandı).
   let masraf: { eklendi: number; atlandi: number } | undefined
-  if (snf.kategori === 'DEKONT') {
+  if (snf.kategori === 'DEKONT' && aktif) {
     try {
       const r = await belgedenMasrafCikar(belge.id, { kullaniciId: k.userId })
       masraf = { eklendi: r.eklendi, atlandi: r.atlandi }
