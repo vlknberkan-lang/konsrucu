@@ -57,16 +57,19 @@ export default async function AppGroupLayout({ children }: { children: React.Rea
 
   const init = initials(dbUser.ad)
 
-  // Sol menü rozeti: aktif tenant'taki açık önemli olay (borca itiraz) sayısı.
-  const onemliSayi = aktif
-    ? await prisma.onemliOlay.count({ where: { dosya: { musteriId: aktif.id }, durum: { in: ['ACIK', 'ISLEMDE'] } } })
-    : 0
+  // Sol menü rozetleri: aktif tenant'taki açık önemli olay (borca itiraz) + açık takip görevi sayısı.
+  const [onemliSayi, gorevSayi] = aktif
+    ? await Promise.all([
+        prisma.onemliOlay.count({ where: { dosya: { musteriId: aktif.id }, durum: { in: ['ACIK', 'ISLEMDE'] } } }),
+        prisma.takipGorevi.count({ where: { dosya: { musteriId: aktif.id }, durum: { in: ['ACIK', 'ISLEMDE'] } } }),
+      ])
+    : [0, 0]
 
   return (
     <AppShell
       user={{ ad: dbUser.ad, rol: ROL_ETIKET[dbUser.rol] ?? dbUser.rol, init }}
       tenant={aktif ? { musteri: aktif.ad, ofis: 'Küçükislamoğlu Hukuk Bürosu', init } : null}
-      navCounts={{ onemli: onemliSayi }}
+      navCounts={{ onemli: onemliSayi, gorevler: gorevSayi }}
     >
       {children}
     </AppShell>

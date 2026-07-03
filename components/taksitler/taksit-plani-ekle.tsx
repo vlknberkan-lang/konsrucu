@@ -8,29 +8,14 @@ import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CreditCard, X, Loader2, Search, Check } from 'lucide-react'
 import { taksitPlaniKur } from '@/app/(app)/akilli-giris/actions'
+import { sayiTR, formatTRInput } from '@/lib/konsrucu/sayi'
 
 export type DosyaSecenek = { id: string; hukukNo: string | null; borclu: string | null }
 
 const INP = 'w-full rounded-[10px] border border-border bg-surface-muted px-3 py-2.5 text-[13px] outline-none transition focus:border-kr focus:bg-surface focus:ring-4 focus:ring-kr/15'
 const LBL = 'font-mono mb-1 block text-[9px] uppercase tracking-[0.1em] text-muted-foreground'
 
-// "1.234,56" → 1234.56 (önizleme için; sunucu guvenliDecimal ile kesin parse eder)
-const numTR = (s: string): number => {
-  const t = (s ?? '').trim().replace(/[^\d.,]/g, '')
-  if (!t) return NaN
-  if (t.includes(',')) return Number(t.replace(/\./g, '').replace(',', '.'))
-  return Number(t)
-}
-// Yazarken Türkçe binlik ayracı (nokta) ekler; ondalık virgül korunur. "120000" → "120.000"
-function formatTRInput(raw: string): string {
-  const s = (raw ?? '').replace(/[^\d,]/g, '')
-  const ci = s.indexOf(',')
-  let tam = ci >= 0 ? s.slice(0, ci) : s
-  const ondalik = ci >= 0 ? s.slice(ci + 1).replace(/,/g, '').slice(0, 2) : null
-  tam = tam.replace(/^0+(?=\d)/, '')
-  const grup = tam.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-  return ondalik != null ? `${grup},${ondalik}` : grup
-}
+const numTR = sayiTR // tek kaynak: lib/konsrucu/sayi (iki formatı da çözer; eski yerel kopya "1,234.56"yi yanlış okuyordu)
 const para = (n: number) => (Number.isFinite(n) ? n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺' : '—')
 
 export function TaksitPlaniEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {

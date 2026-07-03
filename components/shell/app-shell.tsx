@@ -26,7 +26,7 @@ export function AppShell({
       <Rail userInit={user.init} counts={navCounts} />
       <Sidebar tenant={tenant} counts={navCounts} />
       <main className="flex min-h-0 min-w-0 flex-col bg-background">
-        <GlobalHeader crumb={crumb} user={user} />
+        <GlobalHeader crumb={crumb} user={user} counts={navCounts} />
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </main>
     </div>

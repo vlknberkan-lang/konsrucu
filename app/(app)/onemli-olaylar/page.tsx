@@ -12,16 +12,17 @@ import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { UstlenButton } from '@/components/onemli-olaylar/ustlen-button'
+import { tarihTR, kalanGun } from '@/lib/konsrucu/format'
 
 type SP = { q?: string; durum?: string; sorumlu?: string }
 
-const fmtDate = (d: Date | null) => (d ? d.toLocaleDateString('tr-TR') : '—')
+const fmtDate = (d: Date | null) => tarihTR(d)
 
 /** Son tarihi kalan güne göre renk koduna çevir (sonTarih elle girilir; boşsa nötr). */
 function sonTarihMeta(d: Date | null): { label: string; tone: Tone; vurgu: boolean } {
   if (!d) return { label: 'belirtilmedi', tone: 'steel', vurgu: false }
-  const label = d.toLocaleDateString('tr-TR')
-  const gun = Math.ceil((d.getTime() - Date.now()) / 86_400_000)
+  const label = tarihTR(d)
+  const gun = kalanGun(d)
   if (gun < 0) return { label: `${label} · ${-gun}g geçti`, tone: 'danger', vurgu: true }
   if (gun <= 30) return { label: `${label} · ${gun}g`, tone: 'danger', vurgu: true }
   if (gun <= 90) return { label: `${label} · ${gun}g`, tone: 'warning', vurgu: true }
@@ -84,6 +85,8 @@ export default async function OnemliOlaylarPage({ searchParams }: { searchParams
   }
 
   const acikBase: Prisma.OnemliOlayWhereInput = { dosya: { musteriId: aktifMusteriId } }
+  const ayar = await prisma.ayarlar.findUnique({ where: { musteriId: aktifMusteriId }, select: { alacakliUnvan: true } })
+  const alacakliEtiket = (ayar?.alacakliUnvan ?? 'Sigorta').replace(/\s*A\.?Ş\.?\s*$/i, '')
   const [rows, acikSay, islemdeSay, banaSay] = await Promise.all([
     prisma.onemliOlay.findMany({
       where,
@@ -177,7 +180,7 @@ export default async function OnemliOlaylarPage({ searchParams }: { searchParams
                       {/* sigortalı */}
                       <div className="min-w-0">
                         <div className="truncate font-semibold">{r.dosya.sigortaliUnvan ?? '—'}</div>
-                        <div className="truncate text-[11px] text-muted-foreground">Ray Sigorta · alacaklı</div>
+                        <div className="truncate text-[11px] text-muted-foreground">{alacakliEtiket} · alacaklı</div>
                       </div>
                       {/* olay türü */}
                       <div className="min-w-0"><Badge tone="danger" dot>Borca İtiraz</Badge></div>

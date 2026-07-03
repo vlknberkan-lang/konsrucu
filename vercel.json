@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/masraf-ozet",
       "schedule": "0 17 * * 2,4"
+    },
+    {
+      "path": "/api/cron/takip-gorevi-hatirlatma",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/uyap-senkron-sagligi",
+      "schedule": "0 6 * * 1-5"
     }
   ]
 }

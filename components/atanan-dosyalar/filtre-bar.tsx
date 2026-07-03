@@ -22,6 +22,7 @@ export function FiltreBar({
   asama,
   cekildi,
   sort,
+  za = 'all',
   asamaSayim,
   cekildiSayim,
 }: {
@@ -29,6 +30,7 @@ export function FiltreBar({
   asama: string
   cekildi: string
   sort: string
+  za?: string
   asamaSayim: Record<string, number>
   cekildiSayim: { all: number; evet: number; hayir: number }
 }) {
@@ -129,6 +131,21 @@ export function FiltreBar({
             <option value="all">Tümü · {cekildiSayim.all}</option>
             <option value="hayir">Bekleyen · {cekildiSayim.hayir}</option>
             <option value="evet">Çekilen · {cekildiSayim.evet}</option>
+          </select>
+        </label>
+
+        {/* zamanaşımı radarı — boş tarihli dosyalar radar DIŞINDA kalır, buradan yakalanır */}
+        <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+          Zamanaşımı
+          <select
+            value={za}
+            onChange={(e) => guncelle({ za: e.target.value === 'all' ? null : e.target.value })}
+            className="rounded-[10px] border border-border bg-surface px-3 py-2.5 text-[13px] text-foreground outline-none transition focus-visible:border-kr/50 focus-visible:ring-2 focus-visible:ring-kr/30 motion-reduce:transition-none"
+          >
+            <option value="all">Tümü</option>
+            <option value="bos">Boş (girilmemiş)</option>
+            <option value="yakin">≤ 30 gün</option>
+            <option value="gecti">Geçti</option>
           </select>
         </label>
 

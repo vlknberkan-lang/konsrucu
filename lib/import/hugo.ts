@@ -31,13 +31,24 @@ export type HugoDosya = {
   atanmaTarihi: Date | null // Başlangıç Tarihi
   bitisTarihi: Date | null
   hugoDurum: string | null // Durumu
+  // Zurich (Hukuki Takip) listesinde hazır gelen, şemada doğrudan karşılığı olan alanlar.
+  // (Hugo listesinde yoktur → bu satırlarda null kalır.)
+  brans: string | null // "KASKO" / "YANGIN" — yazımda Brans enum'a eşlenir
+  sigortaliUnvan: string | null // "Sigortalı Adı"
+  kazaYeri: string | null // "Hasar Yeri" = yetkili icra yeri (HMK m.16)
+  il: string | null
+  faizBaslangic: Date | null // "Tazminat Ödeme Tarihi" (ödeme = faiz başlangıcı)
   /** Şemada kolonu olmayan kişi/serbest alanlar → kaynakJson'a gider. */
   kaynak: {
-    kaynak: 'hugo'
+    kaynak: 'hugo' | 'zurich'
     incelemeyeGonderen: string | null
     inceleyen: string | null
     avYardGonderen: string | null
     aciklama: string | null
+    policeNo: string | null // Zurich "Poliçe No"
+    hasarTutari: string | null // ham: brüt hasar (asıl alacak DEĞİL — bakiye kovalanır)
+    tahsilEdilen: string | null // ham: önceden tahsilat (bakiye = hasar×oran − tahsilat)
+    tazminatOdeme: string | null // ham
     ham: Record<string, string> // ham hücre değerleri (denetim izi)
   }
 }
@@ -82,6 +93,14 @@ type AlanKey =
   | 'inceleyen'
   | 'avYardGonderen'
   | 'aciklama'
+  // Zurich (Hukuki Takip) listesine özgü kolonlar
+  | 'brans'
+  | 'sigortaliUnvan'
+  | 'kazaYeri'
+  | 'policeNo'
+  | 'tazminatOdeme'
+  | 'hasarTutari'
+  | 'tahsilEdilen'
 
 /** Başlık adı (kanonik) → alan. Sıra değişebilir; eşleme ada göredir. */
 const BASLIK_ESLEME: Record<string, AlanKey> = {
@@ -104,6 +123,21 @@ const BASLIK_ESLEME: Record<string, AlanKey> = {
   baslangictarihi: 'atanmaTarihi',
   bitistarihi: 'bitisTarihi',
   durumu: 'hugoDurum',
+
+  // ── Zurich "Hukuki Takip" listesi eş anlamlıları ──
+  // Aynı kavramlar farklı başlıklarla gelir; mevcut alanlara eşlenir (bir sayfa ya Hugo ya Zurich).
+  hasarbrans: 'brans', // "Hasar Branş" (KASKO / YANGIN)
+  zamanasimitarihi: 'zamanasimi', // "Zaman Aşımı Tarihi"
+  bakiyerucututari: 'rucuTutari', // "Bakiye Rücu Tutarı" — takipte kovalanan kalan tutar
+  tahsiledilenrucututari: 'tahsilEdilen', // ham audit (bakiye = hasar×oran − bu)
+  hasartutari: 'hasarTutari', // ham audit (brüt hasar)
+  rucunedeni: 'rucuSebebi', // "Rücu Nedeni"
+  rucunedenidetay: 'aciklama', // "Rücu Nedeni Detay"
+  sigortaliadi: 'sigortaliUnvan', // "Sigortalı Adı"
+  policeno: 'policeNo', // "Poliçe No"
+  hasaryeri: 'kazaYeri', // "Hasar Yeri" = yetkili icra yeri
+  tazminatodemetarihi: 'tazminatOdeme', // "Tazminat Ödeme Tarihi" → faiz başlangıcı
+  atananburo: 'kadroluAvukat', // "Atanan Büro" → sorumlu avukat etiketi
 }
 
 const TR_HARF = /[çğıİöşüÇĞÖŞÜI]/g
@@ -125,6 +159,28 @@ function metin(ham: unknown): string | null {
   const s = String(ham).trim()
   return s ? s : null
 }
+
+/** Rücu oranı metnini kanonikleştir: çıplak sayı ("100", "75") → "% 100". "% 100" zaten korunur. */
+function oranMetin(ham: unknown): string | null {
+  const s = metin(ham)
+  if (!s) return null
+  if (/^%?\s*\d+([.,]\d+)?\s*%?$/.test(s)) return `% ${s.replace(/[%\s]/g, '')}`
+  return s
+}
+
+/** Hücre (typed) → görüntülenebilir denetim metni: sayı → düz metin, metin → trim. */
+function hucreMetin(v: unknown): string {
+  if (v == null) return ''
+  return String(v).trim()
+}
+
+/** tarihTR'nin (UTC gece-yarısı) sonucunu denetim için yyyy-aa-gg'ye çevirir. */
+function isoTarih(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+}
+
+/** Tarih olan alanlar — ham denetim dökümünde seri no yerine yyyy-aa-gg yazmak için. */
+const TARIH_ALANLARI = new Set<AlanKey>(['hasarTarihi', 'zamanasimi', 'atanmaTarihi', 'bitisTarihi', 'tazminatOdeme'])
 
 /** Aşırı/bozuk değeri ele; Decimal(14,2) sınırı içinde, 2 ondalığa yuvarla. */
 function sinirla(n: number): number | null {
@@ -186,7 +242,11 @@ export function paraTR(ham: unknown): number | null {
  */
 export function tarihTR(ham: unknown): Date | null {
   if (ham == null) return null
-  if (ham instanceof Date) return Number.isNaN(ham.getTime()) ? null : ham
+  // Gerçek hücre tarihi (cellDates) → yerel takvim G/A/Y'sini UTC gece-yarısına sabitle (TZ kayması yok).
+  if (ham instanceof Date) {
+    if (Number.isNaN(ham.getTime())) return null
+    return new Date(Date.UTC(ham.getFullYear(), ham.getMonth(), ham.getDate()))
+  }
   const s = String(ham).trim()
   if (!s) return null
 
@@ -214,8 +274,8 @@ export function tarihTR(ham: unknown): Date | null {
   return null
 }
 
-/** İlk çalışma sayfasındaki ilk ~20 satırı tarar, en çok Hugo başlığı eşleşen satırı seçer. */
-function baslikBul(matris: string[][]): { idx: number; harita: Record<number, AlanKey>; say: number } {
+/** İlk çalışma sayfasındaki ilk ~20 satırı tarar, en çok başlığı eşleşen satırı seçer. */
+function baslikBul(matris: unknown[][]): { idx: number; harita: Record<number, AlanKey>; say: number } {
   let idx = -1
   let enIyi = 0
   let enIyiHarita: Record<number, AlanKey> = {}
@@ -255,10 +315,17 @@ export function hugoCozumle(buf: Buffer | ArrayBuffer | Uint8Array): HugoParseSo
   const ws = wb.Sheets[wb.SheetNames[0]]
   if (!ws) return { ...bos, hatalar: [{ satir: 0, sebep: 'Çalışma sayfası bulunamadı' }] }
 
-  // Tüm hücreleri GÖRÜNEN metin (display) olarak al — TR ayraçlar ve gg/aa/yyyy korunur.
-  const matris = XLSX.utils.sheet_to_json<string[]>(ws, {
+  // HAM (typed) oku: sayı→number, tarih→Excel seri no (number), metin→string. cellDates KAPALI.
+  // Neden display değil: Zurich dosyasında tarih/para hücreleri GERÇEK sayı/tarih ve görünen
+  // biçimleri ABD yerelinde ("7/18/24" = ay/gün, "77,508.00") çıkıyor — display'i TR olarak
+  // parse etmek ay/günü ters çevirir ve binlik/ondalığı 1000× bozar.
+  // Neden cellDates KAPALI: SheetJS'in Date üretimi epoch hatasıyla 1 gün geri kayıyor
+  // (45491 → 2024-07-17T20:59Z). Ham seri no (45491) timezone'dan bağımsızdır; tarihTR onu
+  // saf UTC formülüyle 2024-07-18'e çevirir. Hugo'nun TR-metin hücreleri de string olarak
+  // aynı parser'lara düşer (geriye uyumlu).
+  const matris = XLSX.utils.sheet_to_json<unknown[]>(ws, {
     header: 1,
-    raw: false,
+    raw: true,
     defval: '',
     blankrows: false,
   })
@@ -273,6 +340,10 @@ export function hugoCozumle(buf: Buffer | ArrayBuffer | Uint8Array): HugoParseSo
   for (const [c, key] of Object.entries(harita)) alanKol.set(key, Number(c))
   const kolonlar = [...alanKol.values()]
 
+  // Zurich'e özgü kolonlar görüldüyse kaynağı 'zurich' damgala (denetim izi + downstream ipucu).
+  const zurichFormat =
+    alanKol.has('brans') || alanKol.has('sigortaliUnvan') || alanKol.has('policeNo') || alanKol.has('tahsilEdilen')
+
   const satirlar: HugoDosya[] = []
   const hatalar: SatirHatasi[] = []
   const gorulen = new Set<string>()
@@ -280,13 +351,15 @@ export function hugoCozumle(buf: Buffer | ArrayBuffer | Uint8Array): HugoParseSo
   for (let i = baslikIdx + 1; i < matris.length; i++) {
     const row = matris[i] ?? []
     const excelSatir = i + 1 // kullanıcıya 1-bazlı göster
-    const al = (k: AlanKey): string => {
+    // hucre: HAM typed değer (sayı/Date/metin). al: denetim/metin için güvenli string (Date→yyyy-aa-gg).
+    const hucre = (k: AlanKey): unknown => {
       const c = alanKol.get(k)
-      return c == null ? '' : String(row[c] ?? '').trim()
+      return c == null ? null : row[c]
     }
+    const al = (k: AlanKey): string => hucreMetin(hucre(k))
 
     // Eşlenen kolonların tamamı boşsa → boş satır, sessizce atla (hata değil)
-    if (kolonlar.every((c) => !String(row[c] ?? '').trim())) continue
+    if (kolonlar.every((c) => !hucreMetin(row[c]))) continue
 
     const hukukDosyaNo = al('hukukDosyaNo')
     if (!hukukDosyaNo) {
@@ -300,33 +373,51 @@ export function hugoCozumle(buf: Buffer | ArrayBuffer | Uint8Array): HugoParseSo
     gorulen.add(hukukDosyaNo)
 
     const ham: Record<string, string> = {}
-    for (const [k, c] of alanKol) {
-      const v = String(row[c] ?? '').trim()
+    for (const k of alanKol.keys()) {
+      // Tarih alanları seri no olarak gelir → denetim için yyyy-aa-gg yaz; diğerleri düz metin.
+      let v: string
+      if (TARIH_ALANLARI.has(k)) {
+        const d = tarihTR(hucre(k))
+        v = d ? isoTarih(d) : ''
+      } else {
+        v = al(k)
+      }
       if (v) ham[k] = v
     }
 
+    const hasarYeri = metin(al('kazaYeri')) // Zurich "Hasar Yeri" — il düzeyinde gelir
+    const tazminatOdeme = tarihTR(hucre('tazminatOdeme')) // = faiz başlangıcı (ödeme tarihi)
     satirlar.push({
       hukukDosyaNo,
       gonderenBirim: metin(al('gonderenBirim')),
       hasarDosyaNo: metin(al('hasarDosyaNo')),
-      hasarTarihi: tarihTR(al('hasarTarihi')),
-      zamanasimi: tarihTR(al('zamanasimi')),
+      hasarTarihi: tarihTR(hucre('hasarTarihi')),
+      zamanasimi: tarihTR(hucre('zamanasimi')),
       rucuSebebi: metin(al('rucuSebebi')),
-      rucuOrani: metin(al('rucuOrani')),
-      rucuTutari: paraTR(al('rucuTutari')),
-      davaMiktari: paraTR(al('davaMiktari')),
+      rucuOrani: oranMetin(al('rucuOrani')),
+      rucuTutari: paraTR(hucre('rucuTutari')),
+      davaMiktari: paraTR(hucre('davaMiktari')),
       kadroluAvukat: metin(al('kadroluAvukat')),
       sozlesmeliAvukat: metin(al('sozlesmeliAvukat')),
       islemYapanYrd: metin(al('islemYapanYrd')),
-      atanmaTarihi: tarihTR(al('atanmaTarihi')),
-      bitisTarihi: tarihTR(al('bitisTarihi')),
+      atanmaTarihi: tarihTR(hucre('atanmaTarihi')),
+      bitisTarihi: tarihTR(hucre('bitisTarihi')),
       hugoDurum: metin(al('hugoDurum')),
+      brans: metin(al('brans')),
+      sigortaliUnvan: metin(al('sigortaliUnvan')),
+      kazaYeri: hasarYeri,
+      il: hasarYeri, // Zurich listesinde kaza yeri = il; ilçe sonradan AI/UYAP ile incelir
+      faizBaslangic: tazminatOdeme,
       kaynak: {
-        kaynak: 'hugo',
+        kaynak: zurichFormat ? 'zurich' : 'hugo',
         incelemeyeGonderen: metin(al('incelemeyeGonderen')),
         inceleyen: metin(al('inceleyen')),
         avYardGonderen: metin(al('avYardGonderen')),
         aciklama: metin(al('aciklama')),
+        policeNo: metin(al('policeNo')),
+        hasarTutari: metin(al('hasarTutari')),
+        tahsilEdilen: metin(al('tahsilEdilen')),
+        tazminatOdeme: tazminatOdeme ? isoTarih(tazminatOdeme) : null,
         ham,
       },
     })

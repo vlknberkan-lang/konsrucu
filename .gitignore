@@ -54,3 +54,6 @@ Thumbs.db
 *.pem
 
 .vercel
+
+# yerel storage yedekleri (scripts/yedek-al.mjs)
+yedekler/

@@ -56,6 +56,14 @@ Supabase / Prisma / server actions — into the bundle).
 ## Known render warns
 - None. (11/11 render clean; no thin/variantsIdentical/fallback cards.)
 
+## Project history
+- **2026-07-01:** the original pinned project `4c7310ff-…` was **deleted server-side** (get_project
+  404'd on re-sync). Recreated a fresh **`KonsRucu Design System`** = `55ddc7c9-e3ef-403d-b322-3e2d58810f6d`
+  (now the `cfg.projectId` pin) and re-uploaded all 11 via the incremental path (empty target). Local
+  inputs (config + 11 `previews/` + NOTES) carried the whole run — nothing had to be re-authored.
+  If the pin 404s again, it's the same story: recreate + re-push, don't panic. Grades cache is
+  gitignored so it was empty on this machine → all 11 re-captured + re-graded (all `good`).
+
 ## Re-sync risks (watch-list)
 - **`rm -rf ds-bundle` before every driver run on Windows** — otherwise the guidelines `cpSync`
   unlink bug (see Gotchas) crashes the build at `emitGuidelines`. Clean rebuild is cheap and loses

@@ -5,6 +5,7 @@
  */
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { durumAsama, ASAMA_META } from '@/lib/konsrucu/asama'
+import { tarihTR, kalanGun } from '@/lib/konsrucu/format'
 
 export type DosyaOzetData = {
   id: string
@@ -59,7 +60,7 @@ export function ozetKur(d: OzetGirdi): DosyaOzetData {
 }
 
 const fmtTRY = (n: number | null) => (n != null ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺' : '—')
-const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('tr-TR') : '—')
+const fmtDate = (iso: string | null) => tarihTR(iso)
 
 function Hucre({ k, children }: { k: string; children: React.ReactNode }) {
   return (
@@ -72,7 +73,7 @@ function Hucre({ k, children }: { k: string; children: React.ReactNode }) {
 
 /** Yatay künye kapsülü. bugun = zamanaşımı geri sayımı için referans (ISO 'YYYY-MM-DD'). */
 export function DosyaOzet({ data, bugun }: { data: DosyaOzetData; bugun: string }) {
-  const kalan = data.zamanasimi ? Math.ceil((new Date(data.zamanasimi).getTime() - new Date(bugun).getTime()) / 86_400_000) : null
+  const kalan = data.zamanasimi ? kalanGun(data.zamanasimi, new Date(bugun)) : null
   const zaTone: Tone = kalan == null ? 'steel' : kalan < 0 ? 'danger' : kalan <= 30 ? 'danger' : kalan <= 90 ? 'warning' : 'steel'
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2">

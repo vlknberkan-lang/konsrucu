@@ -37,11 +37,12 @@ import { DosyaSor } from '@/components/akilli-giris/detay/dosya-sor'
 import { DosyaOzet, ozetKur } from '@/components/konsrucu/dosya-ozet'
 import { GorevEkle } from '@/components/takip-gorevi/gorev-ekle'
 import { tenantKullanicilari } from '@/lib/konsrucu/db'
+import { tarihTR, saatTR, kalanGun } from '@/lib/konsrucu/format'
 
 const fmtTRY = (n: number | null | undefined) =>
   n != null && Number.isFinite(Number(n)) ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)) + ' ₺' : null
-const fmtDate = (d: Date | null | undefined) => (d ? d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—')
-const fmtDateTime = (d: Date) => `${d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`
+const fmtDate = (d: Date | null | undefined) => tarihTR(d, { day: '2-digit', month: '2-digit', year: 'numeric' })
+const fmtDateTime = (d: Date) => `${tarihTR(d, { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${saatTR(d)}`
 const initials = (ad: string) => ad.split(/\s+/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase()
 // input'a yazılacak Türkçe ondalık (virgül, binlik grubu yok) — istemci numTR ile birebir round-trip eder
 const toTRInput = (n: number) => (Number.isFinite(n) ? n.toLocaleString('tr-TR', { useGrouping: false, maximumFractionDigits: 2 }) : '')
@@ -118,7 +119,8 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const aciklamaMetni = aciklamaTam(cj.aciklama, footer)
 
   // ── FAİZ (efektif): anapara = rücu/kusur payı; başlangıç = override ?? son dekont; bitiş = override ?? bugün ──
-  const bugun = new Date().toISOString().slice(0, 10)
+  // Türkiye bugünü (UTC+3) — sunucu UTC'yken gece 00–03 arası bir gün geriye kaymasın
+  const bugun = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10)
   const faizOranlar = oranlariOku(ayarlar?.faizJson)
   const faizAnapara = dosya.rucuTutari != null ? Number(dosya.rucuTutari) : (anapara ?? 0)
   const dekontGirdi: DekontGirdi[] = dosya.odemeler.map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : null, tutar: o.tutar != null ? Number(o.tutar) : 0, haricMi: o.haricMi }))
@@ -306,7 +308,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const pipeline = ['Havuzda', 'İnceleniyor', 'Takibe Hazır', 'Takip Açıldı']
   const pipelineStep = takipAcik ? 3 : hazir ? 2 : evrakVar ? 1 : 0
 
-  const g = dosya.zamanasimi ? Math.round((new Date(dosya.zamanasimi).getTime() - Date.now()) / 86400000) : null
+  const g = dosya.zamanasimi ? kalanGun(dosya.zamanasimi) : null
   const zaRisk = g != null && g >= 0 && g < 30
   const zaWarn = g != null && g >= 30 && g < 90
 

@@ -2,7 +2,7 @@
  * KonsRücü — Takvim · app/(app)/takvim/page.tsx
  * Tüm dosyalardaki etkinlikler (toplantı/duruşma/süre) tek takvimde. Tenant-kapsamlı, auth zorunlu.
  */
-import { ctx } from '@/lib/konsrucu/db'
+import { ctx, tenantKullanicilari } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { ozetKur } from '@/components/konsrucu/dosya-ozet'
 import { Takvim, type TakvimEtkinlik } from '@/components/takvim/takvim'
@@ -46,9 +46,13 @@ export default async function TakvimPage() {
     yer: e.yer,
     online: e.online,
     durum: e.durum,
+    sonucNot: e.sonucNot,
+    hatirlatmaDk: e.hatirlatmaDk,
     dosyaId: e.dosyaId,
     ozet: ozetKur(e.dosya),
   }))
+
+  const kullanicilar = await tenantKullanicilari(aktifMusteriId)
 
   // "Etkinlik Ekle" için dosya listesi (aranabilir seçim)
   const dosyaKayit = await prisma.rucuDosyasi.findMany({
@@ -62,7 +66,7 @@ export default async function TakvimPage() {
   return (
     <div className="mx-auto max-w-[1400px] px-7 py-6">
       <Baslik adet={etkinlikler.length} right={<EtkinlikEkle dosyalar={dosyalar} />} />
-      <Takvim etkinlikler={etkinlikler} />
+      <Takvim etkinlikler={etkinlikler} kullanicilar={kullanicilar} />
     </div>
   )
 }

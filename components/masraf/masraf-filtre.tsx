@@ -51,7 +51,7 @@ export function MasrafFiltre({ deger }: { deger: FiltreDeger }) {
         </form>
 
         {/* Excel indir */}
-        <a href={`/api/masraf/export${sp.toString() ? `?${sp.toString()}` : ''}`} title="Görünen listeyi RAY MASRAF FORMU olarak indir"
+        <a href={`/api/masraf/export${sp.toString() ? `?${sp.toString()}` : ''}`} title="Görünen listeyi masraf formu (Excel) olarak indir"
           className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-border bg-surface px-3.5 py-2.5 text-[13px] font-semibold text-foreground shadow-card transition hover:border-kr/40 hover:text-kr-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50 motion-reduce:transition-none">
           <FileDown className="h-4 w-4 text-kr" /> Excel indir
         </a>

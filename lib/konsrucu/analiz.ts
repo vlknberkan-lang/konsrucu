@@ -5,6 +5,7 @@
  * Forced tool-use ile şema-zorunlu JSON. Model ucuz katman = Haiku (gerekirse sonnet).
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { unvanGecir } from './unvan'
 
 const MODEL = 'claude-sonnet-4-6' // dedektif çıkarım: çok-belge bağlam + mentor akıl yürütme → güçlü model (haiku yetersiz)
 
@@ -148,7 +149,50 @@ Hepsi Türkçe.`
 
 export type Gorsel = { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; b64: string }
 
-export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[], ogrenilenKurallar?: string): Promise<AnalizSonuc | null> {
+/**
+ * Hasar fotoğrafı adayları arasından İCRA DOSYASINA konacak, araçtaki hasarın AÇIK göründüğü en iyi n
+ * fotoğrafı seçer (0-tabanlı indeks listesi döner). Ucuz görsel ayıklama → Haiku. Yoksa/uygunsuzsa null.
+ */
+export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2): Promise<number[] | null> {
+  const key = process.env.ANTHROPIC_API_KEY
+  if (!key || !gorseller.length) return null
+  const client = new Anthropic({ apiKey: key })
+  const imgs = gorseller.slice(0, 12)
+  const content: Anthropic.ContentBlockParam[] = []
+  imgs.forEach((g, i) => {
+    content.push({ type: 'text', text: `Fotoğraf #${i}:` })
+    content.push({ type: 'image', source: { type: 'base64', media_type: g.mime, data: g.b64 } })
+  })
+  content.push({ type: 'text', text: `Yukarıdaki ${imgs.length} fotoğraf bir kasko/trafik hasar dosyasına ait. İcra dosyasına EK olarak konacak, ARAÇTAKİ HASARIN AÇIK GÖRÜLDÜĞÜ en iyi ${n} fotoğrafı seç (hasarlı bölge net görünen araç kareleri). Belge/ekran görüntüsü, ehliyet/ruhsat, plaka yakını, kişi ya da alakasız kareleri SEÇME. En fazla ${n} indeks döndür; uygun yoksa daha az.` })
+  const SCHEMA = {
+    type: 'object',
+    properties: {
+      secilenler: { type: 'array', items: { type: 'number' }, description: `araçtaki hasarın açık göründüğü en iyi ${n} fotoğrafın 0-tabanlı indeksleri (en iyiden kötüye)` },
+      gerekce: { type: 'string', description: 'kısa gerekçe' },
+    },
+    required: ['secilenler'],
+  }
+  try {
+    const res = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      system: 'Sen bir hasar dosyası görsel ayıklayıcısısın. Yalnızca aracın gövdesindeki hasarın açıkça göründüğü fotoğrafları seçersin; belge taraması, kimlik/ruhsat, plaka yakını ve alakasız kareleri elersin.',
+      messages: [{ role: 'user', content }],
+      tools: [{ name: 'sec', description: 'En iyi hasar fotoğraflarının indekslerini döndür', input_schema: SCHEMA as Anthropic.Tool.InputSchema }],
+      tool_choice: { type: 'tool', name: 'sec' },
+    })
+    const block = res.content.find((b) => b.type === 'tool_use')
+    if (!block || block.type !== 'tool_use') return null
+    const out = block.input as { secilenler?: unknown }
+    const idx = Array.isArray(out.secilenler) ? (out.secilenler as unknown[]).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0 && (i as number) < imgs.length) : []
+    return Array.from(new Set(idx)).slice(0, n)
+  } catch (e) {
+    console.error('enIyiHasarFotolari hata:', e)
+    return null
+  }
+}
+
+export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[], ogrenilenKurallar?: string, alacakliUnvan?: string | null): Promise<AnalizSonuc | null> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key || !metin.trim()) return null
   const client = new Anthropic({ apiKey: key })
@@ -160,7 +204,7 @@ export async function analizEt(metin: string, footer?: string, gorseller?: Gorse
     const res = await client.messages.create({
       model: MODEL,
       max_tokens: 4500,
-      system: SISTEM + (footer ? `\nAçıklama footer'ı (sonuna ekle): ${footer}` : '\nFooter yoksa "K/Partners" iletişim satırı bırak.') + (ogrenilenKurallar ?? ''),
+      system: unvanGecir(SISTEM, alacakliUnvan) + (footer ? `\nAçıklama footer'ı (sonuna ekle): ${footer}` : '\nFooter yoksa "K/Partners" iletişim satırı bırak.') + (ogrenilenKurallar ?? ''),
       messages: [{ role: 'user', content }],
       tools: [{ name: 'kaydet', description: 'Çıkarılan rücu alanlarını kaydet', input_schema: SCHEMA as Anthropic.Tool.InputSchema }],
       tool_choice: { type: 'tool', name: 'kaydet' },

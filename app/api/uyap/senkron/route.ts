@@ -3,8 +3,10 @@
  * Eklenti her takip için durum + finansal + yeni olayları gönderir; icraDosyaNo ile dosyaya bağlanır.
  * Idempotent: aynı olay (tip+tarih+açıklama) tekrar yazılmaz. Tenant-kapsamlı (Bearer program oturumu).
  *
- * Gövde: { icraDosyaNo, durum?, hesap?:{asilAlacak,islemisFaiz,tahsilat,bakiye,...},
+ * Gövde: { icraDosyaNo, dosyaId?, durum?, hesap?:{asilAlacak,islemisFaiz,tahsilat,bakiye,...},
  *          olaylar?:[{tip, tarih?, tutar?, aciklama?}] }
+ * Eşleşme: dosyaId varsa KESİN eşleşme (hedefler zaten id gönderiyor — çok-adliyeli portföyde aynı
+ * esas no'lu iki dosya karışmasın); yoksa icraDosyaNo fallback (eski eklenti sürümleri).
  */
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
@@ -31,17 +33,18 @@ export async function POST(req: Request) {
   const k = await uyapKimlik(req)
   if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401)
 
-  let body: { icraDosyaNo?: string; durum?: string; hesap?: Record<string, unknown>; olaylar?: { tip?: string; tarih?: string; tutar?: number; aciklama?: string }[] }
+  let body: { icraDosyaNo?: string; dosyaId?: string; durum?: string; hesap?: Record<string, unknown>; olaylar?: { tip?: string; tarih?: string; tutar?: number; aciklama?: string }[] }
   try { body = await req.json() } catch { return corsJson({ ok: false, error: 'bad json' }, 400) }
 
   const icraDosyaNo = String(body?.icraDosyaNo ?? '').trim()
-  if (!icraDosyaNo) return corsJson({ ok: false, error: 'icraDosyaNo gerekli' }, 400)
+  const dosyaIdGirdi = String(body?.dosyaId ?? '').trim()
+  if (!icraDosyaNo && !dosyaIdGirdi) return corsJson({ ok: false, error: 'icraDosyaNo veya dosyaId gerekli' }, 400)
 
-  const dosya = await prisma.rucuDosyasi.findFirst({
-    where: { icraDosyaNo, musteriId: { in: k.izinli } },
-    select: { id: true },
-  })
-  if (!dosya) return corsJson({ ok: false, error: 'dosya bulunamadı (icraDosyaNo)' }, 404)
+  // dosyaId (hedefler'den gelen kesin kimlik) öncelikli; yoksa icraDosyaNo (esas no adliyeye özgü DEĞİL).
+  const dosya = dosyaIdGirdi
+    ? await prisma.rucuDosyasi.findFirst({ where: { id: dosyaIdGirdi, musteriId: { in: k.izinli } }, select: { id: true } })
+    : await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true } })
+  if (!dosya) return corsJson({ ok: false, error: `dosya bulunamadı (${dosyaIdGirdi ? 'dosyaId' : 'icraDosyaNo'})` }, 404)
 
   // durum + finansal snapshot
   await prisma.rucuDosyasi.update({

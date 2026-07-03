@@ -9,9 +9,10 @@ import { OnemliOlayDurum } from '@prisma/client'
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
+import { tarihTR, tarihSaatTR } from '@/lib/konsrucu/format'
 
-const fmtDate = (d: Date | null) => (d ? d.toLocaleDateString('tr-TR') : '—')
-const fmtDateTime = (d: Date | null) => (d ? d.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—')
+const fmtDate = (d: Date | null) => tarihTR(d)
+const fmtDateTime = (d: Date | null) => tarihSaatTR(d, { day: '2-digit', month: '2-digit', year: 'numeric' })
 
 const COLS = 'grid-cols-[150px_minmax(140px,1fr)_120px_110px_minmax(130px,1fr)_120px_150px_104px]'
 const MINW = 'min-w-[1180px]'

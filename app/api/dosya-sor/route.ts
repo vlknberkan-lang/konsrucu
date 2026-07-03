@@ -6,9 +6,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { dosyaSor, dosyaYolGoster } from '@/lib/konsrucu/dosya-sor'
+import { tarihTR } from '@/lib/konsrucu/format'
 
 const fmtTRY = (n: unknown) => (n != null ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(Number(n)) + ' TL' : '—')
-const fmtDate = (d: Date | null) => (d ? d.toLocaleDateString('tr-TR') : '—')
+const fmtDate = (d: Date | null) => tarihTR(d)
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
     },
   })
   if (!dosya || !izinli.includes(dosya.musteriId)) return NextResponse.json({ ok: false, error: 'Dosya bulunamadı' }, { status: 404 })
+  const ayar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { alacakliUnvan: true } })
 
   const cj = (dosya.cikarimJson ?? {}) as { aciklama?: string | null }
   const sat: string[] = []
@@ -59,6 +61,6 @@ export async function POST(req: NextRequest) {
   tl.sort((a, b) => a.t - b.t)
   if (tl.length) sat.push('KRONOLOJİK BELGE/OLAY DÖKÜMÜ (eskiden yeniye):\n' + tl.map((x) => `  - ${fmtDate(new Date(x.t))} · [${x.tip}] ${x.metin}`).join('\n'))
 
-  const r = mode === 'yol' ? await dosyaYolGoster(sat.join('\n')) : await dosyaSor(sat.join('\n'), soru)
+  const r = mode === 'yol' ? await dosyaYolGoster(sat.join('\n'), ayar?.alacakliUnvan ?? null) : await dosyaSor(sat.join('\n'), soru, ayar?.alacakliUnvan ?? null)
   return NextResponse.json(r, { status: r.ok ? 200 : 500 })
 }

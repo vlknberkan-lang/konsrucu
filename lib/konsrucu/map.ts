@@ -51,7 +51,10 @@ export function mapDurum(d: string): Durum {
     case 'TAKIP_ACILDI':
     case 'TEBLIG_EDILDI':
     case 'ITIRAZ':
+    case 'ARABULUCULUK':
+    case 'DAVA':
     case 'KESINLESTI':
+    case 'INFAZ':
     case 'TAHSIL':
     case 'KAPANDI': return 'gonderildi'
     default: return 'isleniyor'
@@ -66,7 +69,10 @@ export function durumStep(d: string): number {
     case 'TAKIP_ACILDI':
     case 'TEBLIG_EDILDI':
     case 'ITIRAZ':
+    case 'ARABULUCULUK':
+    case 'DAVA':
     case 'KESINLESTI':
+    case 'INFAZ':
     case 'TAHSIL':
     case 'KAPANDI': return 5
     default: return 2

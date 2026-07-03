@@ -17,7 +17,7 @@ import { pdfMetinCikar } from './pdf-metin'
 
 // KATMAN 2 (fallback): yerel parser düşemezse / makbuz taranmışsa LLM. Makbuz "oku ve sayıları dök"
 // işidir → en ucuz model yeter (Sonnet DEĞİL). Çoğu makbuz Katman 1'de ₺0'a çözülür, buraya azı düşer.
-const MODEL_FALLBACK = 'claude-haiku-4-5'
+const MODEL_FALLBACK = 'claude-haiku-4-5-20251001'
 
 /** PDF makbuzdan çıkan tek masraf/harç kalemi (henüz cinse bağlanmamış ham). */
 export type MakbuzKalem = {

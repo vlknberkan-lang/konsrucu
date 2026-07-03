@@ -19,6 +19,14 @@ function fromAdresi(): string {
   return ad ? `${ad} <${eposta}>` : eposta
 }
 
+/** Gönderim hatasını SistemOlay'a düş (best-effort; mail akışını asla bozmaz). */
+async function hataLogla(mesaj: string, konu: string) {
+  try {
+    const { sistemOlayKaydet } = await import('@/lib/konsrucu/sistem-olay')
+    await sistemOlayKaydet('MAIL_HATA', 'mail', mesaj, { konu })
+  } catch { /* log yazılamasa da gönderim sonucu döner */ }
+}
+
 export async function mailGonder(g: MailGirdi): Promise<{ ok: boolean; id?: string; error?: string }> {
   const servis = (process.env.EMAIL_SERVICE || 'console').toLowerCase()
   const to = Array.isArray(g.to) ? g.to.filter(Boolean).join(', ') : g.to
@@ -34,7 +42,10 @@ export async function mailGonder(g: MailGirdi): Promise<{ ok: boolean; id?: stri
     const port = Number(process.env.SMTP_PORT || 465)
     const user = process.env.SMTP_USER
     const pass = process.env.SMTP_PASS
-    if (!host || !user || !pass) return { ok: false, error: 'SMTP ayarları eksik (SMTP_HOST/USER/PASS)' }
+    if (!host || !user || !pass) {
+      await hataLogla('SMTP ayarları eksik (SMTP_HOST/USER/PASS)', g.konu)
+      return { ok: false, error: 'SMTP ayarları eksik (SMTP_HOST/USER/PASS)' }
+    }
 
     // Ayarlı port + alternatif (465↔587) sırayla denenir — bazı sağlayıcılar bir portu bloklar.
     const denemeler: { port: number; secure: boolean }[] = [{ port, secure: port === 465 }]
@@ -58,8 +69,10 @@ export async function mailGonder(g: MailGirdi): Promise<{ ok: boolean; id?: stri
         hatalar.push(`:${d.port} → ${(e as Error).message}`)
       }
     }
+    await hataLogla(`SMTP gönderilemedi (${hatalar.join(' | ')})`, g.konu)
     return { ok: false, error: `SMTP gönderilemedi (${hatalar.join(' | ')})` }
   }
 
+  await hataLogla(`Desteklenmeyen EMAIL_SERVICE: ${servis}`, g.konu)
   return { ok: false, error: `Desteklenmeyen EMAIL_SERVICE: ${servis}` }
 }

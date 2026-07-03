@@ -2,9 +2,12 @@
  * KonsRücü — Şirket Bilgileri (Ayarlar) · app/(app)/ayarlar/page.tsx
  * Alacaklı / MERSİS / IBAN / vekil / faiz — takip açıklaması ve dilekçeler bunları kullanır.
  */
-import { Check, Building2, Percent, FileSignature, Puzzle, GraduationCap } from 'lucide-react'
+import { Check, Building2, Percent, FileSignature, Puzzle, GraduationCap, ActivitySquare } from 'lucide-react'
+import type { DosyaDurum } from '@prisma/client'
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
+import { KAPALI_DURUMLAR } from '@/lib/konsrucu/aktiflik'
+import { tarihSaatTR } from '@/lib/konsrucu/format'
 import { oranlariOku } from '@/lib/konsrucu/faiz'
 import { FaizOranlari } from '@/components/ayarlar/faiz-oranlari'
 import { Vekaletname } from '@/components/ayarlar/vekaletname'
@@ -35,6 +38,18 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
     id: k.id, kaynak: k.kaynak, tur: k.tur, hedef: k.hedef, yorum: k.yorum, olayTuru: k.olayTuru,
     aktif: k.aktif, createdAt: k.createdAt.toISOString(), yazan: k.kullanici?.ad ?? null,
   }))
+
+  // Senkron sağlığı: eklenti susarsa buradan görünsün (aktif icra dosyaları üzerinden son senkron + bekleyen)
+  const aktifWhere = { musteriId: aktifMusteriId, icraDosyaNo: { not: null }, durum: { notIn: KAPALI_DURUMLAR as unknown as DosyaDurum[] } }
+  const [senkronAktif, senkronSon, senkronBekleyen] = await Promise.all([
+    prisma.rucuDosyasi.count({ where: aktifWhere }),
+    prisma.rucuDosyasi.findFirst({ where: { ...aktifWhere, uyapSenkronAt: { not: null } }, orderBy: { uyapSenkronAt: 'desc' }, select: { uyapSenkronAt: true } }),
+    prisma.rucuDosyasi.count({ where: { ...aktifWhere, OR: [{ uyapSenkronAt: null }, { uyapSenkronAt: { lt: new Date(Date.now() - 24 * 3_600_000) } }] } }),
+  ])
+  const senkronSaglik = { aktifToplam: senkronAktif, bekleyen: senkronBekleyen, sonSenkron: senkronSon?.uyapSenkronAt?.toISOString() ?? null }
+
+  // sistem olayları global tablodur (tenant'a değil altyapıya ait) — son 30 kayıt
+  const sistemOlaylari = await prisma.sistemOlay.findMany({ orderBy: { createdAt: 'desc' }, take: 30 })
 
   const alanlar: [string, string, string | null, boolean?][] = [
     ['alacakliUnvan', 'Alacaklı ünvanı', ayarlar?.alacakliUnvan ?? musteri?.ad ?? null],
@@ -86,16 +101,16 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
             <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Dava dilekçesi sabitleri</div>
           </div>
           <div>
-            <label htmlFor="davaciVkn" className={LABEL}>Davacı (Ray) VKN</label>
-            <input id="davaciVkn" name="davaciVkn" defaultValue={ayarlar?.davaciVkn ?? ''} placeholder="7340039798" className={`${ALAN} font-mono`} />
+            <label htmlFor="davaciVkn" className={LABEL}>Davacı (alacaklı) VKN</label>
+            <input id="davaciVkn" name="davaciVkn" defaultValue={ayarlar?.davaciVkn ?? ''} placeholder="10 haneli VKN" className={`${ALAN} font-mono`} />
           </div>
           <div>
             <label htmlFor="vekilUets" className={LABEL}>Vekil UETS No</label>
             <input id="vekilUets" name="vekilUets" defaultValue={ayarlar?.vekilUets ?? ''} placeholder="16812-18779-94498" className={`${ALAN} font-mono`} />
           </div>
           <div className="sm:col-span-2">
-            <label htmlFor="davaciAdres" className={LABEL}>Davacı (Ray) açık adres</label>
-            <input id="davaciAdres" name="davaciAdres" defaultValue={ayarlar?.davaciAdres ?? ''} placeholder="Cumhuriyet Mah. Haydar Aliyev Cad. No:28 Sarıyer/İstanbul" className={ALAN} />
+            <label htmlFor="davaciAdres" className={LABEL}>Davacı (alacaklı) açık adres</label>
+            <input id="davaciAdres" name="davaciAdres" defaultValue={ayarlar?.davaciAdres ?? ''} placeholder="Alacaklı sigorta şirketinin açık adresi" className={ALAN} />
           </div>
           <div>
             <label htmlFor="icraInkarOrani" className={LABEL}>İcra inkâr tazminatı oranı (%)</label>
@@ -122,7 +137,7 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
         <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-4">
           <Puzzle className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">UYAP Eklenti Senkron Anahtarı</h2>
         </div>
-        <div className="p-5"><SenkronAnahtar musteriId={aktifMusteriId} init={{ yuklu: !!ayarlar?.senkronToken }} programUrl={PROGRAM_URL} /></div>
+        <div className="p-5"><SenkronAnahtar musteriId={aktifMusteriId} init={{ yuklu: !!ayarlar?.senkronToken }} programUrl={PROGRAM_URL} saglik={senkronSaglik} /></div>
       </div>
 
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
@@ -143,6 +158,31 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
           <Percent className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">Faiz Oranları (dönemsel)</h2>
         </div>
         <div className="p-5"><FaizOranlari musteriId={aktifMusteriId} init={oranlariOku(ayarlar?.faizJson)} /></div>
+      </div>
+
+      {/* sistem olayları — cron/mail/senkron hataları (kalıcı iz; Vercel logları uçucu) */}
+      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-4">
+          <ActivitySquare className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">Sistem Olayları</h2>
+          <span className="ml-auto text-[11.5px] text-muted-foreground">cron / mail / senkron hataları · son 30</span>
+        </div>
+        <div className="p-5">
+          {sistemOlaylari.length === 0 ? (
+            <p className="text-[12.5px] text-muted-foreground">Kayıtlı sistem hatası yok — hatırlatma ve senkron altyapısı sorunsuz görünüyor. 🎉</p>
+          ) : (
+            <div className="max-h-72 space-y-1 overflow-y-auto">
+              {sistemOlaylari.map((o) => (
+                <div key={o.id} className="flex items-start gap-2.5 rounded-lg border border-border-subtle bg-surface-muted/30 px-3 py-2 text-[12.5px]">
+                  <span className={`font-mono mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold ${o.tip === 'CRON_HATA' ? 'bg-danger-soft text-danger' : o.tip === 'MAIL_HATA' ? 'bg-warning-soft text-warning' : 'bg-info-soft text-info'}`}>{o.tip}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold text-foreground">{o.kaynak}: {o.mesaj}</span>
+                  </span>
+                  <span className="font-mono shrink-0 text-[10.5px] text-muted-foreground">{tarihSaatTR(o.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

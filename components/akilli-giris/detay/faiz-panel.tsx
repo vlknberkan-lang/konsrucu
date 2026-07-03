@@ -12,6 +12,7 @@ import Link from 'next/link'
 import { Plus, Trash2, Check, Loader2, Calculator, RotateCcw } from 'lucide-react'
 import { faizHesapla, sonDekontTarihi, odenenToplam, type FaizOrani, type DekontGirdi } from '@/lib/konsrucu/faiz'
 import { faizKaydet } from '@/app/(app)/akilli-giris/actions'
+import { sayiTRveya0 } from '@/lib/konsrucu/sayi'
 
 type DekontRow = { tarih: string; tutar: string; haricMi: boolean; aciklama: string }
 export type FaizInit = {
@@ -25,15 +26,7 @@ export type FaizInit = {
 
 const fmtTRY = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺'
 const fmtDate = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
-// Hem TR (1.234,56) hem makine biçimini (1234.56) çözer — sunucudaki guvenliDecimal ile aynı mantık.
-// Virgül son noktadan sonra geliyorsa TR (nokta=binlik), değilse makine/US (nokta=ondalık).
-const numTR = (s: string) => {
-  const c = String(s).replace(/[^\d.,-]/g, '')
-  if (!c) return 0
-  const norm = c.includes(',') && c.lastIndexOf(',') > c.lastIndexOf('.') ? c.replace(/\./g, '').replace(',', '.') : c.replace(/,/g, '')
-  const n = Number(norm)
-  return Number.isFinite(n) ? n : 0
-}
+const numTR = sayiTRveya0 // tek kaynak: lib/konsrucu/sayi (iki formatı da çözer)
 
 const INP = 'w-full rounded-[9px] border border-border bg-surface px-2.5 py-1.5 text-[13px] outline-none transition focus:border-kr focus:ring-4 focus:ring-kr/15'
 const LBL = 'font-mono mb-1 block text-[9px] uppercase tracking-[0.1em] text-muted-foreground'

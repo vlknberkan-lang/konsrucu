@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
+import { silebilir, SILME_YETKISI_YOK } from '@/lib/konsrucu/db'
 
 async function ctx() {
   const supabase = createClient()
@@ -18,7 +19,7 @@ async function ctx() {
   const izinli = dbUser.musteriler.map((m) => m.musteriId)
   const aktifId = cookies().get('aktif_musteri')?.value
   const musteriId = aktifId && izinli.includes(aktifId) ? aktifId : (izinli[0] ?? null)
-  return { izinli, musteriId }
+  return { dbUser, izinli, musteriId }
 }
 
 export async function ayarlarKaydet(fd: FormData): Promise<void> {
@@ -49,9 +50,10 @@ export async function vekaletnameKaydet(musteriId: string, path: string, ad: str
   return { ok: true }
 }
 
-/** Vekaletname'yi sil (kaydı boşalt; Storage dosyası kalsa da referans kalkar). */
+/** Vekaletname'yi sil (kaydı boşalt; Storage dosyası kalsa da referans kalkar). Rol/bayrak kapılı. */
 export async function vekaletnameSil(musteriId: string): Promise<{ ok: boolean; error?: string }> {
-  const { izinli } = await ctx()
+  const { dbUser, izinli } = await ctx()
+  if (!silebilir(dbUser)) return { ok: false, error: SILME_YETKISI_YOK }
   if (!izinli.includes(musteriId)) return { ok: false, error: 'Yetki yok' }
   await prisma.ayarlar.update({ where: { musteriId }, data: { vekaletnamePath: null, vekaletnameAd: null } }).catch(() => null)
   revalidatePath('/ayarlar')
@@ -70,9 +72,10 @@ export async function vekaletnameAc(musteriId: string): Promise<{ ok: boolean; u
   return { ok: true, url: data.signedUrl }
 }
 
-/** UYAP eklenti senkron anahtarı üret/yenile (eskisi geçersiz olur). */
+/** UYAP eklenti senkron anahtarı üret/yenile (eskisi geçersiz olur → eklenti senkronu kırılır!). Rol/bayrak kapılı. */
 export async function senkronTokenUret(musteriId: string): Promise<{ ok: boolean; token?: string; error?: string }> {
-  const { izinli } = await ctx()
+  const { dbUser, izinli } = await ctx()
+  if (!silebilir(dbUser)) return { ok: false, error: SILME_YETKISI_YOK }
   if (!izinli.includes(musteriId)) return { ok: false, error: 'Yetki yok' }
   const b = new Uint8Array(24)
   crypto.getRandomValues(b)
@@ -82,18 +85,20 @@ export async function senkronTokenUret(musteriId: string): Promise<{ ok: boolean
   return { ok: true, token }
 }
 
-/** Senkron anahtarını kaldır (eklenti erişimini kapatır). */
+/** Senkron anahtarını kaldır (eklenti erişimini kapatır). Rol/bayrak kapılı. */
 export async function senkronTokenSil(musteriId: string): Promise<{ ok: boolean; error?: string }> {
-  const { izinli } = await ctx()
+  const { dbUser, izinli } = await ctx()
+  if (!silebilir(dbUser)) return { ok: false, error: SILME_YETKISI_YOK }
   if (!izinli.includes(musteriId)) return { ok: false, error: 'Yetki yok' }
   await prisma.ayarlar.update({ where: { musteriId }, data: { senkronToken: null } }).catch(() => null)
   revalidatePath('/ayarlar')
   return { ok: true }
 }
 
-/** Mentor öğrenilen kuralı sil (tenant doğrulanır). */
+/** Mentor öğrenilen kuralı sil (tenant doğrulanır). Rol/bayrak kapılı. */
 export async function mentorKuralSil(id: string): Promise<{ ok: boolean; error?: string }> {
-  const { izinli } = await ctx()
+  const { dbUser, izinli } = await ctx()
+  if (!silebilir(dbUser)) return { ok: false, error: SILME_YETKISI_YOK }
   const k = await prisma.mentorKural.findUnique({ where: { id }, select: { musteriId: true } })
   if (!k || !izinli.includes(k.musteriId)) return { ok: false, error: 'Yetki yok' }
   await prisma.mentorKural.delete({ where: { id } })

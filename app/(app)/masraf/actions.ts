@@ -7,7 +7,7 @@
  */
 import { revalidatePath } from 'next/cache'
 import { Prisma, MasrafTaraf, MasrafDurum } from '@prisma/client'
-import { ctx } from '@/lib/konsrucu/db'
+import { ctx, silebilir, SILME_YETKISI_YOK } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { MASRAF_CINSLERI, masrafDedupKey, isoHaftaDonem, paraGuvenli } from '@/lib/konsrucu/masraf'
@@ -128,14 +128,15 @@ export async function masrafDurumAta(id: string, durum: string): Promise<R> {
   return { ok: true }
 }
 
-/** Toplu işlem: durum ata ya da sil. Tenant where ile sınırlı. */
+/** Toplu işlem: durum ata ya da sil. Tenant where ile sınırlı; silme rol/bayrak kapılı. */
 export async function masrafToplu(ids: string[], islem: string): Promise<R & { adet?: number }> {
-  const { izinli } = await ctx()
+  const { dbUser, izinli } = await ctx()
   const temiz = [...new Set((ids ?? []).filter(Boolean))]
   if (!temiz.length) return { ok: false, error: 'Seçili kayıt yok' }
   const where: Prisma.MasrafWhereInput = { id: { in: temiz }, dosya: { is: { musteriId: { in: izinli } } } }
 
   if (islem === 'SIL') {
+    if (!silebilir(dbUser)) return { ok: false, error: SILME_YETKISI_YOK }
     const r = await prisma.masraf.deleteMany({ where })
     revalidatePath('/masraf')
     return { ok: true, adet: r.count }
@@ -149,9 +150,10 @@ export async function masrafToplu(ids: string[], islem: string): Promise<R & { a
   return { ok: true, adet: r.count }
 }
 
-/** Tekil sil. */
+/** Tekil sil (rol/bayrak kapılı). */
 export async function masrafSil(id: string): Promise<R> {
-  const { izinli } = await ctx()
+  const { dbUser, izinli } = await ctx()
+  if (!silebilir(dbUser)) return { ok: false, error: SILME_YETKISI_YOK }
   const m = await masrafErisim(id, izinli)
   if (!m) return { ok: false, error: 'Kayıt bulunamadı veya yetkiniz yok' }
   await prisma.masraf.delete({ where: { id } })

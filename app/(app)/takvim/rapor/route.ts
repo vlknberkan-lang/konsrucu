@@ -1,36 +1,47 @@
 /**
  * KonsRücü — Haftalık takvim raporu ÖNİZLEME · GET /takvim/rapor
- * Aktif tenant'ın önümüzdeki 7 günlük etkinliklerini + yaklaşan zamanaşımılarını rapor e-postası
- * olarak render eder (lib/konsrucu/rapor-mail). Zamanlı gönderim aynı üreticiyi kullanacak.
+ * Aktif tenant'ın önümüzdeki 7 günlük etkinliklerini + yaklaşan/GEÇMİŞ zamanaşımılarını rapor
+ * e-postası olarak render eder (lib/konsrucu/rapor-mail). Zamanlı gönderim aynı üreticiyi kullanır.
+ * Zamanaşımı radarı yalnız takibi açılmamış açık dosyaları izler; tavan yok (eski take:12 kalktı).
  * Tenant-kapsamlı, auth zorunlu (giriş yapılmış tarayıcıda açılır).
  */
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { haftalikRaporHtml, type RaporEtkinlik, type RaporZamanasimi } from '@/lib/konsrucu/rapor-mail'
+import { dosyaAktif } from '@/lib/konsrucu/aktiflik'
+import { bugunIstBasi, kalanGun } from '@/lib/konsrucu/format'
 
 export const dynamic = 'force-dynamic'
+
+const TAKIP_ONCESI = ['HAVUZDA', 'INCELENIYOR', 'TAKIBE_HAZIR'] as const
 
 export async function GET(req: Request) {
   const { aktifMusteriId } = await ctx()
   if (!aktifMusteriId) return new Response('Aktif müşteri seçili değil', { status: 400 })
 
   const simdi = new Date()
-  const bas = new Date(simdi.getFullYear(), simdi.getMonth(), simdi.getDate())
+  const bas = bugunIstBasi(simdi)
   const son = new Date(bas.getTime() + 7 * 86_400_000)
   const zaSon = new Date(bas.getTime() + 30 * 86_400_000)
 
-  const [kayit, zaKayit] = await Promise.all([
+  const zaSelect = { hukukDosyaNo: true, hasarDosyaNo: true, zamanasimi: true, durum: true, uyapDurum: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' as const } } }
+  const [kayit, zaKayit, zaGectiKayit, zaBosSayisi] = await Promise.all([
     prisma.etkinlik.findMany({
       where: { dosya: { musteriId: aktifMusteriId }, baslar: { gte: bas, lt: son } },
       orderBy: { baslar: 'asc' },
       include: { dosya: { select: { hukukDosyaNo: true, hasarDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } } } },
     }),
     prisma.rucuDosyasi.findMany({
-      where: { musteriId: aktifMusteriId, zamanasimi: { gte: bas, lt: zaSon } },
+      where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { gte: bas, lt: zaSon } },
       orderBy: { zamanasimi: 'asc' },
-      take: 12,
-      select: { hukukDosyaNo: true, hasarDosyaNo: true, zamanasimi: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } },
+      select: zaSelect,
     }),
+    prisma.rucuDosyasi.findMany({
+      where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { lt: bas } },
+      orderBy: { zamanasimi: 'asc' },
+      select: zaSelect,
+    }),
+    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: null } }),
   ])
 
   const etkinlikler: RaporEtkinlik[] = kayit.map((e) => ({
@@ -43,14 +54,14 @@ export async function GET(req: Request) {
     hukukNo: e.dosya.hukukDosyaNo ?? e.dosya.hasarDosyaNo,
     borclu: e.dosya.borclular[0]?.adUnvan ?? null,
   }))
-  const zamanasimi: RaporZamanasimi[] = zaKayit
-    .filter((d) => d.zamanasimi)
-    .map((d) => ({
-      hukukNo: d.hukukDosyaNo ?? d.hasarDosyaNo,
-      borclu: d.borclular[0]?.adUnvan ?? null,
-      tarih: d.zamanasimi!.toISOString(),
-      kalanGun: Math.ceil((d.zamanasimi!.getTime() - bas.getTime()) / 86_400_000),
-    }))
+  const zaSatir = (d: (typeof zaKayit)[number]): RaporZamanasimi => ({
+    hukukNo: d.hukukDosyaNo ?? d.hasarDosyaNo,
+    borclu: d.borclular[0]?.adUnvan ?? null,
+    tarih: d.zamanasimi!.toISOString(),
+    kalanGun: kalanGun(d.zamanasimi!, simdi),
+  })
+  const zamanasimi = zaKayit.filter((d) => d.zamanasimi && dosyaAktif(d)).map(zaSatir)
+  const zamanasimiGecti = zaGectiKayit.filter((d) => d.zamanasimi && dosyaAktif(d)).map(zaSatir)
 
   const { html } = haftalikRaporHtml({
     aliciAd: 'Yelda',
@@ -58,6 +69,8 @@ export async function GET(req: Request) {
     gunSayisi: 7,
     etkinlikler,
     zamanasimi,
+    zamanasimiGecti,
+    zamanasimiBosSayisi: zaBosSayisi,
     panelUrl: new URL('/takvim', req.url).toString(),
   })
 

@@ -7,6 +7,7 @@ import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { etkinlikHatirlatmaHtml, type HatirlatmaGirdi } from '@/lib/konsrucu/hatirlatma-mail'
 import { durumAsama, ASAMA_META } from '@/lib/konsrucu/asama'
+import { kalanGun } from '@/lib/konsrucu/format'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,7 +52,7 @@ export async function GET(req: Request) {
       yetkiliIcra: d.yetkiliIcra ?? null,
       icraNo: d.icraDosyaNo ?? null,
       zamanasimi: za ? za.toISOString() : null,
-      zamanasimiKalan: za ? Math.ceil((za.getTime() - Date.now()) / 86_400_000) : null,
+      zamanasimiKalan: za ? kalanGun(za) : null,
     },
     dosyaUrl: new URL(`/akilli-giris/${d.id}`, req.url).toString(),
   }

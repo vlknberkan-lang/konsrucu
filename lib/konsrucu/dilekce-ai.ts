@@ -6,6 +6,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk'
 import type { Gorsel } from './analiz'
+import { unvanGecir } from './unvan'
 
 const MODEL = 'claude-sonnet-4-6'
 
@@ -27,6 +28,7 @@ export type AnlatimGirdi = {
   belgeMetni?: string | null
   gorseller?: Gorsel[]
   dekontlar?: { tarih: string | null; tutar: number | null; aciklama: string | null; haricMi: boolean }[]
+  alacakliUnvan?: string | null // aktif tenant'ın alacaklı unvanı (Ray / Zurich) — prompttaki "Ray Sigorta" yerine
 }
 
 const SISTEM = `Sen Ray Sigorta A.Ş. vekili K/Partners hukuk bürosunun dava dilekçesi yazarısın. Sana bir rücu dosyasının OLAY BAĞLAMI, künyesi, BELGE METİNLERİ (kaza tespit tutanağı, görgü/ifade tutanağı, ekspertiz, hasar dosyası, dekontlar) ve FOTOĞRAFLAR (ehliyet/ruhsat/tutanak) verilir. Görevin: itirazın iptali dava dilekçesinin "AÇIKLAMALAR" kısmının OLGUSAL anlatımını yazmak (2-3 paragraf, resmi dilekçe Türkçesi).
@@ -46,8 +48,8 @@ export async function dilekceAnlatim(g: AnlatimGirdi): Promise<string | null> {
   const client = new Anthropic({ apiKey: key })
   const imgs = (g.gorseller ?? []).slice(0, 10)
   // base64/uzun metni JSON dökümünden çıkar
-  const { gorseller: _g, belgeMetni: _b, ...kunye } = g
-  void _g; void _b
+  const { gorseller: _g, belgeMetni: _b, alacakliUnvan: _a, ...kunye } = g
+  void _g; void _b; void _a
   const content: Anthropic.ContentBlockParam[] = [
     { type: 'text', text: `Dosya künyesi (yapılandırılmış):\n${JSON.stringify(kunye, null, 2)}` },
   ]
@@ -55,7 +57,7 @@ export async function dilekceAnlatim(g: AnlatimGirdi): Promise<string | null> {
   for (const im of imgs) content.push({ type: 'image', source: { type: 'base64', media_type: im.mime, data: im.b64 } })
   content.push({ type: 'text', text: `${imgs.length ? `Yukarıda ${imgs.length} fotoğraf da ekli. ` : ''}Belge metinleri ve fotoğraflardan yararlanarak AÇIKLAMALAR olgusal anlatımını yaz:` })
   try {
-    const res = await client.messages.create({ model: MODEL, max_tokens: 1800, system: SISTEM, messages: [{ role: 'user', content }] })
+    const res = await client.messages.create({ model: MODEL, max_tokens: 1800, system: unvanGecir(SISTEM, g.alacakliUnvan), messages: [{ role: 'user', content }] })
     const blok = res.content.find((b) => b.type === 'text')
     return blok && blok.type === 'text' ? blok.text.trim() : null
   } catch (e) {

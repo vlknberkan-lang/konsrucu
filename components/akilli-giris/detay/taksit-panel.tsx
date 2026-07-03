@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, Check, Loader2, AlertTriangle, Bell, RotateCcw, CreditCard, Ban } from 'lucide-react'
 import { taksitProgrami, taksitOzet, efektifDurum, type TaksitDurum, type TaksitPlanDurum, type TaksitGirdi } from '@/lib/konsrucu/taksit'
 import { taksitPlaniKur, taksitOdendi, taksitOdemeGeriAl, taksitPlaniIptal, taksitTahsilatGir, taksitTahsilatGeriAl } from '@/app/(app)/akilli-giris/actions'
+import { sayiTRveya0 } from '@/lib/konsrucu/sayi'
 
 export type TaksitUI = { id: string; sira: number; vadeTarihi: string; tutar: number; durum: TaksitDurum; odenenTutar: number | null; odendiTarih: string | null }
 export type PlanUI = {
@@ -28,14 +29,7 @@ export type PlanUI = {
 
 const fmtTRY = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺'
 const fmtDate = (d: Date | string) => { const x = new Date(d); return Number.isNaN(x.getTime()) ? '—' : x.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
-// Hem TR (1.234,56) hem makine (1234.56) çözer — sunucu guvenliDecimal ile aynı mantık.
-const numTR = (s: string) => {
-  const c = String(s).replace(/[^\d.,-]/g, '')
-  if (!c) return 0
-  const norm = c.includes(',') && c.lastIndexOf(',') > c.lastIndexOf('.') ? c.replace(/\./g, '').replace(',', '.') : c.replace(/,/g, '')
-  const n = Number(norm)
-  return Number.isFinite(n) ? n : 0
-}
+const numTR = sayiTRveya0 // tek kaynak: lib/konsrucu/sayi (iki formatı da çözer)
 
 const INP = 'w-full rounded-[10px] border border-border bg-surface px-3 py-2.5 text-[13px] outline-none transition focus:border-kr focus:bg-surface focus:ring-4 focus:ring-kr/15'
 const LBL = 'font-mono mb-1 block text-[9px] uppercase tracking-[0.1em] text-muted-foreground'

@@ -20,13 +20,35 @@ export async function ctx() {
   return { dbUser, izinli, aktifMusteriId }
 }
 
+/**
+ * Silme yetkisi kapısı: GORUNTULEYEN asla silemez; diğer roller kişi-bazlı silmeYetkisi bayrağına
+ * tabidir (Sude ve Ervanur aynı rolde olduğu için bayrak şart). Her silme action'ının başında çağır.
+ */
+export function silebilir(k: { rol: string; silmeYetkisi?: boolean | null }): boolean {
+  if (k.rol === 'GORUNTULEYEN') return false
+  return k.silmeYetkisi !== false
+}
+
+/** silebilir() false ise action'ların döndürdüğü standart hata. */
+export const SILME_YETKISI_YOK = 'Bu işlem için silme yetkiniz yok — yöneticinize (ADMIN) başvurun.'
+
+/** Tenant'taki aktif kullanıcılar (sorumlu/atama seçimi için: Yelda, Sude, Ervanur…). */
+export async function tenantKullanicilari(musteriId: string): Promise<{ id: string; ad: string; rol: string }[]> {
+  const rows = await prisma.musteriKullanici.findMany({
+    where: { musteriId, kullanici: { aktif: true } },
+    select: { kullanici: { select: { id: true, ad: true, rol: true } } },
+    orderBy: { kullanici: { ad: 'asc' } },
+  })
+  return rows.map((r) => ({ id: r.kullanici.id, ad: r.kullanici.ad, rol: r.kullanici.rol }))
+}
+
 function rel(d: Date): string {
   const s = Math.floor((Date.now() - d.getTime()) / 1000)
   if (s < 60) return 'şimdi'
   const m = Math.floor(s / 60); if (m < 60) return `${m} dk önce`
   const h = Math.floor(m / 60); if (h < 24) return `${h} saat önce`
   const g = Math.floor(h / 24); if (g < 30) return `${g} gün önce`
-  return d.toLocaleDateString('tr-TR')
+  return d.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' })
 }
 
 /** cikarimJson içinde güven < 0.7 olan alan sayısı (zengin şekil; düz şekilde 0). */

@@ -7,9 +7,8 @@
  */
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { UploadCloud, FileSpreadsheet, Loader2, Check, RotateCcw, AlertTriangle, ArrowRight } from 'lucide-react'
-import { hugoIceriAktar } from '@/app/(app)/akilli-giris/iceri-aktar/actions'
-import type { ImportSonuc } from '@/lib/import/hugo'
+import { UploadCloud, FileSpreadsheet, Loader2, Check, RotateCcw, AlertTriangle, ArrowRight, GitCompareArrows } from 'lucide-react'
+import { hugoIceriAktar, importFarkUygula, type IceriAktarSonuc, type ImportFark } from '@/app/(app)/akilli-giris/iceri-aktar/actions'
 
 function gecerliAd(name: string) {
   const l = name.toLowerCase()
@@ -21,24 +20,49 @@ export function HugoImportPanel({ onClose }: { onClose?: () => void } = {}) {
   const [hot, setHot] = useState(false)
   const [busy, setBusy] = useState(false)
   const [dosyaAdi, setDosyaAdi] = useState('')
-  const [sonuc, setSonuc] = useState<ImportSonuc | null>(null)
+  const [sonuc, setSonuc] = useState<IceriAktarSonuc | null>(null)
   const [hata, setHata] = useState<string | null>(null)
+  // fark raporu: seçim + uygulama durumu
+  const [secili, setSecili] = useState<Set<number>>(new Set())
+  const [farkBusy, setFarkBusy] = useState(false)
+  const [farkSonuc, setFarkSonuc] = useState<string | null>(null)
   const router = useRouter()
 
   async function gonder(file: File) {
     if (!gecerliAd(file.name)) { setHata('Yalnız .xls / .xlsx dosyası yükleyin.'); return }
-    setBusy(true); setSonuc(null); setHata(null); setDosyaAdi(file.name)
+    setBusy(true); setSonuc(null); setHata(null); setDosyaAdi(file.name); setFarkSonuc(null)
     try {
       const fd = new FormData()
       fd.append('dosya', file)
       const r = await hugoIceriAktar(fd)
       setSonuc(r)
+      setSecili(new Set((r.farklar ?? []).map((_, i) => i))) // varsayılan: tüm farklar seçili
       if (r.eklenen > 0) router.refresh()
     } catch {
       setHata('İçe aktarma başarısız oldu. Dosyayı kontrol edip tekrar deneyin.')
     } finally {
       setBusy(false)
       if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  async function farklariUygula() {
+    const farklar = sonuc?.farklar ?? []
+    const secilenler = farklar.filter((_, i) => secili.has(i))
+    if (!secilenler.length) return
+    setFarkBusy(true); setFarkSonuc(null)
+    try {
+      const r = await importFarkUygula(secilenler.map((f) => ({ dosyaId: f.dosyaId, alan: f.alan, yeniDeger: f.yeniDeger })))
+      if (r.ok) {
+        setFarkSonuc(`${r.uygulanan} güncelleme uygulandı.`)
+        setSonuc((s) => (s ? { ...s, farklar: farklar.filter((_, i) => !secili.has(i)) } : s))
+        setSecili(new Set())
+        router.refresh()
+      } else setFarkSonuc(r.error ?? 'Güncellemeler uygulanamadı.')
+    } catch {
+      setFarkSonuc('Güncellemeler uygulanamadı.')
+    } finally {
+      setFarkBusy(false)
     }
   }
 
@@ -85,9 +109,9 @@ export function HugoImportPanel({ onClose }: { onClose?: () => void } = {}) {
               </>
             ) : (
               <>
-                <div className="font-display text-[19px] font-extrabold tracking-[-0.02em]">Hugo tevdiye Excel'ini buraya bırakın</div>
+                <div className="font-display text-[19px] font-extrabold tracking-[-0.02em]">Tevdiye Excel'ini buraya bırakın</div>
                 <div className="mt-1.5 text-[13px] text-muted-foreground">
-                  Her satır <b>Hukuk Dosya No</b> ile eşlenir; yeni dosyalar <b>HAVUZDA</b> açılır, mevcutlar ezilmeden atlanır.
+                  <b>Hugo</b> veya <b>Zurich</b> biçimi otomatik tanınır. Her satır <b>Hukuk Dosya No</b> ile eşlenir; yeni dosyalar <b>HAVUZDA</b> açılır, mevcutlar ezilmeden atlanır.
                 </div>
                 <div className="mt-4 flex flex-wrap justify-center gap-1.5">
                   {['.xlsx', '.xls'].map((t) => (
@@ -134,6 +158,49 @@ export function HugoImportPanel({ onClose }: { onClose?: () => void } = {}) {
               </div>
             ))}
           </div>
+
+          {/* fark raporu: Excel'de düzeltilmiş ama sistemde eski kalan alanlar (onaylı güncelleme) */}
+          {(sonuc.farklar?.length ?? 0) > 0 && (
+            <div className="px-5 pt-4">
+              <div className="flex items-center gap-1.5">
+                <GitCompareArrows className="h-3.5 w-3.5 text-warning" />
+                <span className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">
+                  Excel ile sistem arasında fark · {sonuc.farklar!.length}{(sonuc.fazlaFark ?? 0) > 0 ? ` (+${sonuc.fazlaFark} fark daha — listeyi uygulayıp tekrar yükleyin)` : ''}
+                </span>
+              </div>
+              <p className="mt-1 text-[12px] text-muted-foreground">
+                Bu dosyalar zaten kayıtlı (ezilmedi) ama Excel'de <b>farklı değerler</b> var — özellikle <b>zamanaşımı</b> farkları kritiktir.
+                Onayladıklarınızı seçin ve uygulayın; her güncelleme dosya geçmişine yazılır.
+              </p>
+              <div className="mt-2 max-h-64 space-y-1 overflow-y-auto rounded-xl border border-warning/30 bg-warning-soft/20 p-2">
+                {sonuc.farklar!.map((f, i) => (
+                  <label key={i} className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-[12.5px] transition hover:bg-surface-muted/60">
+                    <input
+                      type="checkbox"
+                      checked={secili.has(i)}
+                      onChange={(e) => setSecili((s) => { const n = new Set(s); if (e.target.checked) n.add(i); else n.delete(i); return n })}
+                      className="h-4 w-4 rounded border-border text-kr focus:ring-kr/40"
+                    />
+                    <span className="font-mono shrink-0 font-bold">{f.hukukDosyaNo}</span>
+                    <span className="shrink-0 text-muted-foreground">{f.etiket}:</span>
+                    <span className="font-mono text-muted-foreground line-through">{f.eski ?? 'boş'}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="font-mono font-semibold text-foreground">{f.yeni}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  onClick={farklariUygula}
+                  disabled={farkBusy || secili.size === 0}
+                  className="inline-flex items-center gap-2 rounded-[10px] bg-warning px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-warning/90 disabled:opacity-50"
+                >
+                  {farkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Seçili güncellemeleri uygula ({secili.size})
+                </button>
+                {farkSonuc && <span className="text-[12.5px] font-medium text-foreground">{farkSonuc}</span>}
+              </div>
+            </div>
+          )}
 
           {/* hatalı satırlar */}
           {sonuc.hatalar.length > 0 && (

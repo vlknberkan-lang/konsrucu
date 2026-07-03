@@ -4,6 +4,7 @@
  * (KONU / argüman / Yargıtay — tür odaklı) + terk-bazlı sabit deliller. Olay anlatımı AI'dan gelir.
  * Kaynak: büronun 3 örnek dilekçesi (alkol / olay yeri terk / kasko çarpıp-kaçma).
  */
+import { unvanGecir } from './unvan'
 
 export type DilekceDavali = { ad: string; tc: string | null; adres: string | null }
 
@@ -41,6 +42,8 @@ export type DilekceGirdi = {
   dekontlar?: { tarih: string | null; tutar: number | null; aciklama: string | null; haricMi: boolean }[]
   // AI olay anlatımı (AÇIKLAMALAR'ın olgusal kısmı)
   olayAnlatimi: string
+  // dosyaya özel seçili Yargıtay emsalleri (karararama'dan) — tür-odaklı sabit Yargıtay bloğundan SONRA eklenir
+  emsaller?: string[]
 }
 
 const Y = (s: string) => `⟨${s}⟩` // doldurulamayan alan → avukat tamamlar
@@ -49,7 +52,7 @@ const para = (n: number | null | undefined) =>
 const tarihTR = (s: string | null) => {
   if (!s) return null
   const d = new Date(s)
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Istanbul' })
 }
 const buyuk = (s: string | null | undefined) => (s ? s.toLocaleUpperCase('tr') : '')
 // "İstanbul 18. İcra Dairesi" / "Küçükçekmece İcra Dairesi" → mahkeme yeri ("İstanbul" / "Küçükçekmece")
@@ -233,6 +236,8 @@ export function dilekceMetni(g: DilekceGirdi): string {
   ekle(`SAYIN MAHKEMENİZ NEZDİNDE AÇILAN İŞBU DAVA GÖREVLİ VE YETKİLİ YERDE AÇILMIŞTIR.`)
   ekle()
   for (const yk of YARGITAY[tur]) { ekle(yk); ekle() }
+  // dosyaya özel seçilen emsaller (karararama'dan; tür-odaklı sabitlerden sonra)
+  for (const em of g.emsaller ?? []) { ekle(em); ekle() }
   ekle(
     `Motorlu araç kazalarından doğan hukuki sorumluluk için kesin yetki kuralı bulunmamaktadır. KTK m. 110/2 uyarınca bu davalar, sigortacının merkez/şube veya acentenin bulunduğu yer ile kazanın vuku bulduğu yer mahkemelerinden birinde açılabilir.`
   )
@@ -254,5 +259,6 @@ export function dilekceMetni(g: DilekceGirdi): string {
   ekle(`                                                      DAVACI RAY SİGORTA A.Ş. VEKİLİ`)
   ekle(`                                                      ${g.vekilAd || Y('vekil')}`)
 
-  return L.join('\n')
+  // Şablonda tarihsel "Ray Sigorta A.Ş." sabiti → aktif tenant'ın davacı (alacaklı) unvanı.
+  return unvanGecir(L.join('\n'), g.davaciUnvan)
 }

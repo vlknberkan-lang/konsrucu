@@ -78,7 +78,7 @@ function Baslik({ adet, right }: { adet?: number; right?: React.ReactNode }) {
         <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">KonsRücü · Faturalama</div>
         <h1 className="font-display mt-1.5 text-[30px] font-extrabold tracking-[-0.035em]">Masraflar</h1>
         <p className="mt-1.5 max-w-[72ch] text-sm text-muted-foreground">
-          Müvekkile (Ray) faturalanacak icra harç/masrafları — makbuz PDF'inden otomatik okunur, masraf tarihine göre listelenir. Yalnız <b>bizim taraf</b> ödemeleri faturalanır; <b>belirsiz</b> ve <b>eşleştirilmemiş</b> kayıtlar işaretlidir. Sağ üstten o anki filtreyi <b>Excel</b> (RAY MASRAF FORMU) olarak indirin.
+          Müvekkile faturalanacak icra harç/masrafları — makbuz PDF'inden otomatik okunur, masraf tarihine göre listelenir. Yalnız <b>bizim taraf</b> ödemeleri faturalanır; <b>belirsiz</b> ve <b>eşleştirilmemiş</b> kayıtlar işaretlidir. Sağ üstten o anki filtreyi <b>Excel</b> (masraf formu) olarak indirin.
           {typeof adet === 'number' && <span className="font-mono ml-1">· {adet} kalem</span>}
         </p>
       </div>

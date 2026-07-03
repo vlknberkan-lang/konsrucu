@@ -7,14 +7,15 @@
 import { useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, X, Handshake, Scale, AlarmClock, Bell, CalendarDays, MapPin, Video, ArrowRight, Trash2, Pencil, Save, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Handshake, Scale, AlarmClock, Bell, CalendarDays, MapPin, Video, ArrowRight, Trash2, Pencil, Save, Loader2, AlertTriangle } from 'lucide-react'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { DosyaOzet, type DosyaOzetData } from '@/components/konsrucu/dosya-ozet'
 import { etkinlikSil, etkinlikGuncelle } from '@/app/(app)/akilli-giris/actions'
+import { GorevEkle, type GorevKullanici } from '@/components/takip-gorevi/gorev-ekle'
 
 export type TakvimEtkinlik = {
   id: string; tur: string; baslik: string; baslar: string; biter: string | null
-  yer: string | null; online: boolean; durum: string; dosyaId: string; ozet: DosyaOzetData
+  yer: string | null; online: boolean; durum: string; sonucNot: string | null; hatirlatmaDk: number | null; dosyaId: string; ozet: DosyaOzetData
 }
 
 const TUR: Record<string, { label: string; tone: Tone; Icon: typeof Handshake }> = {
@@ -46,19 +47,35 @@ const TUR_SECENEK: { val: string; label: string }[] = [
   { val: 'SURE', label: 'Süre / son tarih' },
   { val: 'HATIRLATMA', label: 'Hatırlatma' },
 ]
+// etkinlik gerçekleşme durumu (kapanış) — rozet + düzenleme seçenekleri
+const DURUM_META: Record<string, { label: string; tone: Tone }> = {
+  PLANLANDI: { label: 'Planlandı', tone: 'info' },
+  YAPILDI: { label: 'Yapıldı', tone: 'success' },
+  YAPILMADI: { label: 'Yapılmadı', tone: 'danger' },
+  ERTELENDI: { label: 'Ertelendi', tone: 'warning' },
+  IPTAL: { label: 'İptal', tone: 'steel' },
+}
+const DURUM_SECENEK = ['PLANLANDI', 'YAPILDI', 'YAPILMADI', 'ERTELENDI', 'IPTAL'].map((v) => ({ val: v, label: DURUM_META[v].label }))
+// "sonuçlandırılmadı" = geçmiş toplantı + (PLANLANDI kalmış VEYA sonuç notu boş) — iptal hariç.
+// Tüm görünümlerde (ay/hafta/ajanda) aynı kural: toplantının ne olduğunu kaydetmeyi takip eder.
+const sonuclanmadiMi = (e: TakvimEtkinlik, esikTs: number) =>
+  new Date(e.baslar).getTime() < esikTs && e.durum !== 'IPTAL' && (e.durum === 'PLANLANDI' || !e.sonucNot)
 // UTC instant → Türkiye (UTC+3) duvar saati "YYYY-MM-DDTHH:mm" (tarayıcı TZ'inden bağımsız; trDateTime ile birebir round-trip)
 const toLocalInput = (iso: string) => { const d = new Date(new Date(iso).getTime() + 3 * 3600000); const p = (n: number) => String(n).padStart(2, '0'); return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}` }
 
 type Gorunum = 'ay' | 'hafta' | 'ajanda'
 
-export function Takvim({ etkinlikler }: { etkinlikler: TakvimEtkinlik[] }) {
+export function Takvim({ etkinlikler, kullanicilar }: { etkinlikler: TakvimEtkinlik[]; kullanicilar: GorevKullanici[] }) {
   const bugun = new Date()
   const [gorunum, setGorunum] = useState<Gorunum>('ay')
   const [ankur, setAnkur] = useState<Date>(new Date(bugun.getFullYear(), bugun.getMonth(), bugun.getDate()))
   const [turlar, setTurlar] = useState<Set<string>>(new Set())
   const [secili, setSecili] = useState<TakvimEtkinlik | null>(null)
+  const [yon, setYon] = useState<'yaklasan' | 'gecmis'>('yaklasan')
 
   const suzulu = useMemo(() => (turlar.size ? etkinlikler.filter((e) => turlar.has(e.tur)) : etkinlikler), [etkinlikler, turlar])
+  const esikTs = new Date(bugun.getFullYear(), bugun.getMonth(), bugun.getDate()).getTime()
+  const bekleyenSayi = useMemo(() => suzulu.filter((e) => sonuclanmadiMi(e, esikTs)).length, [suzulu, esikTs])
   const gunlukMap = useMemo(() => {
     const m = new Map<string, TakvimEtkinlik[]>()
     for (const e of suzulu) { const k = gunKey(new Date(e.baslar)); if (!m.has(k)) m.set(k, []); m.get(k)!.push(e) }
@@ -88,6 +105,11 @@ export function Takvim({ etkinlikler }: { etkinlikler: TakvimEtkinlik[] }) {
           </div>
         )}
         <h2 className="font-display text-[17px] font-extrabold tracking-[-0.02em]">{baslikMetni}</h2>
+        {bekleyenSayi > 0 && (
+          <button type="button" onClick={() => { setGorunum('ajanda'); setYon('gecmis') }} title="Sonuçlandırılmamış geçmiş toplantıları gör" className="inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11.5px] font-semibold text-foreground transition hover:bg-warning/20">
+            <AlertTriangle className="h-3.5 w-3.5 text-warning" /> {bekleyenSayi} sonuçlandırılmadı
+          </button>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-1">
           {turSekmeleri.map((t) => {
             const m = turMeta(t); const on = turlar.has(t)
@@ -101,27 +123,27 @@ export function Takvim({ etkinlikler }: { etkinlikler: TakvimEtkinlik[] }) {
         </div>
       </div>
 
-      {gorunum === 'ay' && <AyGorunum ankur={ankur} bugun={bugun} gunlukMap={gunlukMap} onSec={setSecili} />}
-      {gorunum === 'hafta' && <HaftaGorunum ankur={ankur} bugun={bugun} gunlukMap={gunlukMap} onSec={setSecili} />}
-      {gorunum === 'ajanda' && <AjandaGorunum bugun={bugun} etkinlikler={suzulu} onSec={setSecili} />}
+      {gorunum === 'ay' && <AyGorunum ankur={ankur} bugun={bugun} esikTs={esikTs} gunlukMap={gunlukMap} onSec={setSecili} />}
+      {gorunum === 'hafta' && <HaftaGorunum ankur={ankur} bugun={bugun} esikTs={esikTs} gunlukMap={gunlukMap} onSec={setSecili} />}
+      {gorunum === 'ajanda' && <AjandaGorunum bugun={bugun} esikTs={esikTs} etkinlikler={suzulu} yon={yon} setYon={setYon} bekleyenSayi={bekleyenSayi} onSec={setSecili} />}
 
-      {secili && <EtkinlikModal e={secili} bugun={gunKey(bugun)} onKapat={() => setSecili(null)} />}
+      {secili && <EtkinlikModal e={secili} bugun={gunKey(bugun)} kullanicilar={kullanicilar} onKapat={() => setSecili(null)} />}
     </div>
   )
 }
 
-function Cip({ e, onSec }: { e: TakvimEtkinlik; onSec: (e: TakvimEtkinlik) => void }) {
+function Cip({ e, onSec, vurgu }: { e: TakvimEtkinlik; onSec: (e: TakvimEtkinlik) => void; vurgu?: boolean }) {
   const m = turMeta(e.tur)
   return (
-    <button type="button" onClick={() => onSec(e)} title={`${saat(e.baslar)} · ${e.baslik}`} className="flex w-full items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-left text-[11px] transition hover:bg-surface-muted">
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotBg[m.tone]}`} />
+    <button type="button" onClick={() => onSec(e)} title={`${saat(e.baslar)} · ${e.baslik}${vurgu ? ' · sonuçlandırılmadı' : ''}`} className={`flex w-full items-center gap-1 truncate rounded-md px-1.5 py-0.5 text-left text-[11px] transition ${vurgu ? 'bg-warning/15 ring-1 ring-inset ring-warning/40 hover:bg-warning/25' : 'hover:bg-surface-muted'}`}>
+      {vurgu ? <AlertTriangle className="h-2.5 w-2.5 shrink-0 text-warning" /> : <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotBg[m.tone]}`} />}
       <span className="font-mono shrink-0 text-muted-foreground">{saat(e.baslar)}</span>
       <span className="truncate font-medium">{e.ozet.borclu ?? e.baslik}</span>
     </button>
   )
 }
 
-function AyGorunum({ ankur, bugun, gunlukMap, onSec }: { ankur: Date; bugun: Date; gunlukMap: Map<string, TakvimEtkinlik[]>; onSec: (e: TakvimEtkinlik) => void }) {
+function AyGorunum({ ankur, bugun, esikTs, gunlukMap, onSec }: { ankur: Date; bugun: Date; esikTs: number; gunlukMap: Map<string, TakvimEtkinlik[]>; onSec: (e: TakvimEtkinlik) => void }) {
   const ilk = haftaBasi(ayBasi(ankur))
   const gunler = Array.from({ length: 42 }, (_, i) => gunEkle(ilk, i))
   return (
@@ -138,7 +160,7 @@ function AyGorunum({ ankur, bugun, gunlukMap, onSec }: { ankur: Date; bugun: Dat
             <div key={i} className={`min-h-[104px] border-b border-r border-border-subtle p-1.5 ${ayDisi ? 'bg-surface-muted/30' : ''} ${i % 7 === 6 ? 'border-r-0' : ''}`}>
               <div className={`mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold ${bugunMu ? 'bg-kr text-kr-foreground' : ayDisi ? 'text-muted-foreground/60' : 'text-foreground'}`}>{d.getDate()}</div>
               <div className="flex flex-col gap-0.5">
-                {evs.slice(0, 3).map((e) => <Cip key={e.id} e={e} onSec={onSec} />)}
+                {evs.slice(0, 3).map((e) => <Cip key={e.id} e={e} onSec={onSec} vurgu={sonuclanmadiMi(e, esikTs)} />)}
                 {evs.length > 3 && <span className="px-1.5 text-[10.5px] font-semibold text-muted-foreground">+{evs.length - 3} daha</span>}
               </div>
             </div>
@@ -149,7 +171,7 @@ function AyGorunum({ ankur, bugun, gunlukMap, onSec }: { ankur: Date; bugun: Dat
   )
 }
 
-function HaftaGorunum({ ankur, bugun, gunlukMap, onSec }: { ankur: Date; bugun: Date; gunlukMap: Map<string, TakvimEtkinlik[]>; onSec: (e: TakvimEtkinlik) => void }) {
+function HaftaGorunum({ ankur, bugun, esikTs, gunlukMap, onSec }: { ankur: Date; bugun: Date; esikTs: number; gunlukMap: Map<string, TakvimEtkinlik[]>; onSec: (e: TakvimEtkinlik) => void }) {
   const b = haftaBasi(ankur)
   const gunler = Array.from({ length: 7 }, (_, i) => gunEkle(b, i))
   return (
@@ -167,9 +189,10 @@ function HaftaGorunum({ ankur, bugun, gunlukMap, onSec }: { ankur: Date; bugun: 
               {evs.length === 0 && <span className="px-1 py-2 text-[11px] text-muted-foreground/70">—</span>}
               {evs.map((e) => {
                 const m = turMeta(e.tur)
+                const vurgu = sonuclanmadiMi(e, esikTs)
                 return (
-                  <button key={e.id} type="button" onClick={() => onSec(e)} className="rounded-lg border border-border-subtle bg-surface-muted/40 p-1.5 text-left transition hover:border-kr/40">
-                    <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${dotBg[m.tone]}`} /><span className="font-mono text-[11px] font-bold text-kr-ink">{saat(e.baslar)}</span></div>
+                  <button key={e.id} type="button" onClick={() => onSec(e)} title={vurgu ? 'Sonuçlandırılmadı — işaretleyip sonuç notu girin' : undefined} className={`rounded-lg border p-1.5 text-left transition ${vurgu ? 'border-warning/50 bg-warning/10 hover:border-warning' : 'border-border-subtle bg-surface-muted/40 hover:border-kr/40'}`}>
+                    <div className="flex items-center gap-1.5">{vurgu ? <AlertTriangle className="h-2.5 w-2.5 text-warning" /> : <span className={`h-1.5 w-1.5 rounded-full ${dotBg[m.tone]}`} />}<span className="font-mono text-[11px] font-bold text-kr-ink">{saat(e.baslar)}</span></div>
                     <div className="mt-0.5 truncate text-[11.5px] font-semibold">{e.ozet.borclu ?? e.baslik}</div>
                     <div className="font-mono truncate text-[10px] text-muted-foreground">{e.ozet.hukukNo}</div>
                   </button>
@@ -183,44 +206,70 @@ function HaftaGorunum({ ankur, bugun, gunlukMap, onSec }: { ankur: Date; bugun: 
   )
 }
 
-function AjandaGorunum({ bugun, etkinlikler, onSec }: { bugun: Date; etkinlikler: TakvimEtkinlik[]; onSec: (e: TakvimEtkinlik) => void }) {
-  const esik = new Date(bugun.getFullYear(), bugun.getMonth(), bugun.getDate()).getTime()
-  const ileri = etkinlikler.filter((e) => new Date(e.baslar).getTime() >= esik).sort((a, b) => a.baslar.localeCompare(b.baslar))
+function AjandaGorunum({ bugun, esikTs, etkinlikler, yon, setYon, bekleyenSayi, onSec }: { bugun: Date; esikTs: number; etkinlikler: TakvimEtkinlik[]; yon: 'yaklasan' | 'gecmis'; setYon: (y: 'yaklasan' | 'gecmis') => void; bekleyenSayi: number; onSec: (e: TakvimEtkinlik) => void }) {
+  const gecmisMi = yon === 'gecmis'
+  const liste = etkinlikler
+    .filter((e) => (gecmisMi ? new Date(e.baslar).getTime() < esikTs : new Date(e.baslar).getTime() >= esikTs))
+    .sort((a, b) => (gecmisMi ? b.baslar.localeCompare(a.baslar) : a.baslar.localeCompare(b.baslar)))
   const grup = new Map<string, TakvimEtkinlik[]>()
-  for (const e of ileri) { const d = new Date(e.baslar); const k = gunKey(d); if (!grup.has(k)) grup.set(k, []); grup.get(k)!.push(e) }
-  if (ileri.length === 0) return <div className="rounded-2xl border-2 border-dashed border-border bg-surface-muted/30 px-7 py-14 text-center text-[13px] text-muted-foreground">Yaklaşan etkinlik yok.</div>
+  for (const e of liste) { const k = gunKey(new Date(e.baslar)); if (!grup.has(k)) grup.set(k, []); grup.get(k)!.push(e) }
   return (
-    <div className="flex flex-col gap-5">
-      {[...grup.entries()].map(([k, evs]) => {
-        const d = new Date(evs[0].baslar); const bugunMu = k === gunKey(bugun)
-        return (
-          <div key={k}>
-            <div className="mb-2 flex items-baseline gap-2"><h3 className="font-display text-[15px] font-extrabold">{gunBaslik(d)}</h3>{bugunMu && <Badge tone="kr">bugün</Badge>}</div>
-            <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
-              {evs.map((e, i) => {
-                const m = turMeta(e.tur)
-                return (
-                  <button key={e.id} type="button" onClick={() => onSec(e)} className={`flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-muted/50 ${i > 0 ? 'border-t border-border-subtle' : ''}`}>
-                    <span className="font-mono w-[52px] shrink-0 text-center text-[14px] font-bold tabular-nums text-kr-ink">{saat(e.baslar)}</span>
-                    <span className="h-9 w-px bg-border" />
-                    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-[10px] ${m.tone === 'kr' ? 'bg-kr-soft text-kr-ink' : 'bg-surface-muted text-foreground'}`}><m.Icon className="h-4 w-4" /></span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2"><span className="truncate text-[13px] font-semibold">{e.ozet.borclu ?? e.baslik}</span><Badge tone={m.tone}>{m.label}</Badge></div>
-                      <div className="font-mono flex items-center gap-1.5 truncate text-[11px] text-muted-foreground"><span className="font-bold text-foreground">{e.ozet.hukukNo}</span>{e.yer ? <> · {e.online ? <Video className="h-3 w-3" /> : <MapPin className="h-3 w-3" />} {e.yer}</> : null}</div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
+    <div>
+      <div className="mb-4 inline-flex gap-1 rounded-xl border border-border bg-surface-muted p-1">
+        {(['yaklasan', 'gecmis'] as const).map((y) => (
+          <button key={y} type="button" onClick={() => setYon(y)} className={`inline-flex items-center rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition ${yon === y ? 'bg-surface text-kr shadow-card' : 'text-muted-foreground hover:text-foreground'}`}>
+            {y === 'yaklasan' ? 'Yaklaşan' : 'Geçmiş'}
+            {y === 'gecmis' && bekleyenSayi > 0 && <span className="font-mono ml-1.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-warning px-1 text-[9px] font-bold text-white" title={`${bekleyenSayi} toplantı sonuçlandırılmadı`}>{bekleyenSayi}</span>}
+          </button>
+        ))}
+      </div>
+      {gecmisMi && bekleyenSayi > 0 && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <div className="text-[12.5px] text-foreground"><b>{bekleyenSayi} geçmiş toplantı sonuçlandırılmadı.</b> <span className="text-muted-foreground">Tıklayıp <b>Yapıldı/Yapılmadı</b> olarak işaretleyin ve kısa bir <b>sonuç notu</b> girin (ne konuşuldu, ne karar alındı). Yapılmadıysa oradan takip görevi oluşturun.</span></div>
+        </div>
+      )}
+      {liste.length === 0 ? (
+        <div className="rounded-2xl border-2 border-dashed border-border bg-surface-muted/30 px-7 py-14 text-center text-[13px] text-muted-foreground">{gecmisMi ? 'Geçmiş etkinlik yok.' : 'Yaklaşan etkinlik yok.'}</div>
+      ) : (
+        <div className="flex flex-col gap-5">
+          {[...grup.entries()].map(([k, evs]) => {
+            const d = new Date(evs[0].baslar); const bugunMu = k === gunKey(bugun)
+            return (
+              <div key={k}>
+                <div className="mb-2 flex items-baseline gap-2"><h3 className="font-display text-[15px] font-extrabold">{gunBaslik(d)}</h3>{bugunMu && <Badge tone="kr">bugün</Badge>}</div>
+                <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+                  {evs.map((e, i) => {
+                    const m = turMeta(e.tur)
+                    const dm = DURUM_META[e.durum] ?? DURUM_META.PLANLANDI
+                    const acikKaldi = gecmisMi && e.durum === 'PLANLANDI'
+                    const notEksik = gecmisMi && !acikKaldi && e.durum !== 'IPTAL' && !e.sonucNot
+                    return (
+                      <button key={e.id} type="button" onClick={() => onSec(e)} className={`flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-muted/50 ${i > 0 ? 'border-t border-border-subtle' : ''}`}>
+                        <span className="font-mono w-[52px] shrink-0 text-center text-[14px] font-bold tabular-nums text-kr-ink">{saat(e.baslar)}</span>
+                        <span className="h-9 w-px bg-border" />
+                        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-[10px] ${m.tone === 'kr' ? 'bg-kr-soft text-kr-ink' : 'bg-surface-muted text-foreground'}`}><m.Icon className="h-4 w-4" /></span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2"><span className="truncate text-[13px] font-semibold">{e.ozet.borclu ?? e.baslik}</span><Badge tone={m.tone}>{m.label}</Badge>{gecmisMi && (acikKaldi ? <Badge tone="warning">açık kaldı</Badge> : <Badge tone={dm.tone}>{dm.label}</Badge>)}{notEksik && <Badge tone="warning">not eksik</Badge>}</div>
+                          <div className="font-mono flex items-center gap-1.5 truncate text-[11px] text-muted-foreground"><span className="font-bold text-foreground">{e.ozet.hukukNo}</span>{e.yer ? <> · {e.online ? <Video className="h-3 w-3" /> : <MapPin className="h-3 w-3" />} {e.yer}</> : null}</div>
+                          {gecmisMi && e.sonucNot ? <div className="mt-1 truncate text-[11.5px] text-muted-foreground">📝 {e.sonucNot}</div> : null}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
-function EtkinlikModal({ e, bugun, onKapat }: { e: TakvimEtkinlik; bugun: string; onKapat: () => void }) {
+function EtkinlikModal({ e, bugun, kullanicilar, onKapat }: { e: TakvimEtkinlik; bugun: string; kullanicilar: GorevKullanici[]; onKapat: () => void }) {
   const m = turMeta(e.tur)
+  const gorevVarsayilan = e.durum === 'YAPILMADI' || e.durum === 'ERTELENDI' ? `${m.label}: yeni gün ata / yeniden planla` : ''
   const router = useRouter()
   const [pending, start] = useTransition()
   const [duzenle, setDuzenle] = useState(false)
@@ -260,17 +309,36 @@ function EtkinlikModal({ e, bugun, onKapat }: { e: TakvimEtkinlik; bugun: string
         {duzenle ? (
           <form onSubmit={kaydet} className="flex flex-col gap-3.5 px-5 py-4">
             <div><label className={LBL}>Başlık</label><input name="baslik" defaultValue={e.baslik} className={INP} /></div>
-            <div><label className={LBL}>Tür</label>
-              <select name="tur" defaultValue={e.tur} className={INP}>
-                {TUR_SECENEK.map((t) => <option key={t.val} value={t.val}>{t.label}</option>)}
-              </select>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><label className={LBL}>Tür</label>
+                <select name="tur" defaultValue={e.tur} className={INP}>
+                  {TUR_SECENEK.map((t) => <option key={t.val} value={t.val}>{t.label}</option>)}
+                </select>
+              </div>
+              <div><label className={LBL}>Durum</label>
+                <select name="durum" defaultValue={e.durum} className={INP}>
+                  {DURUM_SECENEK.map((t) => <option key={t.val} value={t.val}>{t.label}</option>)}
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><label className={LBL}>Başlangıç (tarih & saat)</label><input type="datetime-local" name="baslar" step={60} defaultValue={toLocalInput(e.baslar)} className={INP} /></div>
               <div><label className={LBL}>Bitiş (ops.)</label><input type="datetime-local" name="biter" step={60} defaultValue={e.biter ? toLocalInput(e.biter) : ''} className={INP} /></div>
             </div>
-            <div><label className={LBL}>Yer</label><input name="yer" defaultValue={e.yer ?? ''} placeholder="adliye / büro / online" className={INP} /></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><label className={LBL}>Yer</label><input name="yer" defaultValue={e.yer ?? ''} placeholder="adliye / büro / online" className={INP} /></div>
+              <div><label className={LBL}>Hatırlatma</label>
+                <select name="hatirlatmaDk" defaultValue={e.hatirlatmaDk != null ? String(e.hatirlatmaDk) : ''} className={INP}>
+                  <option value="">—</option>
+                  <option value="60">1 saat önce</option>
+                  <option value="1440">1 gün önce</option>
+                  <option value="2880">2 gün önce</option>
+                  <option value="10080">1 hafta önce</option>
+                </select>
+              </div>
+            </div>
             <label className="flex items-center gap-2 text-[12.5px] text-foreground"><input type="checkbox" name="online" defaultChecked={e.online} className="h-4 w-4 rounded border-border text-kr focus:ring-kr/40" /> Online görüşme/duruşma</label>
+            <div><label className={LBL}>Sonuç notu (ne oldu?)</label><textarea name="sonucNot" defaultValue={e.sonucNot ?? ''} rows={2} placeholder="ör. Arabulucu gelmedi; yeni gün alınacak." className={`${INP} resize-y`} /></div>
             {err && <p className="text-[12px] text-danger">{err}</p>}
             <div className="mt-1 flex items-center justify-end gap-2 border-t border-border-subtle pt-3.5">
               <button type="button" onClick={() => { setDuzenle(false); setErr(null) }} className="rounded-[10px] border border-border px-3.5 py-2 text-[13px] font-medium text-muted-foreground transition hover:text-foreground">Vazgeç</button>
@@ -279,11 +347,17 @@ function EtkinlikModal({ e, bugun, onKapat }: { e: TakvimEtkinlik; bugun: string
           </form>
         ) : (
           <div className="px-5 py-4">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Durum</span>
+              <Badge tone={(DURUM_META[e.durum] ?? DURUM_META.PLANLANDI).tone} dot>{(DURUM_META[e.durum] ?? DURUM_META.PLANLANDI).label}</Badge>
+            </div>
+            {e.sonucNot ? <div className="mb-3 rounded-[10px] border border-border-subtle bg-surface-muted/40 px-3 py-2 text-[12.5px] text-foreground"><span className="font-semibold text-muted-foreground">Sonuç notu: </span>{e.sonucNot}</div> : null}
             <div className="font-mono mb-2 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Dosya künyesi</div>
             <DosyaOzet data={e.ozet} bugun={bugun} />
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 <button type="button" onClick={() => { setDuzenle(true); setErr(null) }} className="inline-flex items-center gap-1.5 rounded-[10px] border border-border px-3 py-2 text-[12.5px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr"><Pencil className="h-3.5 w-3.5" /> Düzenle</button>
+                <GorevEkle dosyaId={e.dosyaId} kullanicilar={kullanicilar} etkinlikId={e.id} varsayilanBaslik={gorevVarsayilan} variant="ghost" label="Takip görevi" onEklendi={onKapat} />
                 <button type="button" onClick={sil} disabled={pending} className="inline-flex items-center gap-1.5 rounded-[10px] border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12.5px] font-semibold text-danger transition hover:bg-danger-soft disabled:opacity-60">{pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Sil</button>
               </div>
               <Link href={`/akilli-giris/${e.dosyaId}`} className="inline-flex items-center gap-1.5 rounded-[10px] bg-kr px-4 py-2 text-[13px] font-semibold text-kr-foreground transition hover:bg-kr/90">Dosyaya git <ArrowRight className="h-4 w-4" /></Link>

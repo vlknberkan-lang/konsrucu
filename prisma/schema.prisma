@@ -107,7 +107,16 @@ enum EtkinlikTur {
 enum EtkinlikDurum {
   PLANLANDI
   YAPILDI
-  ERTELENDI
+  YAPILMADI // planlandı ama gerçekleşmedi (henüz yeni tarih yok) — takip görevi tetikler
+  ERTELENDI // yapılmadı ama yeni tarih kararlaştırıldı
+  IPTAL
+}
+
+// takip görevi (etkinlikten doğan iş) durum makinesi — OnemliOlay ile aynı dil
+enum TakipGorevDurum {
+  ACIK
+  ISLEMDE
+  TAMAMLANDI
   IPTAL
 }
 
@@ -184,11 +193,15 @@ model Kullanici {
   ad             String
   eposta         String             @unique
   rol            Rol                @default(AVUKAT_YRD)
+  // Silme yetkisi KİŞİ bazlı: Sude ile Ervanur aynı rolde (AVUKAT_YRD) olduğundan rol tek başına
+  // ayıramaz. silebilir() (lib/konsrucu/db) rol + bu bayrağı birlikte kontrol eder.
+  silmeYetkisi   Boolean            @default(true)
   aktif          Boolean            @default(true)
   createdAt      DateTime           @default(now())
   musteriler     MusteriKullanici[]
   atananDosyalar RucuDosyasi[]      @relation("AtananKullanici")
   onemliOlaylar  OnemliOlay[]       @relation("OnemliOlaySorumlu")
+  takipGorevleri TakipGorevi[]      @relation("TakipGorevSorumlu")
   notlar         Not[]
   aktiviteler    Aktivite[]
   mentorKurallar MentorKural[]      @relation("MentorKuralYazan")
@@ -352,13 +365,22 @@ model RucuDosyasi {
   taksitPlanlari TaksitPlani[]
   masraflar      Masraf[]
   onemliOlaylar  OnemliOlay[]
+  takipGorevleri TakipGorevi[]
+  emsaller       EmsalKarar[]
   notlar         Not[]
   aktiviteler    Aktivite[]
 
+  // Import dedup'unun DB savunma hattı: çift tık / eşzamanlı import mükerrer dosya yaratamaz
+  // (uygulama katmanındaki ön-kontrole ek). Postgres'te NULL hukukDosyaNo'lar kısıta takılmaz.
+  @@unique([musteriId, hukukDosyaNo])
   @@index([musteriId])
   @@index([projeId])
   @@index([durum])
   @@index([yol])
+  @@index([musteriId, zamanasimi]) // zamanaşımı radarı (cron + filtre) her gün bu aralığı tarar
+  @@index([icraDosyaNo]) // UYAP senkron/evrak eşleşmesi (eski eklenti sürümleri icraDosyaNo gönderir)
+  @@index([uyapSenkronAt]) // hedefler route'unun artımlı sıralaması + sağlık bekçisi
+  @@index([atananKullaniciId])
 }
 
 model Borclu {
@@ -481,6 +503,27 @@ model UretilenCikti {
   @@index([dosyaId])
 }
 
+// Talep-anında çekilen Yargıtay emsal kararı — dosyaya özel, dilekçeye dayanak + cache (korpus organik büyür).
+// Kaynak: karararama.yargitay.gov.tr (lib/konsrucu/emsal-ara.ts). 11M toplamak YOK, dosya gelince canlı ara.
+model EmsalKarar {
+  id          String      @id @default(uuid())
+  dosyaId     String
+  dosya       RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  yargitayId  String // karararama getDokuman id — yeniden-arama dedup anahtarı
+  daire       String
+  esasNo      String
+  kararNo     String
+  kararTarihi String // kaynak formatı "16.09.2019"
+  alaka       String   @db.Text // AI: bu karar dosyaya neden emsal (madde atıflı kısa gerekçe)
+  metin       String   @db.Text // tam karar metni (cache)
+  aramaKelime String? // hangi arama ifadesinden geldi
+  secili      Boolean  @default(true) // dilekçeye "Yargıtay dayanağı" olarak eklensin mi
+  createdAt   DateTime @default(now())
+
+  @@unique([dosyaId, yargitayId])
+  @@index([dosyaId])
+}
+
 // üretilen çıktı <-> kaynak belge (ham evrak ↔ dilekçe çift yönlü bağ)
 model CiktiKaynak {
   ciktiId String
@@ -504,6 +547,21 @@ model TakipOlayi {
   createdAt DateTime    @default(now())
 
   @@index([dosyaId])
+  @@index([dosyaId, tip, tarih]) // UYAP senkron dedup'u her olay için (dosya+tip+tarih) arar — olay hacmi sürekli büyür
+}
+
+// sistem olay günlüğü — hafif hata izleme (Sentry'siz): cron/mail/senkron hataları buraya düşer,
+// Şirket Bilgileri'ndeki "Sistem Olayları" kartından okunur. Üretimde bir şey sessizce ölmesin.
+model SistemOlay {
+  id        String   @id @default(uuid())
+  tip       String // CRON_HATA | MAIL_HATA | SENKRON_UYARI | HATA
+  kaynak    String // hangi yüzey: cron adı / modül
+  mesaj     String   @db.Text
+  detayJson Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([tip, createdAt])
 }
 
 // önemli olay — yüksek öncelikli görev/alarm kuyruğu (borca itiraz → arabuluculuk iş akışı).
@@ -634,6 +692,7 @@ model Etkinlik {
   sorumluId              String? // atanan avukat (Kullanici.id)
   hatirlatmaDk           Int?
   hatirlatmaGonderildiAt DateTime? // hatırlatma e-postası gönderildiyse zaman damgası (mükerrer gönderimi önler)
+  takipGorevleri         TakipGorevi[] // bu etkinlikten doğan takip görevleri (ör. yapılmamış toplantı → "yeni gün ata")
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
 
@@ -641,6 +700,32 @@ model Etkinlik {
   @@index([tur])
   @@index([baslar])
   @@index([durum])
+}
+
+// takip görevi — bir etkinlikten (ya da serbest) doğan, bir kişiye atanan iş.
+// Senaryo: 24.04 toplantısı YAPILMADI → "arabulucuyla iletişime geç, yeni gün ata" → sorumluya mail.
+// Durum makinesi + üstlenme deseni OnemliOlay ile aynı. Tenant kapsamı dosya üzerinden.
+model TakipGorevi {
+  id                     String          @id @default(uuid())
+  dosyaId                String
+  dosya                  RucuDosyasi     @relation(fields: [dosyaId], references: [id], onDelete: Cascade)
+  etkinlikId             String? // bağlam: hangi etkinlikten doğdu (yapılmamış toplantı vb.)
+  etkinlik               Etkinlik?       @relation(fields: [etkinlikId], references: [id], onDelete: SetNull)
+  baslik                 String // "Arabulucuyla iletişime geç, yeni gün ata"
+  aciklama               String?         @db.Text
+  sonTarih               DateTime?
+  durum                  TakipGorevDurum @default(ACIK)
+  sorumluId              String? // atanan kişi (Kullanici.id) — mail buraya gider
+  sorumlu                Kullanici?      @relation("TakipGorevSorumlu", fields: [sorumluId], references: [id])
+  atayanId               String? // görevi açan (Kullanici.id)
+  mailGonderildiAt       DateTime? // atama maili (anlık) gönderildiyse damga — mükerrer önleme
+  hatirlatmaGonderildiAt DateTime? // cron son-tarih hatırlatması gönderildiyse damga — mükerrer önleme
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@index([dosyaId])
+  @@index([sorumluId, durum])
+  @@index([sonTarih])
 }
 
 model Not {

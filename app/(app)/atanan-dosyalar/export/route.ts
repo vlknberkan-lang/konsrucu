@@ -14,6 +14,7 @@ import { Prisma, DosyaDurum } from '@prisma/client'
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { ASAMA, asamaBilgi, asamaRenk, TON_RENK, ASAMA_DURUMLAR, ASAMA_META, ASAMA_SIRA, type AsamaKey } from '@/lib/konsrucu/asama'
+import { tarihTR, kalanGun as kalanGunIst } from '@/lib/konsrucu/format'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,8 +24,8 @@ const INK = 'FF1E293B'
 const HEADER_BG = 'FF0F2A3F' // koyu çelik — başlık şeridi
 const TITLE_BG = TON_RENK.kr.strong
 
-const fmtTarih = (d: Date | null) => (d ? d.toLocaleDateString('tr-TR') : '')
-const kalanGun = (d: Date | null) => (d ? Math.ceil((d.getTime() - Date.now()) / 86_400_000) : null)
+const fmtTarih = (d: Date | null) => (d ? tarihTR(d) : '')
+const kalanGun = (d: Date | null) => (d ? kalanGunIst(d) : null)
 
 export async function GET(req: Request) {
   const { aktifMusteriId } = await ctx()
@@ -133,7 +134,7 @@ export async function GET(req: Request) {
   ].filter(Boolean).join(' · ')
   ws.mergeCells(2, 1, 2, N)
   const m = ws.getCell(2, 1)
-  m.value = `${new Date().toLocaleDateString('tr-TR')} · ${filtreOzet} · ${rows.length} dosya`
+  m.value = `${tarihTR(new Date())} · ${filtreOzet} · ${rows.length} dosya`
   m.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF64748B' } }
   m.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
   m.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }
@@ -245,7 +246,7 @@ export async function GET(req: Request) {
     })
 
   const buf = await wb.xlsx.writeBuffer()
-  const bugun = new Date().toISOString().slice(0, 10)
+  const bugun = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10) // dosya adı: Türkiye günü (UTC+3)
   return new Response(buf, {
     status: 200,
     headers: {

@@ -6,6 +6,7 @@ import { Check, CalendarPlus, MapPin, Flag, Bell } from 'lucide-react'
 import { asamaKaydet, asamaSonuclandir, etkinlikKaydet } from '@/app/(app)/akilli-giris/actions'
 import { TakipSureci, type OlayUI, type UyapBilgi } from './takip-sureci'
 import { DilekcePanel, type DilekceCikti } from './dilekce-panel'
+import { EmsalPanel, type EmsalUI } from './emsal-panel'
 
 type Sekme = 'icra' | 'arabuluculuk' | 'dava' | 'infaz'
 type Asama = { id: string; kimlikNo: string | null; birim: string | null; baslangic: Date | null; ozet: string | null; durum: string; sonuc: string | null }
@@ -20,8 +21,8 @@ const META: Record<Sekme, { tur: string; baslik: string; noLabel: string; noPh: 
 
 const INP = 'w-full rounded-[10px] border border-border bg-surface-muted px-3 py-2.5 text-[13px] outline-none transition focus:border-kr focus:bg-surface focus:ring-4 focus:ring-kr/15'
 const LBL = 'font-mono mb-1 block text-[9px] uppercase tracking-[0.1em] text-muted-foreground'
-const fmtDT = (d: Date) => new Date(d).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-const fmtSaat = (d: Date) => new Date(d).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+const fmtDT = (d: Date) => new Date(d).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })
+const fmtSaat = (d: Date) => new Date(d).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })
 const iso = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : '')
 const HATIRLATMA: Record<number, string> = { 60: '1 saat önce', 1440: '1 gün önce', 2880: '2 gün önce', 10080: '1 hafta önce' }
 const hatirlatmaEt = (dk: number) => HATIRLATMA[dk] ?? `${dk} dk önce`
@@ -34,6 +35,7 @@ export function AsamaPanel({
   prefill,
   takip,
   dilekce,
+  emsaller = [],
 }: {
   sekme: Sekme
   dosyaId: string
@@ -42,12 +44,14 @@ export function AsamaPanel({
   prefill?: { no?: string | null; birim?: string | null }
   takip: { durum: string; olaylar: OlayUI[]; bakiye: { toplam: number; tahsil: number; kalan: number }; uyap: UyapBilgi }
   dilekce?: DilekceCikti | null
+  emsaller?: EmsalUI[]
 }) {
   const m = META[sekme]
   const bitti = asama?.durum === 'SONUCLANDI'
 
   return (
     <section className="mt-5 flex flex-col gap-4">
+      {sekme === 'dava' && <EmsalPanel dosyaId={dosyaId} emsaller={emsaller} />}
       {sekme === 'dava' && <DilekcePanel dosyaId={dosyaId} cikti={dilekce ?? null} />}
       {/* aşama no / birim / tarih */}
       <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">

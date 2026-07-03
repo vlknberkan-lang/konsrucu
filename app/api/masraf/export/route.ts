@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="Ray-Masraf-${bugun}.xlsx"`,
+      'Content-Disposition': `attachment; filename="Masraf-${bugun}.xlsx"`,
       'Cache-Control': 'no-store',
     },
   })

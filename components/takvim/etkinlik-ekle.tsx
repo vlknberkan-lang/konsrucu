@@ -20,6 +20,8 @@ const TURLER: { val: string; label: string; Icon: typeof Handshake }[] = [
   { val: 'HATIRLATMA', label: 'Hatırlatma', Icon: Bell },
 ]
 const TUR_LBL: Record<string, string> = Object.fromEntries(TURLER.map((t) => [t.val, t.label]))
+// Tür bazlı varsayılan hatırlatma (dk) — duruşma/arabuluculuk/süre unutulursa telafisi zor, varsayılan 1 gün önce.
+const TUR_HATIRLATMA: Record<string, string> = { DURUSMA: '1440', ARABULUCULUK_TOPLANTISI: '1440', SURE: '1440', GORUSME: '60', HATIRLATMA: '1440' }
 
 const INP = 'w-full rounded-[10px] border border-border bg-surface-muted px-3 py-2.5 text-[13px] outline-none transition focus:border-kr focus:bg-surface focus:ring-4 focus:ring-kr/15'
 const LBL = 'font-mono mb-1 block text-[9px] uppercase tracking-[0.1em] text-muted-foreground'
@@ -162,7 +164,7 @@ export function EtkinlikEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div><label className={LBL}>Yer</label><input name="yer" placeholder="adliye / büro / online" className={INP} /></div>
                 <div><label className={LBL}>Hatırlatma</label>
-                  <select name="hatirlatmaDk" defaultValue="" className={INP}>
+                  <select key={tur} name="hatirlatmaDk" defaultValue={TUR_HATIRLATMA[tur] ?? ''} className={INP}>
                     <option value="">—</option>
                     <option value="60">1 saat önce</option>
                     <option value="1440">1 gün önce</option>

@@ -38,7 +38,7 @@ function trTarih(d: Date | string | null | undefined): string {
   if (!d) return '[kaza tarihi]'
   const dt = typeof d === 'string' ? new Date(d) : d
   if (Number.isNaN(dt.getTime())) return '[kaza tarihi]'
-  return dt.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return dt.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Istanbul' })
 }
 
 export type AciklamaAlan = {

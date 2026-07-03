@@ -22,7 +22,8 @@ export function Rail({ userInit, counts }: { userInit: string; counts?: NavCount
         {RAIL_NAV.map((n) => {
           const active = pathname.startsWith(n.href)
           const Icon = n.icon
-          const rozet = n.id === 'onemli' ? counts?.onemli ?? 0 : 0
+          const rozet = n.id === 'onemli' ? counts?.onemli ?? 0 : n.id === 'gorevler' ? counts?.gorevler ?? 0 : 0
+          const rozetTitle = n.id === 'gorevler' ? `${rozet} açık görev` : `${rozet} açık önemli olay`
           return (
             <Link
               key={n.id}
@@ -39,7 +40,7 @@ export function Rail({ userInit, counts }: { userInit: string; counts?: NavCount
               )}
               <Icon className="h-5 w-5" />
               {rozet > 0 && (
-                <span className="font-mono absolute -right-0.5 -top-0.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold text-white ring-2 ring-[#0a1628]" title={`${rozet} açık önemli olay`}>
+                <span className="font-mono absolute -right-0.5 -top-0.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold text-white ring-2 ring-[#0a1628]" title={rozetTitle}>
                   {rozet > 9 ? '9+' : rozet}
                 </span>
               )}

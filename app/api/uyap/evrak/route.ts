@@ -8,7 +8,8 @@
  * Aynı (dosya + ad + evrak-kimliği) bu dosyada varsa atlanır → upload + AI + masraf-çıkarımı HİÇ çalışmaz.
  * Aynı gün aynı adlı AYRI evraklar (ör. 3 borçluya 3 tebligat) farklı önek taşır → ayrı tutulur (kaybolmaz).
  *
- * Gövde: { icraDosyaNo, uyapEvrakId, dosyaAdi, tur?, contentBase64, mime? }
+ * Gövde: { icraDosyaNo, dosyaId?, uyapEvrakId, dosyaAdi, tur?, contentBase64, mime? }
+ * Eşleşme: dosyaId varsa KESİN eşleşme (çok-adliyeli portföyde aynı esas no karışmasın); yoksa icraDosyaNo.
  */
 import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
@@ -33,17 +34,21 @@ export async function POST(req: Request) {
   const k = await uyapKimlik(req)
   if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401)
 
-  let body: { icraDosyaNo?: string; uyapEvrakId?: string; dosyaAdi?: string; tur?: string; contentBase64?: string; mime?: string }
+  let body: { icraDosyaNo?: string; dosyaId?: string; uyapEvrakId?: string; dosyaAdi?: string; tur?: string; contentBase64?: string; mime?: string }
   try { body = await req.json() } catch { return corsJson({ ok: false, error: 'bad json' }, 400) }
 
   const icraDosyaNo = String(body?.icraDosyaNo ?? '').trim()
+  const dosyaIdGirdi = String(body?.dosyaId ?? '').trim()
   const uyapEvrakId = String(body?.uyapEvrakId ?? '').replace(/"/g, '').trim() // UYAP id'leri tırnaklı gelebilir → temizle (kaynakRef + storage anahtarı)
   const dosyaAdi = String(body?.dosyaAdi ?? '').trim().slice(0, 255)
   const b64 = String(body?.contentBase64 ?? '')
-  if (!icraDosyaNo || !uyapEvrakId || !dosyaAdi) return corsJson({ ok: false, error: 'icraDosyaNo + uyapEvrakId + dosyaAdi gerekli' }, 400)
+  if ((!icraDosyaNo && !dosyaIdGirdi) || !uyapEvrakId || !dosyaAdi) return corsJson({ ok: false, error: '(icraDosyaNo|dosyaId) + uyapEvrakId + dosyaAdi gerekli' }, 400)
 
-  const dosya = await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true, durum: true, uyapDurum: true } })
-  if (!dosya) return corsJson({ ok: false, error: 'dosya bulunamadı (icraDosyaNo)' }, 404)
+  // dosyaId (hedefler'den gelen kesin kimlik) öncelikli; yoksa icraDosyaNo fallback (eski eklenti sürümleri).
+  const dosya = dosyaIdGirdi
+    ? await prisma.rucuDosyasi.findFirst({ where: { id: dosyaIdGirdi, musteriId: { in: k.izinli } }, select: { id: true, durum: true, uyapDurum: true } })
+    : await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true, durum: true, uyapDurum: true } })
+  if (!dosya) return corsJson({ ok: false, error: `dosya bulunamadı (${dosyaIdGirdi ? 'dosyaId' : 'icraDosyaNo'})` }, 404)
   const aktif = dosyaAktif(dosya) // kapalı dosya: evrak SAKLANIR ama masraf AI çalışmaz (boşa maliyet)
 
   // DEDUP (pahalı işlemlerden ÖNCE) — UYAP aynı evrağı her indirişte byte-farklı üretir; gerçek kimlik

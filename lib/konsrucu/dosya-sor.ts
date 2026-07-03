@@ -4,6 +4,7 @@
  */
 import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
+import { unvanGecir } from './unvan'
 
 const MODEL = 'claude-sonnet-4-6' // hukuki Q&A → kalite katmanı
 
@@ -23,7 +24,7 @@ Belgelerin TOPLAMINA ve kronolojik sırasına bakarak şu başlıklarla kısa, n
 4. **Sıradaki adımlar** — Somut, sıralı yapılacaklar; her birine kısa gerekçe (yol göster).
 Yalnız verilen bilgilere dayan; UYDURMA. Bilgi yoksa "dosyada bu bilgi yok" de. Tarih/numara verirken dosyadaki değeri aynen kullan.`
 
-export async function dosyaYolGoster(baglam: string): Promise<{ ok: boolean; cevap?: string; error?: string }> {
+export async function dosyaYolGoster(baglam: string, alacakliUnvan?: string | null): Promise<{ ok: boolean; cevap?: string; error?: string }> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return { ok: false, error: 'AI anahtarı (ANTHROPIC_API_KEY) tanımlı değil.' }
   const client = new Anthropic({ apiKey: key })
@@ -31,7 +32,7 @@ export async function dosyaYolGoster(baglam: string): Promise<{ ok: boolean; cev
     const res = await client.messages.create({
       model: MODEL,
       max_tokens: 1600,
-      system: SISTEM_YOL,
+      system: unvanGecir(SISTEM_YOL, alacakliUnvan),
       messages: [{ role: 'user', content: `DOSYA — KÜNYE + KRONOLOJİK BELGE/OLAY DÖKÜMÜ:\n${baglam.slice(0, 120000)}\n\nGÖREV: Yukarıdaki belge ve olayların TOPLAMINI kronolojik değerlendir; süreç nerede, riskler ne, sıradaki adımlar ne — yol göster.` }],
     })
     const txt = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n').trim()
@@ -41,7 +42,7 @@ export async function dosyaYolGoster(baglam: string): Promise<{ ok: boolean; cev
   }
 }
 
-export async function dosyaSor(baglam: string, soru: string): Promise<{ ok: boolean; cevap?: string; error?: string }> {
+export async function dosyaSor(baglam: string, soru: string, alacakliUnvan?: string | null): Promise<{ ok: boolean; cevap?: string; error?: string }> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return { ok: false, error: 'AI anahtarı (ANTHROPIC_API_KEY) tanımlı değil.' }
   if (!soru.trim()) return { ok: false, error: 'Soru boş.' }
@@ -50,7 +51,7 @@ export async function dosyaSor(baglam: string, soru: string): Promise<{ ok: bool
     const res = await client.messages.create({
       model: MODEL,
       max_tokens: 1200,
-      system: SISTEM,
+      system: unvanGecir(SISTEM, alacakliUnvan),
       messages: [{ role: 'user', content: `DOSYA BAĞLAMI:\n${baglam.slice(0, 120000)}\n\nSORU: ${soru.trim()}` }],
     })
     const txt = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n').trim()

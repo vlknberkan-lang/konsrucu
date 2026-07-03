@@ -16,8 +16,9 @@ import { FiltreBar } from '@/components/atanan-dosyalar/filtre-bar'
 import { CekildiButton } from '@/components/atanan-dosyalar/cekildi-button'
 import { HugoImportButton } from '@/components/atanan-dosyalar/hugo-import-modal'
 import { IcraEslestirButton } from '@/components/atanan-dosyalar/icra-eslestir'
+import { tarihTR, kalanGun, bugunIstBasi } from '@/lib/konsrucu/format'
 
-type SP = { q?: string; cekildi?: string; sort?: string; asama?: string }
+type SP = { q?: string; cekildi?: string; sort?: string; asama?: string; za?: string }
 
 /** Telefon hücresi — tıkla-ara (tel:) bağlantısı, boşsa tire. */
 function Tel({ value }: { value: string | null | undefined }) {
@@ -37,8 +38,8 @@ function Tel({ value }: { value: string | null | undefined }) {
 /** Zaman aşımı tarihini kalan güne göre renk koduna çevir. */
 function zamanasimiMeta(d: Date | null): { label: string; tone: Tone } {
   if (!d) return { label: '—', tone: 'steel' }
-  const label = d.toLocaleDateString('tr-TR')
-  const gun = Math.ceil((d.getTime() - Date.now()) / 86_400_000)
+  const label = tarihTR(d)
+  const gun = kalanGun(d)
   if (gun < 0) return { label: `${label} · geçti`, tone: 'danger' }
   if (gun <= 30) return { label: `${label} · ${gun}g`, tone: 'danger' }
   if (gun <= 90) return { label: `${label} · ${gun}g`, tone: 'warning' }
@@ -55,6 +56,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
   const cekildi = searchParams.cekildi === 'evet' ? 'evet' : searchParams.cekildi === 'hayir' ? 'hayir' : 'all'
   const asama: AsamaKey | 'all' = ASAMA_SIRA.includes(searchParams.asama as AsamaKey) ? (searchParams.asama as AsamaKey) : 'all'
   const sort = ['zamanasimi', 'tutar', 'atanma'].includes(searchParams.sort ?? '') ? (searchParams.sort as string) : 'yeni'
+  const za = ['bos', 'yakin', 'gecti'].includes(searchParams.za ?? '') ? (searchParams.za as 'bos' | 'yakin' | 'gecti') : 'all'
 
   if (!aktifMusteriId) {
     return (
@@ -88,10 +90,19 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
         }
       : {}),
   }
+  // zamanaşımı radarı filtresi: boş (radar dışı!) / 30 gün içinde / tarihi geçmiş
+  const bugun = bugunIstBasi() // İstanbul gün başlangıcı — sunucu UTC'yken pencere kaymasın
   const listeWhere: Prisma.RucuDosyasiWhereInput = {
     ...temelWhere,
     ...(asama !== 'all' ? { durum: { in: ASAMA_DURUMLAR[asama] as DosyaDurum[] } } : {}),
     ...(cekildi === 'evet' ? { hugodanCekildi: true } : cekildi === 'hayir' ? { hugodanCekildi: false } : {}),
+    ...(za === 'bos'
+      ? { zamanasimi: null }
+      : za === 'yakin'
+        ? { zamanasimi: { gte: bugun, lt: new Date(bugun.getTime() + 30 * 86_400_000) } }
+        : za === 'gecti'
+          ? { zamanasimi: { lt: bugun } }
+          : {}),
   }
   const orderBy: Prisma.RucuDosyasiOrderByWithRelationInput[] =
     sort === 'zamanasimi'
@@ -152,6 +163,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
             asama={asama}
             cekildi={cekildi}
             sort={sort}
+            za={za}
             asamaSayim={asamaSayim}
             cekildiSayim={{ all: toplam, evet: cekilen, hayir: bekleyen }}
           />
