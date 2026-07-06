@@ -7,8 +7,8 @@ import Link from 'next/link'
 import { Download, Puzzle, ShieldCheck, Info, FolderOpen, Settings2, MousePointerClick, RefreshCw } from 'lucide-react'
 import { Kopyala } from '@/components/akilli-giris/kopyala'
 
-const ZIP = '/uyap-eklenti-v1.4.0.zip'
-const SURUM = '1.4.0'
+const ZIP = '/uyap-eklenti-v1.5.0.zip'
+const SURUM = '1.5.0'
 
 function Adim({ n, baslik, children, icon: Icon }: { n: number; baslik: string; children: React.ReactNode; icon: React.ElementType }) {
   return (
