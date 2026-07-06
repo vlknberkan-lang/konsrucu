@@ -217,6 +217,8 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
     hesap: uyapHesapRaw
       ? { asilAlacak: sayi(uyapHesapRaw.asilAlacak), islemisFaiz: sayi(uyapHesapRaw.islemisFaiz), tahsilat: sayi(uyapHesapRaw.tahsilat), bakiye: sayi(uyapHesapRaw.bakiye) }
       : null,
+    eslesme: dosya.uyapEslesme ?? null, // eklenti v1 (daire+esas) eşleşme raporu — OK dışı kırmızı uyarı
+    eslesmeNot: dosya.uyapEslesmeNot ?? null,
   }
   const evraklarUyap = dosya.belgeler
     .filter((b) => b.kaynakRef)
@@ -627,7 +629,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
             </Section>
           )}
 
-          {takipAcik && <TakipSureci dosyaId={dosya.id} durum={dosya.durum} olaylar={olaylarUi} bakiye={bakiye} />}
+          {takipAcik && <TakipSureci dosyaId={dosya.id} durum={dosya.durum} olaylar={olaylarUi} bakiye={bakiye} uyap={uyapBilgi} />}
         </div>
 
         {/* SAĞ RAIL */}

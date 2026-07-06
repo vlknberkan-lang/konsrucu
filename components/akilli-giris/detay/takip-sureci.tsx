@@ -19,7 +19,17 @@ const STEP: Record<string, number> = { TAKIP_ACILDI: 0, TEBLIG_EDILDI: 1, ITIRAZ
 
 export type OlayUI = { id: string; tip: string; tarih: string | null; tutar: number | null; aciklama: string | null }
 export type UyapHesap = { asilAlacak?: number | null; islemisFaiz?: number | null; tahsilat?: number | null; bakiye?: number | null }
-export type UyapBilgi = { durum: string | null; sonSenkron: string | null; hesap: UyapHesap | null }
+export type UyapBilgi = { durum: string | null; sonSenkron: string | null; hesap: UyapHesap | null; eslesme?: string | null; eslesmeNot?: string | null }
+
+// eklenti v1 eşleşme raporu → insan-okur etiket (OK dışı = dosya UYAP'ta İZLENEMİYOR demek)
+const ESLESME_ETIKET: Record<string, string> = {
+  DAIRE_EKSIK: 'İcra dairesi boş — sorgulanamıyor',
+  DAIRE_COZULEMEDI: 'Daire UYAP listesinde eşleşmedi',
+  BULUNAMADI: "UYAP'ta bulunamadı",
+  BASKA_DAIRE: 'Başka dairede bulundu — daireyi düzeltin',
+  COKLU_BELIRSIZ: 'Birden çok dosya — elle seçim gerekli',
+  HATA: 'Senkron hatası',
+}
 
 const money = (n: number) => '₺ ' + n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString('tr-TR') : '')
@@ -108,6 +118,15 @@ export function TakipSureci({
               <RefreshCw className="h-3 w-3" /> {uyap?.sonSenkron ? `son senkron · ${fmtDateTime(uyap.sonSenkron)}` : 'senkron bekleniyor'}
             </span>
           </div>
+          {uyap?.eslesme && uyap.eslesme !== 'OK' && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-[10px] border border-danger/30 bg-danger-soft/40 px-3 py-2 text-[12px]">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
+              <span>
+                <b className="text-danger">{ESLESME_ETIKET[uyap.eslesme] ?? uyap.eslesme}</b>
+                {uyap.eslesmeNot ? <span className="text-muted-foreground"> — {uyap.eslesmeNot}</span> : null}
+              </span>
+            </div>
+          )}
           {hesapVar && (
             <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {([['Asıl alacak', h!.asilAlacak], ['İşlemiş faiz', h!.islemisFaiz], ['Tahsilat', h!.tahsilat], ['Bakiye', h!.bakiye]] as [string, number | null | undefined][]).map(([lbl, v]) => (

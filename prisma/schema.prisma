@@ -329,6 +329,11 @@ model RucuDosyasi {
   uyapDurum     String?
   uyapSenkronAt DateTime?
   uyapHesapJson Json? // UYAP'tan: asıl alacak / işlemiş faiz / tahsilat / bakiye (bilgi amaçlı)
+  // Eklenti v1 eşleşme raporu — kimlik (İCRA DAİRESİ + ESAS NO) çiftiyle sorgu sonucu.
+  // OK | DAIRE_EKSIK | DAIRE_COZULEMEDI | BULUNAMADI | BASKA_DAIRE | COKLU_BELIRSIZ | HATA
+  // OK dışındakiler "senkron dışı" radarına düşer; not alanı teşhisi taşır (örn. hangi dairede bulunduğu).
+  uyapEslesme    String?
+  uyapEslesmeNot String?
 
   // çıkarım izi (her alan: value + confidence + sourceRef)
   cikarimJson  Json?
@@ -381,6 +386,7 @@ model RucuDosyasi {
   @@index([icraDosyaNo]) // UYAP senkron/evrak eşleşmesi (eski eklenti sürümleri icraDosyaNo gönderir)
   @@index([uyapSenkronAt]) // hedefler route'unun artımlı sıralaması + sağlık bekçisi
   @@index([atananKullaniciId])
+  @@index([musteriId, uyapEslesme]) // "UYAP'ta bulunamayan/belirsiz" radar sayımları
 }
 
 model Borclu {

@@ -7,8 +7,8 @@ import Link from 'next/link'
 import { Download, Puzzle, ShieldCheck, Info, FolderOpen, Settings2, MousePointerClick, RefreshCw } from 'lucide-react'
 import { Kopyala } from '@/components/akilli-giris/kopyala'
 
-const ZIP = '/uyap-eklenti-v0.6.6.zip'
-const SURUM = '0.6.6'
+const ZIP = '/uyap-eklenti-v1.0.0.zip'
+const SURUM = '1.0.0'
 
 function Adim({ n, baslik, children, icon: Icon }: { n: number; baslik: string; children: React.ReactNode; icon: React.ElementType }) {
   return (
@@ -31,9 +31,11 @@ export default function EklentiPage() {
         <span className="font-mono rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">v{SURUM}</span>
       </h1>
       <p className="mt-2 max-w-[64ch] text-sm text-muted-foreground">
-        <b>Rücu Takip — UYAP Senkron</b>, UYAP Avukat Portalında <b>açık oturumda</b> rücu icra ve dava (Tüketici Mahkemesi)
-        dosyalarını sorgular; durum, finansal (alacak/faiz/bakiye), taraf ve evrak listesini okur, evrak PDF'lerini indirir.
-        <b className="text-foreground"> Sadece okur — işlem göndermez, dosya detayına/safahatına girmez → harç çıkmaz.</b>
+        <b>Rücu Takip — UYAP Senkron v1</b>, UYAP Avukat Portalında <b>açık oturumda</b> rücu icra dosyalarını
+        <b className="text-foreground"> (İCRA DAİRESİ + ESAS NO) kimliğiyle</b> sorgular; durum, finansal (alacak/faiz/bakiye),
+        taraf, evrak ve safahatı okuyup programa senkronlar. Aynı esas no'dan birden çok dosya varsa <b>alacaklısı bizim şirket
+        olanı</b> seçer; <b className="text-foreground">bulamadığı dosyayı da programa RAPORLAR</b> — kör nokta kalmaz.
+        <b className="text-foreground"> Sadece okur — UYAP'a işlem göndermez.</b>
       </p>
 
       {/* indir + Chrome uyarısı */}

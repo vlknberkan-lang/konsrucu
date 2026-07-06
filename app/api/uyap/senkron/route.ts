@@ -33,7 +33,14 @@ export async function POST(req: Request) {
   const k = await uyapKimlik(req)
   if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401)
 
-  let body: { icraDosyaNo?: string; dosyaId?: string; durum?: string; hesap?: Record<string, unknown>; olaylar?: { tip?: string; tarih?: string; tutar?: number; aciklama?: string }[] }
+  let body: {
+    icraDosyaNo?: string; dosyaId?: string; durum?: string; hesap?: Record<string, unknown>
+    olaylar?: { tip?: string; tarih?: string; tutar?: number; aciklama?: string }[]
+    // v1 eklenti eşleşme raporu: dosya UYAP'ta bulunamasa bile POST gelir — kör nokta kalmaz
+    eslesme?: { durum?: string; not?: string }
+    // v1 yapılandırılmış masraf kalemleri (kaynak ekran belirlenince eklenti dolduracak)
+    masraflar?: { tarih?: string; ad?: string; tutar?: number; makbuzNo?: string }[]
+  }
   try { body = await req.json() } catch { return corsJson({ ok: false, error: 'bad json' }, 400) }
 
   const icraDosyaNo = String(body?.icraDosyaNo ?? '').trim()
@@ -46,13 +53,22 @@ export async function POST(req: Request) {
     : await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true } })
   if (!dosya) return corsJson({ ok: false, error: `dosya bulunamadı (${dosyaIdGirdi ? 'dosyaId' : 'icraDosyaNo'})` }, 404)
 
-  // durum + finansal snapshot
+  // eşleşme raporu (v1): beyaz-listeli durum + teşhis notu. OK dışı = "senkron dışı" radarına düşer.
+  const ESLESME_DURUMLARI = ['OK', 'DAIRE_EKSIK', 'DAIRE_COZULEMEDI', 'BULUNAMADI', 'BASKA_DAIRE', 'COKLU_BELIRSIZ', 'HATA']
+  const eslesmeHam = String(body?.eslesme?.durum ?? '').trim().toUpperCase()
+  const eslesme = ESLESME_DURUMLARI.includes(eslesmeHam) ? eslesmeHam : undefined
+  const eslesmeNot = body?.eslesme?.not ? String(body.eslesme.not).slice(0, 1000) : eslesme ? null : undefined
+
+  // durum + finansal snapshot + eşleşme. uyapSenkronAt bulunamayan dosyada da damgalanır:
+  // "kontrol edildi" demektir — hedef penceresi ve sağlık bekçisi buna göre çalışır.
   await prisma.rucuDosyasi.update({
     where: { id: dosya.id },
     data: {
       uyapDurum: body?.durum ? String(body.durum).slice(0, 80) : undefined,
       uyapSenkronAt: new Date(),
       uyapHesapJson: body?.hesap && typeof body.hesap === 'object' ? (body.hesap as Prisma.InputJsonValue) : undefined,
+      uyapEslesme: eslesme,
+      uyapEslesmeNot: eslesmeNot,
     },
   })
 
@@ -73,5 +89,30 @@ export async function POST(req: Request) {
     eklenen++
   }
 
-  return corsJson({ ok: true, dosyaId: dosya.id, yeniOlay: eklenen })
+  // v1: yapılandırılmış masraf kalemleri (UYAP hesap/tahsilat ekranından — PDF okumadan kesin veri).
+  // Dedup: @@unique([dosyaId, kaynakRef]); kaynakRef = UYAPH|makbuzNo|tarih|tutar (içerik-temelli).
+  let masrafEklenen = 0
+  const masraflar = Array.isArray(body?.masraflar) ? body!.masraflar! : []
+  for (const m of masraflar.slice(0, 200)) {
+    const tutar = Number(m?.tutar)
+    if (!Number.isFinite(tutar) || tutar <= 0) continue
+    const tarih = tarihParse(m?.tarih)
+    const ad = String(m?.ad ?? '').trim().slice(0, 200) || null
+    const makbuzNo = String(m?.makbuzNo ?? '').trim().slice(0, 60) || null
+    const kaynakRef = `UYAPH|${makbuzNo ?? ''}|${tarih ? tarih.toISOString().slice(0, 10) : ''}|${Math.round(tutar * 100)}`.slice(0, 190)
+    try {
+      await prisma.masraf.create({
+        data: {
+          dosyaId: dosya.id, tutar: new Prisma.Decimal(Math.round(tutar * 100) / 100), tarih,
+          cinsHam: ad, makbuzNo, taraf: 'BIZ', kaynak: 'UYAP_HESAP', kaynakRef,
+        },
+      })
+      masrafEklenen++
+    } catch (e) {
+      // P2002 = aynı kalem zaten var (dedup) — sessiz geç; başka hata masraf dışı akışı bozmasın
+      if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) console.error('uyap masraf yazımı:', (e as Error).message)
+    }
+  }
+
+  return corsJson({ ok: true, dosyaId: dosya.id, yeniOlay: eklenen, yeniMasraf: masrafEklenen })
 }

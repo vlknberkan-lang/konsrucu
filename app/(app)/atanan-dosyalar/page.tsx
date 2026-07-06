@@ -18,7 +18,7 @@ import { HugoImportButton } from '@/components/atanan-dosyalar/hugo-import-modal
 import { IcraEslestirButton } from '@/components/atanan-dosyalar/icra-eslestir'
 import { tarihTR, kalanGun, bugunIstBasi } from '@/lib/konsrucu/format'
 
-type SP = { q?: string; cekildi?: string; sort?: string; asama?: string; za?: string }
+type SP = { q?: string; cekildi?: string; sort?: string; asama?: string; za?: string; uyap?: string }
 
 /** Telefon hücresi — tıkla-ara (tel:) bağlantısı, boşsa tire. */
 function Tel({ value }: { value: string | null | undefined }) {
@@ -57,6 +57,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
   const asama: AsamaKey | 'all' = ASAMA_SIRA.includes(searchParams.asama as AsamaKey) ? (searchParams.asama as AsamaKey) : 'all'
   const sort = ['zamanasimi', 'tutar', 'atanma'].includes(searchParams.sort ?? '') ? (searchParams.sort as string) : 'yeni'
   const za = ['bos', 'yakin', 'gecti'].includes(searchParams.za ?? '') ? (searchParams.za as 'bos' | 'yakin' | 'gecti') : 'all'
+  const uyapSorunlu = searchParams.uyap === 'sorunlu' // eklenti v1 "bulunamadı/belirsiz" raporu bırakanlar
 
   if (!aktifMusteriId) {
     return (
@@ -90,22 +91,20 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
         }
       : {}),
   }
-  // zamanaşımı radarı filtresi: boş (radar dışı!) / 30 gün içinde / tarihi geçmiş.
-  // Bugün panosuyla AYNI küme: radar yalnız takibi açılmamış dosyaları izler (takip açılınca
-  // zamanaşımı kesilir) → za aktifken durum TAKIP_ONCESI ile AND'lenir (aşama sekmesini ezmez).
+  // Ek radar filtreleri AND birikiminde toplanır — aşama sekmesinin durum koşulunu EZMEZ, birbiriyle birleşebilir.
+  // za: Bugün panosuyla AYNI küme — radar yalnız takibi açılmamış dosyaları izler (takip açılınca zamanaşımı kesilir).
   const TAKIP_ONCESI: DosyaDurum[] = [DosyaDurum.HAVUZDA, DosyaDurum.INCELENIYOR, DosyaDurum.TAKIBE_HAZIR]
   const bugun = bugunIstBasi() // İstanbul gün başlangıcı — sunucu UTC'yken pencere kaymasın
+  const ekKosul: Prisma.RucuDosyasiWhereInput[] = []
+  if (za === 'bos') ekKosul.push({ zamanasimi: null, durum: { in: TAKIP_ONCESI } })
+  else if (za === 'yakin') ekKosul.push({ zamanasimi: { gte: bugun, lt: new Date(bugun.getTime() + 30 * 86_400_000) }, durum: { in: TAKIP_ONCESI } })
+  else if (za === 'gecti') ekKosul.push({ zamanasimi: { lt: bugun }, durum: { in: TAKIP_ONCESI } })
+  if (uyapSorunlu) ekKosul.push({ uyapEslesme: { not: null, notIn: ['OK'] }, durum: { notIn: ['TAHSIL', 'KAPANDI', 'IDARI_YOL'] as DosyaDurum[] } })
   const listeWhere: Prisma.RucuDosyasiWhereInput = {
     ...temelWhere,
     ...(asama !== 'all' ? { durum: { in: ASAMA_DURUMLAR[asama] as DosyaDurum[] } } : {}),
     ...(cekildi === 'evet' ? { hugodanCekildi: true } : cekildi === 'hayir' ? { hugodanCekildi: false } : {}),
-    ...(za === 'bos'
-      ? { zamanasimi: null, AND: [{ durum: { in: TAKIP_ONCESI } }] }
-      : za === 'yakin'
-        ? { zamanasimi: { gte: bugun, lt: new Date(bugun.getTime() + 30 * 86_400_000) }, AND: [{ durum: { in: TAKIP_ONCESI } }] }
-        : za === 'gecti'
-          ? { zamanasimi: { lt: bugun }, AND: [{ durum: { in: TAKIP_ONCESI } }] }
-          : {}),
+    ...(ekKosul.length ? { AND: ekKosul } : {}),
   }
   const orderBy: Prisma.RucuDosyasiOrderByWithRelationInput[] =
     sort === 'zamanasimi'

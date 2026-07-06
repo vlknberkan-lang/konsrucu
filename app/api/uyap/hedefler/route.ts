@@ -40,13 +40,20 @@ export async function GET(req: Request) {
   const ham = await prisma.rucuDosyasi.findMany({
     where,
     select: {
-      id: true, icraDosyaNo: true, icraDairesi: true, yetkiliIcra: true,
+      id: true, musteriId: true, icraDosyaNo: true, icraDairesi: true, yetkiliIcra: true,
       hukukDosyaNo: true, hasarDosyaNo: true, durum: true, uyapDurum: true, uyapSenkronAt: true,
     },
     orderBy: [{ uyapSenkronAt: { sort: 'asc', nulls: 'first' } }, { takipTarihi: 'desc' }], // en eski/hiç-çekilmemiş önce
     take: limit,
   })
   const dosyalar = ham.filter((d) => !uyapKapaliMi(d.uyapDurum))
+
+  // Tenant alacaklı unvanları (v1 eklenti çoklu-eşleşmede "alacaklısı bizim şirket olan" dosyayı bununla seçer — hard-code yok)
+  const musteriIds = [...new Set(dosyalar.map((d) => d.musteriId))]
+  const ayarlarList = musteriIds.length
+    ? await prisma.ayarlar.findMany({ where: { musteriId: { in: musteriIds } }, select: { musteriId: true, alacakliUnvan: true } })
+    : []
+  const unvanMap = new Map(ayarlarList.map((a) => [a.musteriId, a.alacakliUnvan]))
 
   // Toplam aktif (pencere uygulanmadan) — "kaç dosya senkron bekliyor / kaçı taze" şeffaflığı.
   const aktifToplam = await prisma.rucuDosyasi.count({
@@ -64,6 +71,7 @@ export async function GET(req: Request) {
       id: d.id,
       icraDosyaNo: d.icraDosyaNo, // esas no (ör. 2026/798)
       daire: d.icraDairesi || d.yetkiliIcra || null,
+      alacakliUnvan: unvanMap.get(d.musteriId) ?? null, // taraf eşleştirmesi için (Ray/Zurich…)
       hukukDosyaNo: d.hukukDosyaNo,
       hasarDosyaNo: d.hasarDosyaNo,
       durum: d.durum,

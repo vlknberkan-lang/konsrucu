@@ -46,7 +46,7 @@ export default async function BugunPage() {
   }
   const ZA_LISTE = 30 // kartta gösterilecek azami satır; kalanı SAYIYLA belirtilir
 
-  const [etkinlikler, gorevler, acikGorevToplam, onemliler, taksitler, zaYakinHam, zaGectiHam, zaYakinSayi, zaGectiSayi, zaBos, sonuclanmamis] = await Promise.all([
+  const [etkinlikler, gorevler, acikGorevToplam, onemliler, taksitler, zaYakinHam, zaGectiHam, zaYakinSayi, zaGectiSayi, zaBos, sonuclanmamis, uyapSorunlu] = await Promise.all([
     // bugün + yarın etkinlikler (iptaller hariç)
     prisma.etkinlik.findMany({
       where: { dosya: { musteriId: aktifMusteriId }, baslar: { gte: bas, lt: yarinSon }, durum: { not: 'IPTAL' } },
@@ -84,6 +84,8 @@ export default async function BugunPage() {
     prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: null } }),
     // geçmişte kalmış ama sonuçlandırılmamış toplantılar (takvim kapanış disiplini)
     prisma.etkinlik.count({ where: { dosya: { musteriId: aktifMusteriId }, baslar: { lt: bas }, durum: 'PLANLANDI' } }),
+    // UYAP eşleşme sorunu: eklenti v1 "bulamadım/belirsiz" raporu bırakan açık dosyalar (kör nokta radarı)
+    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { notIn: ['TAHSIL', 'KAPANDI', 'IDARI_YOL'] }, uyapEslesme: { not: null, notIn: ['OK'] } } }),
   ])
 
   const zaYakin = zaYakinHam.filter(dosyaAktif)
@@ -105,11 +107,11 @@ export default async function BugunPage() {
         </p>
       </div>
 
-      {/* ⛔ kırmızı şerit: kaçmış/kaçmak üzere olan süreler (sayılar count'tan — liste tavanından bağımsız) */}
-      {(zaGectiSayi > 0 || zaBos > 0) && (
+      {/* ⛔ kırmızı şerit: kaçmış/kaçmak üzere olan süreler + UYAP kör noktası (sayılar count'tan) */}
+      {(zaGectiSayi > 0 || zaBos > 0 || uyapSorunlu > 0) && (
         <div className="mb-4 rounded-2xl border border-danger/40 bg-danger-soft/40 px-5 py-4">
           <div className="flex items-center gap-2 text-[14px] font-bold text-danger">
-            <AlertTriangle className="h-[18px] w-[18px]" /> Zamanaşımı alarmı
+            <AlertTriangle className="h-[18px] w-[18px]" /> Radar alarmı
           </div>
           <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-foreground">
             {zaGectiSayi > 0 && (
@@ -120,6 +122,11 @@ export default async function BugunPage() {
             {zaBos > 0 && (
               <Link href="/atanan-dosyalar?za=bos" className="text-muted-foreground hover:text-foreground hover:underline">
                 {zaBos} açık dosyada zamanaşımı tarihi boş (radar dışı) →
+              </Link>
+            )}
+            {uyapSorunlu > 0 && (
+              <Link href="/atanan-dosyalar?uyap=sorunlu" className="font-semibold text-danger hover:underline">
+                {uyapSorunlu} dosya UYAP'ta bulunamadı/belirsiz (eklenti raporu) →
               </Link>
             )}
           </div>
