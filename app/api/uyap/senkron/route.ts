@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { takipOlayKaydet, OLAY_TIPLERI, type OlayTip } from '@/lib/konsrucu/takip-olay'
 import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
+import { cinsEslesti, ogrenilenMap } from '@/lib/konsrucu/masraf-cins'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,8 +50,8 @@ export async function POST(req: Request) {
 
   // dosyaId (hedefler'den gelen kesin kimlik) öncelikli; yoksa icraDosyaNo (esas no adliyeye özgü DEĞİL).
   const dosya = dosyaIdGirdi
-    ? await prisma.rucuDosyasi.findFirst({ where: { id: dosyaIdGirdi, musteriId: { in: k.izinli } }, select: { id: true } })
-    : await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true } })
+    ? await prisma.rucuDosyasi.findFirst({ where: { id: dosyaIdGirdi, musteriId: { in: k.izinli } }, select: { id: true, musteriId: true } })
+    : await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true, musteriId: true } })
   if (!dosya) return corsJson({ ok: false, error: `dosya bulunamadı (${dosyaIdGirdi ? 'dosyaId' : 'icraDosyaNo'})` }, 404)
 
   // eşleşme raporu (v1): beyaz-listeli durum + teşhis notu. OK dışı = "senkron dışı" radarına düşer.
@@ -94,20 +95,28 @@ export async function POST(req: Request) {
 
   // v1: yapılandırılmış masraf kalemleri (UYAP hesap/tahsilat ekranından — PDF okumadan kesin veri).
   // Dedup: @@unique([dosyaId, kaynakRef]); kaynakRef = UYAPH|makbuzNo|tarih|tutar (içerik-temelli).
+  // CİNS: ham ad, 63-kalem sözlüğüne + tenant'ın öğrettiği eşlemelere (masrafEslestirJson) bağlanır —
+  // PDF hattıyla aynı yol; öğretilen eşleme ("16" → Vekalet Harcı gibi) burada da geçerli.
   let masrafEklenen = 0
   const masraflar = Array.isArray(body?.masraflar) ? body!.masraflar! : []
+  let ogrenilen: ReturnType<typeof ogrenilenMap> | undefined
+  if (masraflar.length) {
+    const ayar = await prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { masrafEslestirJson: true } })
+    ogrenilen = ogrenilenMap(ayar?.masrafEslestirJson ?? null)
+  }
   for (const m of masraflar.slice(0, 200)) {
     const tutar = Number(m?.tutar)
     if (!Number.isFinite(tutar) || tutar <= 0) continue
     const tarih = tarihParse(m?.tarih)
     const ad = String(m?.ad ?? '').trim().slice(0, 200) || null
     const makbuzNo = String(m?.makbuzNo ?? '').trim().slice(0, 60) || null
+    const { cins, guven } = cinsEslesti(ad, ogrenilen)
     const kaynakRef = `UYAPH|${makbuzNo ?? ''}|${tarih ? tarih.toISOString().slice(0, 10) : ''}|${Math.round(tutar * 100)}`.slice(0, 190)
     try {
       await prisma.masraf.create({
         data: {
           dosyaId: dosya.id, tutar: new Prisma.Decimal(Math.round(tutar * 100) / 100), tarih,
-          cinsHam: ad, makbuzNo, taraf: 'BIZ', kaynak: 'UYAP_HESAP', kaynakRef,
+          cinsHam: ad, cins, cinsGuven: cins ? guven : null, makbuzNo, taraf: 'BIZ', kaynak: 'UYAP_HESAP', kaynakRef,
         },
       })
       masrafEklenen++
