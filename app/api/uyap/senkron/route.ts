@@ -54,18 +54,21 @@ export async function POST(req: Request) {
   if (!dosya) return corsJson({ ok: false, error: `dosya bulunamadı (${dosyaIdGirdi ? 'dosyaId' : 'icraDosyaNo'})` }, 404)
 
   // eşleşme raporu (v1): beyaz-listeli durum + teşhis notu. OK dışı = "senkron dışı" radarına düşer.
-  const ESLESME_DURUMLARI = ['OK', 'DAIRE_EKSIK', 'DAIRE_COZULEMEDI', 'BULUNAMADI', 'BASKA_DAIRE', 'COKLU_BELIRSIZ', 'HATA']
+  const ESLESME_DURUMLARI = ['OK', 'DAIRE_EKSIK', 'DAIRE_COZULEMEDI', 'BULUNAMADI', 'BASKA_DAIRE', 'COKLU_BELIRSIZ', 'TARAF_UYUSMAZ', 'HATA']
   const eslesmeHam = String(body?.eslesme?.durum ?? '').trim().toUpperCase()
   const eslesme = ESLESME_DURUMLARI.includes(eslesmeHam) ? eslesmeHam : undefined
   const eslesmeNot = body?.eslesme?.not ? String(body.eslesme.not).slice(0, 1000) : eslesme ? null : undefined
 
   // durum + finansal snapshot + eşleşme. uyapSenkronAt bulunamayan dosyada da damgalanır:
   // "kontrol edildi" demektir — hedef penceresi ve sağlık bekçisi buna göre çalışır.
+  // İSTİSNA: yalnız masraf taşıyan gönderi (Ödeme İşlemlerim taraması) damga ATMAZ — dosya
+  // artımlı senkron penceresinden düşmesin (olay/evrak senkronu gecikmesin).
+  const yalnizMasraf = !body?.durum && !body?.hesap && !Array.isArray(body?.olaylar) && !eslesme && Array.isArray(body?.masraflar)
   await prisma.rucuDosyasi.update({
     where: { id: dosya.id },
     data: {
       uyapDurum: body?.durum ? String(body.durum).slice(0, 80) : undefined,
-      uyapSenkronAt: new Date(),
+      uyapSenkronAt: yalnizMasraf ? undefined : new Date(),
       uyapHesapJson: body?.hesap && typeof body.hesap === 'object' ? (body.hesap as Prisma.InputJsonValue) : undefined,
       uyapEslesme: eslesme,
       uyapEslesmeNot: eslesmeNot,

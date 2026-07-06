@@ -28,6 +28,7 @@ const ESLESME_ETIKET: Record<string, string> = {
   BULUNAMADI: "UYAP'ta bulunamadı",
   BASKA_DAIRE: 'Başka dairede bulundu — daireyi düzeltin',
   COKLU_BELIRSIZ: 'Birden çok dosya — elle seçim gerekli',
+  TARAF_UYUSMAZ: 'Taraf uyuşmuyor — alacaklı biz değiliz (ALEYHE dosya olabilir!)',
   HATA: 'Senkron hatası',
 }
 

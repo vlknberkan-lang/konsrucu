@@ -330,7 +330,8 @@ model RucuDosyasi {
   uyapSenkronAt DateTime?
   uyapHesapJson Json? // UYAP'tan: asıl alacak / işlemiş faiz / tahsilat / bakiye (bilgi amaçlı)
   // Eklenti v1 eşleşme raporu — kimlik (İCRA DAİRESİ + ESAS NO) çiftiyle sorgu sonucu.
-  // OK | DAIRE_EKSIK | DAIRE_COZULEMEDI | BULUNAMADI | BASKA_DAIRE | COKLU_BELIRSIZ | HATA
+  // OK | DAIRE_EKSIK | DAIRE_COZULEMEDI | BULUNAMADI | BASKA_DAIRE | COKLU_BELIRSIZ | TARAF_UYUSMAZ | HATA
+  // TARAF_UYUSMAZ = alacaklı bizim şirket değil (büronun ALEYHE dosyası olabilir) → yazım yapılmaz.
   // OK dışındakiler "senkron dışı" radarına düşer; not alanı teşhisi taşır (örn. hangi dairede bulunduğu).
   uyapEslesme    String?
   uyapEslesmeNot String?
