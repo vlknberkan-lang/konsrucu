@@ -7,7 +7,7 @@ import { Prisma, BelgeKategori, DosyaDurum, Yol, Brans, BorcluRol, TeyitDurum, C
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
-import { analizEt, enIyiHasarFotolari } from '@/lib/konsrucu/analiz'
+import { analizEt, analizSonHata, enIyiHasarFotolari } from '@/lib/konsrucu/analiz'
 import { mentorKurallariOku, mentorKurallariMetne } from '@/lib/konsrucu/mentor-kural'
 import { takipOlayKaydet } from '@/lib/konsrucu/takip-olay'
 import { onemliOlayDosyadanTamamla } from '@/lib/konsrucu/onemli-olay'
@@ -240,6 +240,7 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
   const gorseller: { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; b64: string }[] = []
   if (imgAday.length) {
     const admin = createAdminClient()
+    let toplamBayt = 0 // API istek boyutu sınırı var: fotoğraf toplamı ~15MB'ı (base64 ~20MB) aşarsa 413 → kalanı atla
     for (const b of imgAday) {
       if (gorseller.length >= 12) break
       try {
@@ -248,6 +249,8 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
         const buf = Buffer.from(await data.arrayBuffer())
         const mime = imgMime(buf)
         if (!mime || buf.length > 4_500_000) continue
+        if (toplamBayt + buf.length > 15_000_000) continue // öncelik sırası korunur, bütçeyi aşan atlanır
+        toplamBayt += buf.length
         gorseller.push({ mime, b64: buf.toString('base64') })
       } catch { /* görsel atlanır */ }
     }
@@ -258,7 +261,10 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
     mentorKurallariOku(dosya.musteriId),
   ])
   const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined, gorseller, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null)
-  if (!analiz) return { ok: false, error: 'AI çıkarımı sonuç vermedi (API anahtarı yok ya da model yanıtı boş).' }
+  if (!analiz) {
+    const neden = analizSonHata()
+    return { ok: false, error: neden ? `AI çıkarımı başarısız: ${neden}` : 'AI çıkarımı sonuç vermedi (model yanıtı boş).' }
+  }
 
   // Rücu oranını TUTARLARDAN deterministik türet (LLM yaya→%100 derken tutarı yarı verebiliyor).
   const aaNum = guvenliDecimal(analiz.asilAlacak), rtNum = guvenliDecimal(analiz.rucuTutari)

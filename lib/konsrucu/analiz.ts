@@ -192,9 +192,27 @@ export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2): Promise<nu
   }
 }
 
+// Son analizEt hatasının OKUNUR nedeni — UI genel "sonuç vermedi" yerine gerçek sebebi göstersin.
+// (Saha bulgusu 2026-07-06: kredi bitince/istek büyüyünce catch hatayı yutuyor, kullanıcı "API
+// anahtarı yok" sanıyordu. Modül-seviyesi tanı değeri; eşzamanlı iki çıkarımda son yazan kazanır — tanı için yeterli.)
+let _sonHata: string | null = null
+export function analizSonHata(): string | null { return _sonHata }
+function hataOku(e: unknown): string {
+  const st = (e as { status?: number })?.status
+  const msg = e instanceof Error ? e.message : String(e)
+  if (st === 401) return 'API anahtarı geçersiz ya da iptal edilmiş (401) — Vercel ortam değişkenini kontrol et'
+  if (st === 400 && /credit|billing/i.test(msg)) return 'Anthropic kredisi yetersiz (400) — Console → Billing'
+  if (st === 413 || /too large|request_too_large/i.test(msg)) return 'İstek çok büyük (413) — dosyadaki fotoğraflar toplamda limiti aşıyor'
+  if (st === 429) return 'Hız limiti (429) — 1-2 dakika sonra tekrar dene'
+  if (st === 529 || (st ?? 0) >= 500) return `Anthropic tarafında geçici sorun (${st}) — tekrar dene`
+  return `${st ?? ''} ${msg}`.trim().slice(0, 300)
+}
+
 export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[], ogrenilenKurallar?: string, alacakliUnvan?: string | null): Promise<AnalizSonuc | null> {
+  _sonHata = null
   const key = process.env.ANTHROPIC_API_KEY
-  if (!key || !metin.trim()) return null
+  if (!key) { _sonHata = 'ANTHROPIC_API_KEY tanımlı değil (sunucu ortam değişkeni)'; return null }
+  if (!metin.trim()) { _sonHata = 'belge metni boş'; return null }
   const client = new Anthropic({ apiKey: key })
   const imgs = (gorseller ?? []).slice(0, 12)
   const content: Anthropic.ContentBlockParam[] = [{ type: 'text', text: `Belge metni:\n\n${metin.slice(0, 150000)}` }]
@@ -210,10 +228,11 @@ export async function analizEt(metin: string, footer?: string, gorseller?: Gorse
       tool_choice: { type: 'tool', name: 'kaydet' },
     })
     const block = res.content.find((b) => b.type === 'tool_use')
-    if (!block || block.type !== 'tool_use') return null
+    if (!block || block.type !== 'tool_use') { _sonHata = 'model yanıtında beklenen çıktı (tool_use) yok'; return null }
     return block.input as AnalizSonuc
   } catch (e) {
     console.error('analizEt hata:', e)
+    _sonHata = hataOku(e)
     return null
   }
 }
