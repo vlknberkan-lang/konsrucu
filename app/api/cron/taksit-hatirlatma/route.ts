@@ -13,14 +13,13 @@ import { prisma } from '@/lib/prisma'
 import { taksitHatirlatmaHtml } from '@/lib/konsrucu/taksit-mail'
 import { mailGonder } from '@/lib/konsrucu/mail'
 import { cronYetkisiz, cronTenantlar, konuTenantli, cronYanit } from '@/lib/konsrucu/cron-ortak'
+import { kalanGun as kalanGunIst } from '@/lib/konsrucu/format'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 export const maxDuration = 120
 
 const BASE = process.env.RAPOR_BASE_URL || 'https://konsrucu.vercel.app'
-const GUN_MS = 86_400_000
-const gunBasi = (d: Date) => { const t = new Date(d.getTime()); t.setHours(0, 0, 0, 0); return t.getTime() }
 
 async function handle(req: Request) {
   const yetkisiz = cronYetkisiz(req)
@@ -62,9 +61,10 @@ async function handle(req: Request) {
 
     for (const t of taksitler) {
       const plan = t.plan
-      const vadeGun = gunBasi(t.vadeTarihi)
-      const kalanGun = Math.round((vadeGun - gunBasi(now)) / GUN_MS)
-      const geciken = vadeGun < gunBasi(now)
+      // gün hesabı İSTANBUL takvimiyle (format.kalanGun) — UTC gün başı kullanmak kod tabanı
+      // konvansiyonundan sapıyordu; Bugün panosu da aynı kaynakla "geciken" tespiti yapar.
+      const kalanGun = kalanGunIst(t.vadeTarihi, now)
+      const geciken = kalanGun < 0
       const yaklasan = !geciken && plan.hatirlatmaGun > 0 && kalanGun <= plan.hatirlatmaGun
 
       // hangi uyarı? geciken → gecikmeBildirildiAt boşsa; yaklaşan → hatirlatmaGonderildiAt boşsa

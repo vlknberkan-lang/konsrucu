@@ -38,10 +38,13 @@ export async function ayarlarKaydet(fd: FormData): Promise<void> {
   redirect('/ayarlar?ok=1')
 }
 
-/** Vekaletname'yi kaydet — tüm dosyalarda ortak tek belge (Storage yolu + ad). */
+/** Vekaletname'yi kaydet — tüm dosyalarda ortak tek belge (Storage yolu + ad).
+ *  Mevcut belgeyi DEĞİŞTİRMEK fiilen silmektir → silme-yetkisi kapısına tabidir (ilk yükleme serbest). */
 export async function vekaletnameKaydet(musteriId: string, path: string, ad: string): Promise<{ ok: boolean; error?: string }> {
-  const { izinli } = await ctx()
+  const { dbUser, izinli } = await ctx()
   if (!izinli.includes(musteriId)) return { ok: false, error: 'Yetki yok' }
+  const mevcutV = await prisma.ayarlar.findUnique({ where: { musteriId }, select: { vekaletnamePath: true } })
+  if (mevcutV?.vekaletnamePath && !silebilir(dbUser)) return { ok: false, error: SILME_YETKISI_YOK }
   const p = String(path ?? '').trim()
   if (!p) return { ok: false, error: 'Dosya yolu boş' }
   const veri = { vekaletnamePath: p, vekaletnameAd: String(ad ?? '').slice(0, 255) || null }

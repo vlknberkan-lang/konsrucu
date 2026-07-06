@@ -11,6 +11,7 @@ import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { GorevAksiyon } from '@/components/takip-gorevi/gorev-aksiyon'
+import { tarihTR, kalanGun } from '@/lib/konsrucu/format'
 
 type SP = { q?: string; durum?: string; sorumlu?: string }
 
@@ -20,11 +21,11 @@ const ETUR_LBL: Record<string, string> = {
 const fmtDateSaat = (d: Date | null) =>
   d ? d.toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' }) : '—'
 
-/** Son tarihi kalan güne göre renk koduna çevir (boşsa nötr). */
+/** Son tarihi kalan güne göre renk koduna çevir (boşsa nötr). İstanbul takvim günüyle (format.ts). */
 function sonTarihMeta(d: Date | null): { label: string; tone: Tone; vurgu: boolean } {
   if (!d) return { label: 'belirtilmedi', tone: 'steel', vurgu: false }
-  const label = d.toLocaleDateString('tr-TR')
-  const gun = Math.ceil((d.getTime() - Date.now()) / 86_400_000)
+  const label = tarihTR(d)
+  const gun = kalanGun(d)
   if (gun < 0) return { label: `${label} · ${-gun}g geçti`, tone: 'danger', vurgu: true }
   if (gun <= 2) return { label: `${label} · ${gun}g`, tone: 'danger', vurgu: true }
   if (gun <= 7) return { label: `${label} · ${gun}g`, tone: 'warning', vurgu: true }
@@ -188,7 +189,7 @@ export default async function GorevlerPage({ searchParams }: { searchParams: SP 
                       {/* ilgili etkinlik */}
                       <div className="min-w-0 text-[11.5px] text-muted-foreground">
                         {r.etkinlik ? (
-                          <span className="inline-flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{ETUR_LBL[r.etkinlik.tur] ?? r.etkinlik.tur} · {r.etkinlik.baslar.toLocaleDateString('tr-TR')}</span></span>
+                          <span className="inline-flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{ETUR_LBL[r.etkinlik.tur] ?? r.etkinlik.tur} · {tarihTR(r.etkinlik.baslar)}</span></span>
                         ) : <span className="text-muted-foreground/60">—</span>}
                       </div>
                       {/* son tarih */}

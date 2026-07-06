@@ -14,7 +14,7 @@ import { Prisma, DosyaDurum } from '@prisma/client'
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { ASAMA, asamaBilgi, asamaRenk, TON_RENK, ASAMA_DURUMLAR, ASAMA_META, ASAMA_SIRA, type AsamaKey } from '@/lib/konsrucu/asama'
-import { tarihTR, kalanGun as kalanGunIst } from '@/lib/konsrucu/format'
+import { tarihTR, kalanGun as kalanGunIst, bugunIstBasi } from '@/lib/konsrucu/format'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -41,6 +41,8 @@ export async function GET(req: Request) {
   const asama: AsamaKey | 'all' = ASAMA_SIRA.includes(asamaParam as AsamaKey) ? (asamaParam as AsamaKey) : 'all'
   const sortParam = url.searchParams.get('sort') ?? ''
   const sort = ['zamanasimi', 'tutar', 'atanma'].includes(sortParam) ? sortParam : 'yeni'
+  const zaParam = url.searchParams.get('za') ?? ''
+  const za = ['bos', 'yakin', 'gecti'].includes(zaParam) ? (zaParam as 'bos' | 'yakin' | 'gecti') : 'all'
 
   // ── sayfayla aynı where / orderBy ────────────────────────────────────────
   const temelWhere: Prisma.RucuDosyasiWhereInput = {
@@ -61,10 +63,20 @@ export async function GET(req: Request) {
         }
       : {}),
   }
+  // zamanaşımı radarı filtresi — sayfadaki listeyle birebir aynı küme ("görünen listeyi indir" sözü)
+  const TAKIP_ONCESI: DosyaDurum[] = [DosyaDurum.HAVUZDA, DosyaDurum.INCELENIYOR, DosyaDurum.TAKIBE_HAZIR]
+  const zaBugun = bugunIstBasi()
   const where: Prisma.RucuDosyasiWhereInput = {
     ...temelWhere,
     ...(asama !== 'all' ? { durum: { in: ASAMA_DURUMLAR[asama] as DosyaDurum[] } } : {}),
     ...(cekildi === 'evet' ? { hugodanCekildi: true } : cekildi === 'hayir' ? { hugodanCekildi: false } : {}),
+    ...(za === 'bos'
+      ? { zamanasimi: null, AND: [{ durum: { in: TAKIP_ONCESI } }] }
+      : za === 'yakin'
+        ? { zamanasimi: { gte: zaBugun, lt: new Date(zaBugun.getTime() + 30 * 86_400_000) }, AND: [{ durum: { in: TAKIP_ONCESI } }] }
+        : za === 'gecti'
+          ? { zamanasimi: { lt: zaBugun }, AND: [{ durum: { in: TAKIP_ONCESI } }] }
+          : {}),
   }
   const orderBy: Prisma.RucuDosyasiOrderByWithRelationInput[] =
     sort === 'zamanasimi'
@@ -130,6 +142,7 @@ export async function GET(req: Request) {
   const filtreOzet = [
     asama === 'all' ? 'Tüm aşamalar' : ASAMA_META[asama].label,
     cekildi === 'evet' ? 'Çekilen' : cekildi === 'hayir' ? 'Bekleyen' : 'Tümü',
+    za === 'bos' ? 'zamanaşımı boş' : za === 'yakin' ? 'zamanaşımı ≤30g' : za === 'gecti' ? 'zamanaşımı geçti' : null,
     q ? `arama: “${q}”` : null,
   ].filter(Boolean).join(' · ')
   ws.mergeCells(2, 1, 2, N)

@@ -38,14 +38,15 @@ import { DosyaOzet, ozetKur } from '@/components/konsrucu/dosya-ozet'
 import { GorevEkle } from '@/components/takip-gorevi/gorev-ekle'
 import { tenantKullanicilari } from '@/lib/konsrucu/db'
 import { tarihTR, saatTR, kalanGun } from '@/lib/konsrucu/format'
+import { toTRInput as sayiToTRInput } from '@/lib/konsrucu/sayi'
 
 const fmtTRY = (n: number | null | undefined) =>
   n != null && Number.isFinite(Number(n)) ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)) + ' ₺' : null
 const fmtDate = (d: Date | null | undefined) => tarihTR(d, { day: '2-digit', month: '2-digit', year: 'numeric' })
 const fmtDateTime = (d: Date) => `${tarihTR(d, { day: '2-digit', month: '2-digit', year: 'numeric' })} · ${saatTR(d)}`
 const initials = (ad: string) => ad.split(/\s+/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase()
-// input'a yazılacak Türkçe ondalık (virgül, binlik grubu yok) — istemci numTR ile birebir round-trip eder
-const toTRInput = (n: number) => (Number.isFinite(n) ? n.toLocaleString('tr-TR', { useGrouping: false, maximumFractionDigits: 2 }) : '')
+// input'a yazılacak Türkçe ondalık (virgül, binlik grubu yok) — tek kaynak lib/konsrucu/sayi (binlik:false)
+const toTRInput = (n: number) => sayiToTRInput(n, { binlik: false })
 
 const YOL_LABEL: Record<string, string> = { KLASIK: 'Klasik İcra', IDARI: 'İdari Yol', BELIRSIZ: 'Belirsiz' }
 

@@ -48,8 +48,15 @@ export async function mailGonder(g: MailGirdi): Promise<{ ok: boolean; id?: stri
     }
 
     // Ayarlı port + alternatif (465↔587) sırayla denenir — bazı sağlayıcılar bir portu bloklar.
+    // MÜKERRER KORUMASI: alternatif port YALNIZ bağlantı-aşaması hatasında denenir. Mesaj DATA
+    // aşamasına geçtikten sonra hata alınırsa mail teslim edilmiş olabilir — yeniden gönderilmez.
     const denemeler: { port: number; secure: boolean }[] = [{ port, secure: port === 465 }]
     denemeler.push(port === 465 ? { port: 587, secure: false } : { port: 465, secure: true })
+
+    const baglantiHatasiMi = (e: unknown) => {
+      const kod = (e as { code?: string })?.code ?? ''
+      return ['ETIMEDOUT', 'ECONNECTION', 'ECONNREFUSED', 'ECONNRESET', 'ESOCKET', 'EDNS'].includes(kod)
+    }
 
     const hatalar: string[] = []
     for (const d of denemeler) {
@@ -61,12 +68,14 @@ export async function mailGonder(g: MailGirdi): Promise<{ ok: boolean; id?: stri
           auth: { user, pass },
           connectionTimeout: 15_000,
           greetingTimeout: 10_000,
+          socketTimeout: 20_000, // DATA aşamasında askıda kalma cron'un maxDuration'ını yutmasın
           requireTLS: !d.secure,
         })
         const info = await transport.sendMail({ from: fromAdresi(), to, subject: g.konu, html: g.html, text: g.text, ...(g.attachments?.length ? { attachments: g.attachments } : {}) })
         return { ok: true, id: info.messageId }
       } catch (e) {
         hatalar.push(`:${d.port} → ${(e as Error).message}`)
+        if (!baglantiHatasiMi(e)) break // bağlantı sonrası hata: mesaj gitmiş olabilir → ikinci portu DENEME
       }
     }
     await hataLogla(`SMTP gönderilemedi (${hatalar.join(' | ')})`, g.konu)

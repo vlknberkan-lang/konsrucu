@@ -31,7 +31,10 @@ export type CronTenant = {
 
 /**
  * Tüm aktif tenant'lar + tenant başına alıcılar (o tenant'ın aktif kullanıcıları; yoksa RAPOR_ALICI).
- * override (?to=) verilirse her tenant'ın alıcısı override edilir — yalnız test içindir (secret zaten doğrulandı).
+ * override (?to=) verilirse her tenant'ın alıcısı override edilir — yalnız test içindir.
+ * BİLİNÇLİ KABUL: override beyaz-listeye bağlanmadı; CRON_SECRET zaten tam yetki demektir ve ?to=
+ * ekip-dışı test adresine (Berkan) gönderim için gerekir. PII taşıyan masraf-ozet KENDİ beyaz-liste
+ * kontrolünü yapar (o route cronTenantlar'a override geçmez).
  */
 export async function cronTenantlar(override?: string | null): Promise<CronTenant[]> {
   const musteriler = await prisma.musteri.findMany({

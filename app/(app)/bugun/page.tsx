@@ -36,8 +36,17 @@ export default async function BugunPage() {
   const yarinSon = new Date(bas.getTime() + 2 * GUN_MS)
   const zaSon = new Date(bas.getTime() + 30 * GUN_MS)
   const zaSelect = { id: true, hukukDosyaNo: true, hasarDosyaNo: true, zamanasimi: true, durum: true, uyapDurum: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' as const } } }
+  // uyapKapaliMi'nin (regex /kapa(l|n)/i) SQL karşılığı — SAYILAR count'tan gelsin diye (take tavanlı
+  // liste + JS süzgeci sayıyı yanlış gösterirdi); listeler yine dosyaAktif ile süzülür.
+  const uyapAcikWhere = {
+    NOT: [
+      { uyapDurum: { contains: 'kapal', mode: 'insensitive' as const } },
+      { uyapDurum: { contains: 'kapan', mode: 'insensitive' as const } },
+    ],
+  }
+  const ZA_LISTE = 30 // kartta gösterilecek azami satır; kalanı SAYIYLA belirtilir
 
-  const [etkinlikler, gorevler, acikGorevToplam, onemliler, taksitler, zaYakinHam, zaGectiHam, zaBos, sonuclanmamis] = await Promise.all([
+  const [etkinlikler, gorevler, acikGorevToplam, onemliler, taksitler, zaYakinHam, zaGectiHam, zaYakinSayi, zaGectiSayi, zaBos, sonuclanmamis] = await Promise.all([
     // bugün + yarın etkinlikler (iptaller hariç)
     prisma.etkinlik.findMany({
       where: { dosya: { musteriId: aktifMusteriId }, baslar: { gte: bas, lt: yarinSon }, durum: { not: 'IPTAL' } },
@@ -68,8 +77,10 @@ export default async function BugunPage() {
       include: { plan: { select: { dosya: { select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } } } } } },
     }),
     // zamanaşımı radarı — yalnız takibi açılmamış açık dosyalar (takip açılınca kesilir)
-    prisma.rucuDosyasi.findMany({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { gte: bas, lt: zaSon } }, orderBy: { zamanasimi: 'asc' }, take: 40, select: zaSelect }),
-    prisma.rucuDosyasi.findMany({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { lt: bas } }, orderBy: { zamanasimi: 'asc' }, take: 40, select: zaSelect }),
+    prisma.rucuDosyasi.findMany({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { gte: bas, lt: zaSon }, ...uyapAcikWhere }, orderBy: { zamanasimi: 'asc' }, take: ZA_LISTE, select: zaSelect }),
+    prisma.rucuDosyasi.findMany({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { lt: bas }, ...uyapAcikWhere }, orderBy: { zamanasimi: 'asc' }, take: ZA_LISTE, select: zaSelect }),
+    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { gte: bas, lt: zaSon }, ...uyapAcikWhere } }),
+    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { lt: bas }, ...uyapAcikWhere } }),
     prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: null } }),
     // geçmişte kalmış ama sonuçlandırılmamış toplantılar (takvim kapanış disiplini)
     prisma.etkinlik.count({ where: { dosya: { musteriId: aktifMusteriId }, baslar: { lt: bas }, durum: 'PLANLANDI' } }),
@@ -94,16 +105,16 @@ export default async function BugunPage() {
         </p>
       </div>
 
-      {/* ⛔ kırmızı şerit: kaçmış/kaçmak üzere olan süreler */}
-      {(zaGecti.length > 0 || zaBos > 0) && (
+      {/* ⛔ kırmızı şerit: kaçmış/kaçmak üzere olan süreler (sayılar count'tan — liste tavanından bağımsız) */}
+      {(zaGectiSayi > 0 || zaBos > 0) && (
         <div className="mb-4 rounded-2xl border border-danger/40 bg-danger-soft/40 px-5 py-4">
           <div className="flex items-center gap-2 text-[14px] font-bold text-danger">
             <AlertTriangle className="h-[18px] w-[18px]" /> Zamanaşımı alarmı
           </div>
           <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-foreground">
-            {zaGecti.length > 0 && (
+            {zaGectiSayi > 0 && (
               <Link href="/atanan-dosyalar?za=gecti" className="font-semibold text-danger hover:underline">
-                {zaGecti.length} dosyada zamanaşımı GEÇMİŞ (takip açılmamış) →
+                {zaGectiSayi} dosyada zamanaşımı GEÇMİŞ (takip açılmamış) →
               </Link>
             )}
             {zaBos > 0 && (
@@ -197,17 +208,24 @@ export default async function BugunPage() {
         </Kart>
 
         {/* Zamanaşımı ≤30 gün */}
-        <Kart baslik={`Zamanaşımı ≤ 30 gün · ${zaYakin.length}`} Icon={Hourglass} href="/atanan-dosyalar?za=yakin&sort=zamanasimi" linkEtiket="Radar listesi" genis>
+        <Kart baslik={`Zamanaşımı ≤ 30 gün · ${zaYakinSayi}`} Icon={Hourglass} href="/atanan-dosyalar?za=yakin&sort=zamanasimi" linkEtiket="Radar listesi" genis>
           {zaYakin.length === 0 ? (
             <Bos metin="Önümüzdeki 30 günde dolan zamanaşımı yok (takibi açılmamış dosyalarda)." />
           ) : (
-            zaYakin.map((d) => (
-              <Satir key={d.id} href={`/akilli-giris/${d.id}`}>
-                <Badge tone="danger" dot><span className="font-mono text-[10.5px]">{kalanGun(d.zamanasimi!, simdi)}g</span></Badge>
-                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{d.borclular[0]?.adUnvan ?? d.hukukDosyaNo ?? '—'}</span>
-                <span className="font-mono shrink-0 text-[11px] text-muted-foreground">{d.hukukDosyaNo ?? d.hasarDosyaNo ?? ''} · {tarihTR(d.zamanasimi)}</span>
-              </Satir>
-            ))
+            <>
+              {zaYakin.map((d) => (
+                <Satir key={d.id} href={`/akilli-giris/${d.id}`}>
+                  <Badge tone="danger" dot><span className="font-mono text-[10.5px]">{kalanGun(d.zamanasimi!, simdi)}g</span></Badge>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{d.borclular[0]?.adUnvan ?? d.hukukDosyaNo ?? '—'}</span>
+                  <span className="font-mono shrink-0 text-[11px] text-muted-foreground">{d.hukukDosyaNo ?? d.hasarDosyaNo ?? ''} · {tarihTR(d.zamanasimi)}</span>
+                </Satir>
+              ))}
+              {zaYakinSayi > zaYakin.length && (
+                <Link href="/atanan-dosyalar?za=yakin&sort=zamanasimi" className="px-2 py-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:underline">
+                  … ve {zaYakinSayi - zaYakin.length} dosya daha — tam liste →
+                </Link>
+              )}
+            </>
           )}
         </Kart>
       </div>

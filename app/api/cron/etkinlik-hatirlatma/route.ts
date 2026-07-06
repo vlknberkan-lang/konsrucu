@@ -46,7 +46,7 @@ async function handle(req: Request) {
     const adaylar = await prisma.etkinlik.findMany({
       where: { dosya: { musteriId: t.musteriId }, hatirlatmaDk: { not: null }, hatirlatmaGonderildiAt: null, baslar: { gte: new Date(now.getTime() - TOLERANS_MS) } },
       orderBy: { baslar: 'asc' },
-      take: 100,
+      take: 500, // due-olmayan yakın etkinlikler pencereyi doldurup uzun vadeli (7g önce) hatırlatmayı dışarıda bırakmasın
       include: { dosya: { include: { borclular: { select: { adUnvan: true }, orderBy: { id: 'asc' } } } } },
     })
     aday += adaylar.length

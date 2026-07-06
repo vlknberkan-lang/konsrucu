@@ -71,6 +71,9 @@ export async function tebligGorevleriOlustur(dosyaId: string, tebligTarihi: Date
   ]
 
   for (const g of gorevler) {
+    // Dedup: başlık deterministik (dosya + tebliğ günü) → findFirst yeterli. Teorik yarış (eşzamanlı
+    // iki TEBLIG işleme) kabul edilmiş risk: UYAP senkronu olayları sıralı işler ve baslik'e unique
+    // koymak ELLE açılan aynı-başlıklı görevleri kırardı.
     const mevcut = await prisma.takipGorevi.findFirst({ where: { dosyaId, baslik: g.baslik }, select: { id: true } })
     if (mevcut) continue
     await prisma.takipGorevi.create({
@@ -86,7 +89,8 @@ export async function tebligGorevleriOlustur(dosyaId: string, tebligTarihi: Date
 export async function tebligGorevleriKapat(dosyaId: string, olayTip: string): Promise<void> {
   const onekler: string[] = []
   if (olayTip === 'ITIRAZ' || olayTip === 'KESINLESTI') onekler.push(ITIRAZ_GOREV_ONEK)
-  if (olayTip === 'HACIZ') onekler.push(HACIZ_GOREV_ONEK)
+  // HACIZ = takip kesinleşmiş demektir (durum makinesiyle tutarlı) → itiraz-penceresi görevi de kapanır
+  if (olayTip === 'HACIZ') onekler.push(HACIZ_GOREV_ONEK, ITIRAZ_GOREV_ONEK)
   if (olayTip === 'KAPANDI') onekler.push(ITIRAZ_GOREV_ONEK, HACIZ_GOREV_ONEK)
   if (!onekler.length) return
   await prisma.takipGorevi.updateMany({

@@ -16,11 +16,13 @@ export async function secMusteri(formData: FormData) {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Kullanıcı bu müşteriye gerçekten atanmış mı? (tenant izolasyonu)
+  // Kullanıcı bu müşteriye gerçekten atanmış mı + müşteri AKTİF mi? (tenant izolasyonu;
+  // pasif tenant seçilirse kabuk ile sayfa verisi ayrışırdı)
   const link = await prisma.musteriKullanici.findUnique({
     where: { musteriId_kullaniciId: { musteriId, kullaniciId: user.id } },
+    include: { musteri: { select: { aktif: true } } },
   })
-  if (!link) redirect('/dashboard')
+  if (!link || !link.musteri.aktif) redirect('/dashboard')
 
   cookies().set('aktif_musteri', musteriId, {
     httpOnly: true,

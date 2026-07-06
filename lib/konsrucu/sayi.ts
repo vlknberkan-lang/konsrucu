@@ -13,8 +13,10 @@
 export function sayiTR(v: unknown): number {
   const c = String(v ?? '').replace(/[^\d.,-]/g, '')
   if (!c) return NaN
-  if (c.includes(',') && c.lastIndexOf(',') > c.lastIndexOf('.')) return Number(c.replace(/\./g, '').replace(',', '.')) // TR: 1.234,56
-  const noktasiz = c.replace(/,/g, '') // US binlik virgülleri at: 1,234.56 → 1234.56
+  const virgulSayisi = c.split(',').length - 1
+  // TR: virgül ondalık AYRAÇTIR → tek olur. Birden çok virgül = US binlik ('1,234,567') → TR dalına girmez.
+  if (virgulSayisi === 1 && c.lastIndexOf(',') > c.lastIndexOf('.')) return Number(c.replace(/\./g, '').replace(',', '.')) // TR: 1.234,56
+  const noktasiz = c.replace(/,/g, '') // US binlik virgülleri at: 1,234.56 / 1,234,567
   if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(noktasiz)) return Number(noktasiz.replace(/\./g, '')) // TR binlik: 1.234 / 1.234.567
   return Number(noktasiz)
 }
@@ -36,8 +38,14 @@ export function formatTRInput(raw: string): string {
   return binlik + ondalik
 }
 
-/** Sayıyı TR girişine hazır metne çevirir (1234.5 → "1.234,50"); null/NaN → ''. */
-export function toTRInput(n: number | null | undefined): string {
+/** Sayıyı TR girişine hazır metne çevirir (1234.5 → "1.234,50"); null/NaN → ''.
+ *  binlik:false → gruplamasız/sade biçim ("1234,5") — input round-trip'i için (sayiTR ikisini de çözer). */
+export function toTRInput(n: number | null | undefined, opts?: { binlik?: boolean }): string {
   if (n == null || !Number.isFinite(n)) return ''
-  return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
+  const sade = opts?.binlik === false
+  return new Intl.NumberFormat('tr-TR', {
+    useGrouping: !sade,
+    minimumFractionDigits: sade ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(n)
 }

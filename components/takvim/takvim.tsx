@@ -30,6 +30,8 @@ const dotBg: Record<Tone, string> = { kr: 'bg-kr', brand: 'bg-primary', warning:
 
 const GUNLER = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+// BİLİNÇLİ KABUL: gün gruplaması TARAYICI saat dilimiyle (client component; ekip Türkiye'de) —
+// saat gösterimi ise Europe/Istanbul sabit. TR-dışı bir tarayıcıda gece etkinlikleri komşu güne kayabilir.
 const gunKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 const ayBasi = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1)
 const haftaBasi = (d: Date) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x }

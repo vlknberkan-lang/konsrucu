@@ -10,7 +10,7 @@
  */
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { takipOlayKaydet } from '@/lib/konsrucu/takip-olay'
+import { takipOlayKaydet, OLAY_TIPLERI, type OlayTip } from '@/lib/konsrucu/takip-olay'
 import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
 
 export const dynamic = 'force-dynamic'
@@ -60,13 +60,16 @@ export async function POST(req: Request) {
   let eklenen = 0
   const olaylar = Array.isArray(body?.olaylar) ? body!.olaylar! : []
   for (const o of olaylar) {
-    const tip = String(o?.tip ?? '').trim()
-    if (!tip) continue
+    const hamTip = String(o?.tip ?? '').trim().slice(0, 40)
+    if (!hamTip) continue
+    // Beyaz liste: eklentiden gelen serbest tip DB'yi kirletmesin — bilinmeyen tip 'DURUM'a katlanır,
+    // orijinali hamJson'da saklanır (OLAY_DURUM lookup'ı ve rozetler tanımlı tiplerle çalışır).
+    const tip = (OLAY_TIPLERI as readonly string[]).includes(hamTip) ? (hamTip as OlayTip) : 'DURUM'
     const tarih = tarihParse(o?.tarih)
     const aciklama = o?.aciklama ? String(o.aciklama).slice(0, 2000) : null
     const mevcut = await prisma.takipOlayi.findFirst({ where: { dosyaId: dosya.id, tip, tarih, aciklama }, select: { id: true } })
     if (mevcut) continue
-    await takipOlayKaydet(dosya.id, null, { tip, tarih: tarih ?? new Date(), tutar: dec(o?.tutar), aciklama, hamJson: { kaynak: 'uyap' } as Prisma.InputJsonValue })
+    await takipOlayKaydet(dosya.id, null, { tip, tarih: tarih ?? new Date(), tutar: dec(o?.tutar), aciklama, hamJson: { kaynak: 'uyap', ...(tip !== hamTip ? { hamTip } : {}) } as Prisma.InputJsonValue })
     eklenen++
   }
 

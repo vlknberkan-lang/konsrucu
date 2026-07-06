@@ -90,18 +90,21 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
         }
       : {}),
   }
-  // zamanaşımı radarı filtresi: boş (radar dışı!) / 30 gün içinde / tarihi geçmiş
+  // zamanaşımı radarı filtresi: boş (radar dışı!) / 30 gün içinde / tarihi geçmiş.
+  // Bugün panosuyla AYNI küme: radar yalnız takibi açılmamış dosyaları izler (takip açılınca
+  // zamanaşımı kesilir) → za aktifken durum TAKIP_ONCESI ile AND'lenir (aşama sekmesini ezmez).
+  const TAKIP_ONCESI: DosyaDurum[] = [DosyaDurum.HAVUZDA, DosyaDurum.INCELENIYOR, DosyaDurum.TAKIBE_HAZIR]
   const bugun = bugunIstBasi() // İstanbul gün başlangıcı — sunucu UTC'yken pencere kaymasın
   const listeWhere: Prisma.RucuDosyasiWhereInput = {
     ...temelWhere,
     ...(asama !== 'all' ? { durum: { in: ASAMA_DURUMLAR[asama] as DosyaDurum[] } } : {}),
     ...(cekildi === 'evet' ? { hugodanCekildi: true } : cekildi === 'hayir' ? { hugodanCekildi: false } : {}),
     ...(za === 'bos'
-      ? { zamanasimi: null }
+      ? { zamanasimi: null, AND: [{ durum: { in: TAKIP_ONCESI } }] }
       : za === 'yakin'
-        ? { zamanasimi: { gte: bugun, lt: new Date(bugun.getTime() + 30 * 86_400_000) } }
+        ? { zamanasimi: { gte: bugun, lt: new Date(bugun.getTime() + 30 * 86_400_000) }, AND: [{ durum: { in: TAKIP_ONCESI } }] }
         : za === 'gecti'
-          ? { zamanasimi: { lt: bugun } }
+          ? { zamanasimi: { lt: bugun }, AND: [{ durum: { in: TAKIP_ONCESI } }] }
           : {}),
   }
   const orderBy: Prisma.RucuDosyasiOrderByWithRelationInput[] =

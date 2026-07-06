@@ -14,6 +14,8 @@ describe('sayiTR — iki formatı da çözer', () => {
   it('makine/US biçimi: nokta ondalık', () => {
     expect(sayiTR('1234.56')).toBe(1234.56)
     expect(sayiTR('1,234.56')).toBe(1234.56) // US binlik virgül — eski taksit kopyası bunu YANLIŞ okuyordu
+    expect(sayiTR('1,234,567')).toBe(1234567) // çok-virgül = US binlik (tek virgül TR ondalıktır)
+    expect(sayiTR('1,234,567.89')).toBe(1234567.89)
   })
   it('düz sayılar ve para simgeleri', () => {
     expect(sayiTR('120000')).toBe(120000)

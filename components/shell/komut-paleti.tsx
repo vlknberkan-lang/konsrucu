@@ -27,6 +27,7 @@ export function KomutPaleti() {
   const [aktif, setAktif] = useState(0)
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
+  const acButonRef = useRef<HTMLButtonElement>(null) // kapanışta odak buraya döner (a11y)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const istekNo = useRef(0)
 
@@ -43,9 +44,21 @@ export function KomutPaleti() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  const oncedenAcikti = useRef(false)
   useEffect(() => {
-    if (acik) setTimeout(() => inputRef.current?.focus(), 30)
-    else { setQ(''); setSonuclar([]); setAktif(0) }
+    if (acik) {
+      oncedenAcikti.current = true
+      setTimeout(() => inputRef.current?.focus(), 30)
+      // arka plan kaymasın (scroll kilidi) — kapanınca iade edilir
+      const eski = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => { document.body.style.overflow = eski }
+    }
+    if (oncedenAcikti.current) {
+      oncedenAcikti.current = false
+      setQ(''); setSonuclar([]); setAktif(0)
+      acButonRef.current?.focus() // odak tetikleyiciye dönsün (ilk yüklemede odak ÇALINMAZ)
+    }
   }, [acik])
 
   const ara = useCallback((deger: string) => {
@@ -95,8 +108,11 @@ export function KomutPaleti() {
   return (
     <>
       <button
+        ref={acButonRef}
         type="button"
         onClick={() => setAcik(true)}
+        aria-haspopup="dialog"
+        aria-expanded={acik}
         className="ml-auto flex w-[min(420px,32vw)] items-center gap-2.5 truncate rounded-[11px] border border-border bg-surface-muted px-3.5 py-2.5 text-[13px] text-muted-foreground transition hover:border-kr/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50"
       >
         <Search className="h-4 w-4 shrink-0" />
@@ -106,7 +122,7 @@ export function KomutPaleti() {
 
       {acik && (
         <div className="fixed inset-0 z-[60] bg-black/40 p-4 pt-[12vh]" onClick={(e) => { if (e.target === e.currentTarget) setAcik(false) }}>
-          <div className="mx-auto w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-surface shadow-float">
+          <div role="dialog" aria-modal="true" aria-label="Dosya ara" className="mx-auto w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-surface shadow-float">
             <div className="flex items-center gap-2.5 border-b border-border-subtle px-4 py-3">
               {yukleniyor ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-kr" /> : <Search className="h-4 w-4 shrink-0 text-muted-foreground" />}
               <input
@@ -116,11 +132,15 @@ export function KomutPaleti() {
                 onKeyDown={onInputKey}
                 placeholder="Hukuk no, hasar no, icra no, borçlu, sigortalı, plaka…"
                 aria-label="Dosya ara"
+                role="combobox"
+                aria-expanded={liste.length > 0}
+                aria-controls="komut-paleti-liste"
+                aria-activedescendant={liste[aktif] ? `kp-secenek-${aktif}` : undefined}
                 className="w-full bg-transparent text-[14px] text-foreground outline-none placeholder:text-muted-foreground"
               />
               <span className="font-mono shrink-0 rounded-md border border-border bg-surface-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">esc</span>
             </div>
-            <div className="max-h-[50vh] overflow-y-auto p-1.5">
+            <div id="komut-paleti-liste" role="listbox" aria-label="Sonuçlar" className="max-h-[50vh] overflow-y-auto p-1.5">
               {q.trim().length >= 2 && !yukleniyor && liste.length === 0 && (
                 <div className="px-3 py-6 text-center text-[13px] text-muted-foreground">"{q}" için dosya bulunamadı.</div>
               )}
@@ -130,6 +150,9 @@ export function KomutPaleti() {
               {liste.map((s, i) => (
                 <button
                   key={s.key}
+                  id={`kp-secenek-${i}`}
+                  role="option"
+                  aria-selected={i === aktif}
                   type="button"
                   onClick={() => git(s.href)}
                   onMouseEnter={() => setAktif(i)}

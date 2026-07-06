@@ -25,11 +25,15 @@ async function handle(req: Request) {
   const url = new URL(req.url)
 
   const now = new Date()
-  // adaylar: açık, sorumlusu var, son tarihi var, henüz hatırlatılmamış, son tarihi 1 günden yakın veya geçmiş
+  // adaylar: açık, sorumlusu var, son tarihi var, henüz hatırlatılmamış, son tarihi 1 günden yakın veya geçmiş.
+  // AKTİFLİK: pasifleştirilen kullanıcıya (ofisten ayrılan) ya da pasif tenant'ın dosyasına mail GİTMEZ —
+  // diğer cron'lar cronTenantlar ile aynı süzgeci uygular; bu rota görev-bazlı olduğundan where'de uygular.
   const due = await prisma.takipGorevi.findMany({
     where: {
       durum: { in: ['ACIK', 'ISLEMDE'] },
       sorumluId: { not: null },
+      sorumlu: { is: { aktif: true } },
+      dosya: { musteri: { aktif: true } },
       sonTarih: { not: null, lte: new Date(now.getTime() + PENCERE_MS) },
       hatirlatmaGonderildiAt: null,
     },
