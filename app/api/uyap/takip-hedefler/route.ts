@@ -26,8 +26,11 @@ export async function GET(req: Request) {
   const k = await uyapKimlik(req)
   if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401)
 
+  // DİKKAT: durum alanı hiçbir akışta TAKIBE_HAZIR'a ÇEKİLMİYOR — "Takibe Hazır" detay sayfasında
+  // canlı hesaplanan görünümdür (checkler + avukat onayı), DB'de dosya INCELENIYOR kalır.
+  // Bu yüzden filtre durum=TAKIBE_HAZIR DEĞİL; asıl kapı avukat onayı (cikarimJson.onay.ok, aşağıda).
   const dosyalar = await prisma.rucuDosyasi.findMany({
-    where: { musteriId: { in: k.izinli }, durum: 'TAKIBE_HAZIR', icraDosyaNo: null },
+    where: { musteriId: { in: k.izinli }, durum: { in: ['HAVUZDA', 'INCELENIYOR', 'TAKIBE_HAZIR'] }, icraDosyaNo: null },
     select: {
       id: true, musteriId: true, hukukDosyaNo: true, hasarDosyaNo: true,
       rucuTutari: true, asilAlacak: true, faizTutari: true, faizBaslangic: true, faizBitis: true,
@@ -35,6 +38,7 @@ export async function GET(req: Request) {
       sigortaliPlaka: true, karsiPlaka: true, cikarimJson: true,
       borclular: { select: { adUnvan: true, tcVkn: true, rol: true, teyitDurumu: true } },
       odemeler: { select: { tarih: true, tutar: true, haricMi: true } },
+      belgeler: { select: { kategori: true } },
     },
     orderBy: { updatedAt: 'desc' },
     take: 100,
@@ -89,6 +93,14 @@ export async function GET(req: Request) {
     if (!adli) engeller.push(`yetkili adliye çözülemedi (kaza yeri: ${d.kazaYeri ?? '—'})`)
     if (adli && ilKodu == null) engeller.push(`il plaka kodu çözülemedi (${ilAdi ?? '—'})`)
 
+    // ── uyarılar: gönderime MANİ DEĞİL, özet ekranında sarı gösterilir ──
+    // Evrak (poliçe/dekont/tutanak) UYAP tevzisi için yüklenmiyor ve zorunlu değil; ama borçlu
+    // itiraz ederse ispat bunlarla yapılır — eksikse avukat bilerek göndersin.
+    const uyarilar: string[] = []
+    const katSet = new Set(d.belgeler.map((b) => b.kategori))
+    const evrakEksik = ['POLICE', 'DEKONT', 'TUTANAK'].filter((x) => !katSet.has(x as never))
+    if (evrakEksik.length) uyarilar.push(`dosyada eksik evrak: ${evrakEksik.join(', ')} — itiraz halinde ispat için tamamlanmalı`)
+
     hedefler.push({
       id: d.id,
       hukukDosyaNo: d.hukukDosyaNo,
@@ -111,6 +123,7 @@ export async function GET(req: Request) {
       adliye: adli ? { ad: adli.adliye, il: ilAdi, ilKodu } : null,
       aciklama,
       engeller,
+      uyarilar,
     })
   }
 
