@@ -8,7 +8,7 @@ import { notFound, redirect } from 'next/navigation'
 import { ChevronLeft, Sparkles, Check, AlertTriangle, Clock, Scale, Send, StickyNote, Search, ListChecks } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
-import { footerOlustur, aciklamaTam } from '@/lib/konsrucu/takip'
+import { footerOlustur, aciklamaTam, footerIcerir } from '@/lib/konsrucu/takip'
 import { faizHesapla, oranlariOku, sonDekontTarihi, odenenToplam, type DekontGirdi } from '@/lib/konsrucu/faiz'
 import { takipAcildi } from '../actions'
 import { FaizPanel } from '@/components/akilli-giris/detay/faiz-panel'
@@ -528,8 +528,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
                     }}
                   />
                   {footer
-                    ? <pre className="mt-2 whitespace-pre-wrap border-t border-border-subtle pt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">{footer}</pre>
-                    : <div className="mt-1.5 text-[11px] text-muted-foreground">Footer (alacaklı/MERSİS/IBAN) için <b>Şirket Bilgileri</b>'ni doldurun.</div>}
+                    ? (footerIcerir(cj.aciklama, footer)
+                      ? null
+                      : <pre className="mt-2 whitespace-pre-wrap border-t border-border-subtle pt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">{footer}</pre>)
+                    : <div className="mt-1.5 text-[11px] text-muted-foreground">Sondaki K/Partners iletişim satırı için <b>Şirket Bilgileri → Açıklama footer</b>'ını doldurun.</div>}
                 </div>
               </div>
             )}

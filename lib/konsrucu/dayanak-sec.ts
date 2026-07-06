@@ -1,8 +1,9 @@
 /**
  * KonsRücü — İcra dayanak belge seçimi · lib/konsrucu/dayanak-sec.ts (saf, paylaşımlı)
- * Bir dosyanın 100+ belgesi/fotoğrafı arasından icra takibi açmak için gerekli ~6-7 DAYANAK belgeyi seçer:
- *   Poliçe · KTT (yoksa İfade/Görgü tutanağı) · Sigortalının Beyanı (varsa) · Ekspertiz (raporda "rücu yok"
- *   yazmıyorsa) · Ödeme Dekontu · + hasar fotoğrafı adayları (en net 2'yi AI vision ayrı seçer).
+ * Bir dosyanın 100+ belgesi/fotoğrafı arasından icra takibi açmak için gerekli DAYANAK belgeleri seçer:
+ *   Poliçe · KTT + İfade + Görgü tutanakları (HANGİLERİ VARSA HEPSİ) · Sigortalının Beyanı (varsa) ·
+ *   Ekspertiz (İKİ koşulla: "rücu yok" yazmıyorsa + tutarı alacakla uyuşuyorsa) · Ödeme Dekontu ·
+ *   + hasar fotoğrafı adayları (en net 2-3'ü AI vision ayrı seçer).
  * Deterministik + ucuz: yalnız kategori + dosyaAdi + extractedText sinyalleri. Foto seçimi burada DEĞİL.
  */
 import { trSade } from './belge-siniflandir'
@@ -53,6 +54,18 @@ export type DayanakSonuc = {
 // Ekspertiz raporunda rücu OLMADIĞINI söyleyen kalıplar → bu rapor dayanağa ALINMAZ.
 const RUCU_YOK = /\brucu(su)?\s+(yok|bulunma|hakk[i]?\s+(yok|bulunma)|tespit\s+edileme|soz\s+konusu\s+degil|dogma)/
 
+/** TR-biçimli tutarları HAM metinden çıkar (1.234,56 / 1234,56) — trSade noktalamayı sildiği için ham. */
+function metindekiTutarlar(metin: string | null | undefined): number[] {
+  const out: number[] = []
+  for (const m of String(metin ?? '').matchAll(/\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}/g)) {
+    const n = Number(m[0].replace(/\./g, '').replace(',', '.'))
+    if (Number.isFinite(n) && n > 0) out.push(n)
+  }
+  return out
+}
+// ±%1 (en az ±1 TL) tolerans: OCR/yuvarlama farkı tutar uyuşmasını bozmasın.
+const tutarUyusur = (hedef: number, aday: number) => Math.abs(hedef - aday) <= Math.max(1, hedef * 0.01)
+
 const sade = (b: DayanakGirdi) => trSade(`${b.dosyaAdi} ${b.extractedText ?? ''}`)
 const isoGun = (d: Date | string | null | undefined) => {
   if (!d) return null
@@ -71,8 +84,13 @@ function tutanakSinifi(b: DayanakGirdi): 'KTT' | 'IFADE' | 'GORGU' | 'TUTANAK' {
   return 'TUTANAK'
 }
 
+export type DayanakOpts = {
+  /** Ekspertiz tutar kıyası hedefleri: rücu tutarı / asıl alacak / ödenen tazminat toplamı (TL). */
+  alacakTutarlari?: number[]
+}
+
 /** Dosyanın belgelerinden icra dayanağını seç. Foto seçimi (vision) ayrı; burada yalnız adaylar döner. */
-export function dayanakSec(belgeler: DayanakGirdi[]): DayanakSonuc {
+export function dayanakSec(belgeler: DayanakGirdi[], opts?: DayanakOpts): DayanakSonuc {
   const secilenler: DayanakBelge[] = []
   const notlar: string[] = []
   const kullanilan = new Set<string>()
@@ -90,15 +108,18 @@ export function dayanakSec(belgeler: DayanakGirdi[]): DayanakSonuc {
   // 1) Poliçe
   push(enIyi(kat('POLICE')), 'POLICE')
 
-  // 2) Tutanak: KTT > İfade > Görgü > genel. KTT yoksa nedenini not düş.
+  // 2) Tutanaklar: KTT + İfade + Görgü — HANGİLERİ VARSA HEPSİ alınır (Berkan 2026-07-07);
+  // hiçbiri sınıflanamadıysa en iyi genel tutanak. KTT yoksa nedenini not düş.
   const tutanaklar = kat('TUTANAK')
   if (tutanaklar.length) {
     const sinifli = tutanaklar.map((b) => ({ b, sinif: tutanakSinifi(b) }))
-    const oncelik: DayanakRol[] = ['KTT', 'IFADE', 'GORGU', 'TUTANAK']
-    const secilenSinif = oncelik.find((s) => sinifli.some((x) => x.sinif === s)) ?? 'TUTANAK'
-    const aday = enIyi(sinifli.filter((x) => x.sinif === secilenSinif).map((x) => x.b))
-    push(aday, secilenSinif)
-    if (secilenSinif !== 'KTT') notlar.push(`KTT (Kaza Tespit Tutanağı) bulunamadı; ${ROL_LABEL[secilenSinif]} dayanak alındı.`)
+    let ozgulEklendi = false
+    for (const s of ['KTT', 'IFADE', 'GORGU'] as const) {
+      const aday = enIyi(sinifli.filter((x) => x.sinif === s).map((x) => x.b))
+      if (aday) { push(aday, s); ozgulEklendi = true }
+    }
+    if (!ozgulEklendi) push(enIyi(sinifli.map((x) => x.b)), 'TUTANAK')
+    if (!sinifli.some((x) => x.sinif === 'KTT')) notlar.push('KTT (Kaza Tespit Tutanağı) bulunamadı; eldeki tutanak(lar) dayanak alındı.')
   } else {
     notlar.push('Tutanak bulunamadı (KTT/ifade/görgü) — icra dayanağı için kaza tutanağı gerekir.')
   }
@@ -107,12 +128,24 @@ export function dayanakSec(belgeler: DayanakGirdi[]): DayanakSonuc {
   const beyan = enIyi(belgeler.filter((b) => /sigortali(nin)? beyan|sigortali ifade|beyan formu/.test(sade(b))))
   if (beyan) push(beyan, 'BEYAN')
 
-  // 4) Ekspertiz — raporda "rücu yok" yazıyorsa ALMA
+  // 4) Ekspertiz — İKİ koşul (Berkan 2026-07-07): (a) raporda "rücu yok" YAZMAYACAK,
+  // (b) rapordaki bir tutar alacakla (rücu tutarı / asıl alacak / ödenen tazminat) UYUŞACAK.
+  // Uyum doğrulanamıyorsa (rapor metni okunamadı) temkinli davran: EKLEME + not düş.
   const eksList = kat('EKSPERTIZ')
   if (eksList.length) {
     const temiz = eksList.filter((b) => !RUCU_YOK.test(sade(b)))
-    if (temiz.length) push(enIyi(temiz), 'EKSPERTIZ')
-    else notlar.push('Ekspertiz raporunda "rücu yok" ifadesi var — dayanağa eklenmedi (gözden geçirin).')
+    if (!temiz.length) {
+      notlar.push('Ekspertiz raporunda "rücu yok" ifadesi var — dayanağa eklenmedi (gözden geçirin).')
+    } else {
+      const hedefler = (opts?.alacakTutarlari ?? []).filter((n) => Number.isFinite(n) && n > 0)
+      if (!hedefler.length) {
+        push(enIyi(temiz), 'EKSPERTIZ') // tutar kıyası istenmemiş — yalnız "rücu yok" filtresi
+      } else {
+        const uyanlar = temiz.filter((b) => metindekiTutarlar(b.extractedText).some((t) => hedefler.some((h) => tutarUyusur(h, t))))
+        if (uyanlar.length) push(enIyi(uyanlar), 'EKSPERTIZ', 'tutar alacakla uyuştu')
+        else notlar.push('Ekspertiz tutarı alacak/ödeme tutarıyla uyuşmadı (ya da rapor metni okunamadı) — dayanağa eklenmedi, elle kontrol edin.')
+      }
+    }
   }
 
   // 5) Ödeme dekontu — rücu tutarının/ödemenin kanıtı
