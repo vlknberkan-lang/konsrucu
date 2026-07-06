@@ -100,17 +100,12 @@ export async function POST(req: Request) {
     }
   }
 
-  // Makbuz/dekont indiyse → PDF'i otomatik oku, Masraf kalemlerini çıkar (hata evrak kaydını bozmaz).
-  // Kapalı dosyada YENİ masraf gerekmez → AI çağırma (Faz 0 maliyet kapısı; evrak yine saklandı).
-  let masraf: { eklendi: number; atlandi: number } | undefined
-  if (snf.kategori === 'DEKONT' && aktif) {
-    try {
-      const r = await belgedenMasrafCikar(belge.id, { kullaniciId: k.userId })
-      masraf = { eklendi: r.eklendi, atlandi: r.atlandi }
-    } catch (e) {
-      console.error('masraf çıkarım (evrak):', e)
-    }
-  }
+  // PDF-tabanlı masraf çıkarımı KAPATILDI (2026-07-04, Berkan kararı): masraf kaynağı artık UYAP
+  // "Ödeme İşlemlerim" ekranı (eklenti v1.2 → /api/uyap/senkron masraflar[]) — yapılandırılmış ve kesin.
+  // İki kaynak birden yazsaydı kaynakRef şemaları farklı olduğundan ÇİFT kayıt oluşurdu. Makbuz PDF'leri
+  // Belge olarak inmeye/önizlenmeye devam eder; gerekirse /api/masraf/tara backfill ucu hâlâ durur.
+  void belgedenMasrafCikar // import bilinçli tutuluyor (tara ucu ve olası geri dönüş için)
+  void aktif
 
-  return corsJson({ ok: true, eklendi: true, kategori: snf.kategori, masraf })
+  return corsJson({ ok: true, eklendi: true, kategori: snf.kategori })
 }
