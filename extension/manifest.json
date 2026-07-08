@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Rücu Takip — UYAP Senkron",
+  "version": "1.7.0",
+  "description": "UYAP Avukat Portalında açık oturumda rücu icra dosyalarını sorgular; durum, finansal ve evrak bilgisini Rücu Takip programına senkronlar.",
+  "permissions": ["storage", "alarms", "downloads"],
+  "host_permissions": [
+    "*://*.uyap.gov.tr/*",
+    "https://konsrucu.vercel.app/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["*://avukat.uyap.gov.tr/*"],
+      "js": ["interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://avukat.uyap.gov.tr/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Rücu Takip panelini aç/kapat",
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+}
