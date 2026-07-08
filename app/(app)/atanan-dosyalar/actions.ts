@@ -78,3 +78,45 @@ export async function cekildiDegistir(girdi: { dosyaId: string; hedef: boolean }
   revalidatePath('/atanan-dosyalar')
   return { ok: true, cekildi: hedef }
 }
+
+const TopluGirdi = z.object({ dosyaIds: z.array(z.string().uuid()).min(1).max(200) })
+
+/**
+ * Çekim kuyruğu: seçili dosyaları TOPLU "Hugo'dan çekildi" işaretler (backlog eritme).
+ * cekildiDegistir ile aynı semantik — bayrak + güvenli durum köprüsü (HAVUZDA → İnceleniyor).
+ * Yalnız tenant içi + henüz çekilmemiş dosyalar işlenir; verimli (updateMany + createMany).
+ */
+export async function cekildiTopluIsaretle(girdi: { dosyaIds: string[] }): Promise<{ ok: boolean; error?: string; islenen?: number }> {
+  const parsed = TopluGirdi.safeParse(girdi)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Geçersiz girdi' }
+
+  const { dbUser, izinli } = await ctx()
+  const dosyalar = await prisma.rucuDosyasi.findMany({
+    where: { id: { in: parsed.data.dosyaIds }, musteriId: { in: izinli }, hugodanCekildi: false },
+    select: { id: true, durum: true },
+  })
+  if (!dosyalar.length) return { ok: true, islenen: 0 }
+
+  const ids = dosyalar.map((d) => d.id)
+  const havuzdaSet = new Set(dosyalar.filter((d) => d.durum === DosyaDurum.HAVUZDA).map((d) => d.id))
+
+  try {
+    await prisma.$transaction([
+      prisma.rucuDosyasi.updateMany({ where: { id: { in: ids } }, data: { hugodanCekildi: true } }),
+      // yalnız güvenli köprü: HAVUZDA → İnceleniyor (ileri/başka durumdakiler dokunulmaz)
+      ...(havuzdaSet.size ? [prisma.rucuDosyasi.updateMany({ where: { id: { in: [...havuzdaSet] } }, data: { durum: DosyaDurum.INCELENIYOR } })] : []),
+      prisma.aktivite.createMany({
+        data: ids.map((id) => ({
+          dosyaId: id,
+          kullaniciId: dbUser.id,
+          eylem: `Hugo'dan çekildi olarak işaretlendi (toplu)${havuzdaSet.has(id) ? ' → İnceleniyor' : ''}`,
+        })),
+      }),
+    ])
+  } catch (e) {
+    return { ok: false, error: `Kaydedilemedi: ${(e as Error).message}` }
+  }
+
+  revalidatePath('/atanan-dosyalar')
+  return { ok: true, islenen: ids.length }
+}

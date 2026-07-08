@@ -14,6 +14,7 @@ import { durumAsama, ASAMA_META, ASAMA_DURUMLAR, ASAMA_SIRA, type AsamaKey } fro
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { FiltreBar } from '@/components/atanan-dosyalar/filtre-bar'
 import { CekildiButton } from '@/components/atanan-dosyalar/cekildi-button'
+import { CekimKuyrugu, type KuyrukDosya } from '@/components/atanan-dosyalar/cekim-kuyrugu'
 import { HugoImportButton } from '@/components/atanan-dosyalar/hugo-import-modal'
 import { IcraEslestirButton } from '@/components/atanan-dosyalar/icra-eslestir'
 import { tarihTR, kalanGun, bugunIstBasi } from '@/lib/konsrucu/format'
@@ -115,7 +116,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
           ? [{ atanmaTarihi: { sort: 'desc', nulls: 'last' } }]
           : [{ createdAt: 'desc' }]
 
-  const [durumGrup, cekildiGrup, rows] = await Promise.all([
+  const [durumGrup, cekildiGrup, rows, kuyrukHam] = await Promise.all([
     prisma.rucuDosyasi.groupBy({ by: ['durum'], where: temelWhere, _count: { _all: true } }),
     prisma.rucuDosyasi.groupBy({ by: ['hugodanCekildi'], where: temelWhere, _count: { _all: true } }),
     prisma.rucuDosyasi.findMany({
@@ -129,10 +130,23 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
         asamalar: { select: { tur: true, durum: true, kimlikNo: true, sira: true }, orderBy: { sira: 'asc' } },
       },
     }),
+    // Çekim kuyruğu: çekilmeyi bekleyen (hugodanCekildi=false) dosyalar, ZA en yakından (aşama filtresinden bağımsız backlog aracı)
+    prisma.rucuDosyasi.findMany({
+      where: { musteriId: aktifMusteriId, hukukDosyaNo: { not: null }, hugodanCekildi: false },
+      orderBy: [{ zamanasimi: { sort: 'asc', nulls: 'last' } }],
+      take: 50,
+      select: { id: true, hukukDosyaNo: true, sigortaliUnvan: true, zamanasimi: true },
+    }),
   ])
   const cekilen = cekildiGrup.find((g) => g.hugodanCekildi)?._count._all ?? 0
   const bekleyen = cekildiGrup.find((g) => !g.hugodanCekildi)?._count._all ?? 0
   const toplam = cekilen + bekleyen
+  const kuyruk: KuyrukDosya[] = kuyrukHam.map((d) => ({
+    id: d.id,
+    hukukDosyaNo: d.hukukDosyaNo ?? '—',
+    sigortaliUnvan: d.sigortaliUnvan,
+    zamanasimi: d.zamanasimi ? d.zamanasimi.toISOString() : null,
+  }))
 
   // aşama sayımları (durum → aşama evresi)
   const asamaSayim: Record<string, number> = { all: toplam }
@@ -160,6 +174,8 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
         </div>
       ) : (
         <>
+          <CekimKuyrugu dosyalar={kuyruk} toplamBekleyen={bekleyen} />
+
           <FiltreBar
             q={q}
             asama={asama}
