@@ -31,7 +31,7 @@ export async function updateSession(request: NextRequest) {
 
   const path = request.nextUrl.pathname
   // /api kendi kimlik doğrulamasını yapar (ör. UYAP senkron token'ı) → /login'e yönlendirme
-  const isPublic = path.startsWith('/login') || path.startsWith('/auth') || path.startsWith('/api') || path.startsWith('/gizlilik')
+  const isPublic = path.startsWith('/login') || path.startsWith('/auth') || path.startsWith('/api') || path.startsWith('/gizlilik') || path.startsWith('/tanitim')
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone()
