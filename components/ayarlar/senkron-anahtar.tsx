@@ -11,7 +11,14 @@ import { KeyRound, Loader2, RefreshCw, Trash2, AlertTriangle } from 'lucide-reac
 import { senkronTokenUret, senkronTokenSil } from '@/app/(app)/ayarlar/actions'
 import { Kopyala } from '@/components/akilli-giris/kopyala'
 
-export type SenkronSaglik = { aktifToplam: number; bekleyen: number; sonSenkron: string | null }
+export type SenkronSaglik = {
+  aktifToplam: number
+  bekleyen: number
+  sonSenkron: string | null
+  enEskiSenkron?: string | null // en az güncel çekilmiş dosya (ISO) — "en eski bekleyen"
+  hicSenkronsuz?: number // eklentinin hiç ulaşmadığı dosya sayısı
+  senkronDisi?: number // uyapEslesme ≠ OK: eklenti çalışıp UYAP'ta eşleştiremedi
+}
 
 export function SenkronAnahtar({ musteriId, init, programUrl, saglik }: { musteriId: string; init: { yuklu: boolean }; programUrl: string; saglik?: SenkronSaglik }) {
   const [token, setToken] = useState<string | null>(null) // sadece yeni üretilince gösterilir
@@ -41,6 +48,15 @@ export function SenkronAnahtar({ musteriId, init, programUrl, saglik }: { muster
   const sonSenkronDt = saglik?.sonSenkron ? new Date(saglik.sonSenkron) : null
   const saatOnce = sonSenkronDt ? Math.round((Date.now() - sonSenkronDt.getTime()) / 3_600_000) : null
   const bayat = saglik ? saglik.aktifToplam > 0 && (!sonSenkronDt || (saatOnce ?? 0) >= 28) : false
+  const hicSenkronsuz = saglik?.hicSenkronsuz ?? 0
+  const senkronDisi = saglik?.senkronDisi ?? 0
+  // tarih + yaş etiketi (İstanbul); 48 saatten eski → gün cinsinden
+  const yasla = (iso: string) => {
+    const dt = new Date(iso)
+    const sa = Math.round((Date.now() - dt.getTime()) / 3_600_000)
+    const yas = sa >= 48 ? `~${Math.round(sa / 24)} gün önce` : `~${sa} sa önce`
+    return `${dt.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })} (${yas})`
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -54,14 +70,22 @@ export function SenkronAnahtar({ musteriId, init, programUrl, saglik }: { muster
           {bayat && <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
           <span>
             Son senkron:{' '}
-            <b className="font-mono">
-              {sonSenkronDt
-                ? `${sonSenkronDt.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })} (~${saatOnce} sa önce)`
-                : 'hiç gelmedi'}
-            </b>
+            <b className="font-mono">{saglik.sonSenkron ? yasla(saglik.sonSenkron) : 'hiç gelmedi'}</b>
           </span>
           <span>· {saglik.aktifToplam} aktif dosya · <b>{saglik.bekleyen}</b> senkron bekliyor</span>
+          {hicSenkronsuz > 0 ? (
+            <span>· <b>{hicSenkronsuz}</b> dosya hiç çekilmemiş</span>
+          ) : saglik.enEskiSenkron ? (
+            <span className="font-mono text-[11.5px]">· en eskisi {yasla(saglik.enEskiSenkron)}</span>
+          ) : null}
           {bayat && <span className="basis-full text-[11.5px]">Eklenti susmuş görünüyor — Chrome + UYAP oturumu + eklentiyi kontrol edin.</span>}
+        </div>
+      )}
+
+      {senkronDisi > 0 && (
+        <div className="flex flex-wrap items-start gap-x-2 gap-y-1 rounded-[10px] border border-warning/30 bg-warning-soft/40 px-3 py-2 text-[12px] text-warning">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span><b>{senkronDisi}</b> dosya UYAP&apos;ta eşleşmedi (senkron dışı) — daire eksik / bulunamadı / başka dairede olabilir. Bu dosyalarda olay akışı gelmez; icra no ve daireyi kontrol edin.</span>
         </div>
       )}
 

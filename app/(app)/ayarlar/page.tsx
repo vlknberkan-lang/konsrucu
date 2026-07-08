@@ -3,10 +3,9 @@
  * Alacaklı / MERSİS / IBAN / vekil / faiz — takip açıklaması ve dilekçeler bunları kullanır.
  */
 import { Check, Building2, Percent, FileSignature, Puzzle, GraduationCap, ActivitySquare } from 'lucide-react'
-import type { DosyaDurum } from '@prisma/client'
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
-import { KAPALI_DURUMLAR } from '@/lib/konsrucu/aktiflik'
+import { uyapSaglikOzeti } from '@/lib/konsrucu/uyap-saglik'
 import { tarihSaatTR } from '@/lib/konsrucu/format'
 import { oranlariOku } from '@/lib/konsrucu/faiz'
 import { FaizOranlari } from '@/components/ayarlar/faiz-oranlari'
@@ -39,14 +38,8 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
     aktif: k.aktif, createdAt: k.createdAt.toISOString(), yazan: k.kullanici?.ad ?? null,
   }))
 
-  // Senkron sağlığı: eklenti susarsa buradan görünsün (aktif icra dosyaları üzerinden son senkron + bekleyen)
-  const aktifWhere = { musteriId: aktifMusteriId, icraDosyaNo: { not: null }, durum: { notIn: KAPALI_DURUMLAR as unknown as DosyaDurum[] } }
-  const [senkronAktif, senkronSon, senkronBekleyen] = await Promise.all([
-    prisma.rucuDosyasi.count({ where: aktifWhere }),
-    prisma.rucuDosyasi.findFirst({ where: { ...aktifWhere, uyapSenkronAt: { not: null } }, orderBy: { uyapSenkronAt: 'desc' }, select: { uyapSenkronAt: true } }),
-    prisma.rucuDosyasi.count({ where: { ...aktifWhere, OR: [{ uyapSenkronAt: null }, { uyapSenkronAt: { lt: new Date(Date.now() - 24 * 3_600_000) } }] } }),
-  ])
-  const senkronSaglik = { aktifToplam: senkronAktif, bekleyen: senkronBekleyen, sonSenkron: senkronSon?.uyapSenkronAt?.toISOString() ?? null }
+  // Senkron sağlığı: eklenti susarsa/UYAP'ta eşleşmezse buradan görünsün (aktif icra dosyaları üzerinden)
+  const senkronSaglik = await uyapSaglikOzeti([aktifMusteriId])
 
   // sistem olayları global tablodur (tenant'a değil altyapıya ait) — son 30 kayıt
   const sistemOlaylari = await prisma.sistemOlay.findMany({ orderBy: { createdAt: 'desc' }, take: 30 })
