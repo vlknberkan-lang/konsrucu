@@ -37,7 +37,6 @@ export function EtkinlikEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
   const [acikListe, setAcikListe] = useState(false)
   const [tur, setTur] = useState('DURUSMA')
   const baslikRef = useRef<HTMLInputElement>(null)
-  const overlayDown = useRef(false) // kapatma yalnız basış arka planda başladıysa (metin sürükle-seçimi kapatmasın)
 
   const sonuc = useMemo(() => {
     const q = ara.trim().toLocaleLowerCase('tr')
@@ -74,9 +73,9 @@ export function EtkinlikEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-          onMouseDown={(e) => { overlayDown.current = e.target === e.currentTarget }}
-          onClick={(e) => { if (overlayDown.current && e.target === e.currentTarget) kapat(); overlayDown.current = false }}>
+        // Etkinlik ekleme bir FORM — dışarı tıklama pencereyi KAPATMAZ (yanlış tıklama girilen veriyi
+        // silmesin; Yelda saha bulgusu 2026-07-08). Kapanış yalnız ✕ / Vazgeç ile.
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
           <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-border bg-surface shadow-float">
             <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-5 py-3.5">
               <div className="flex items-center gap-2.5">

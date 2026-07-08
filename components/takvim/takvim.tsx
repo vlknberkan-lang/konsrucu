@@ -293,9 +293,11 @@ function EtkinlikModal({ e, bugun, kullanicilar, onKapat }: { e: TakvimEtkinlik;
   }
 
   return (
+    // Dışarı tıklama YALNIZ salt-görüntüleme modunda kapatır; DÜZENLERKEN kapatmaz (yanlış tıklama
+    // girilen veriyi silmesin — Yelda saha bulgusu 2026-07-08). Düzenleme kapanışı ✕/Vazgeç ile.
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
       onMouseDown={(ev) => { overlayDown.current = ev.target === ev.currentTarget }}
-      onClick={(ev) => { if (overlayDown.current && ev.target === ev.currentTarget) onKapat(); overlayDown.current = false }}>
+      onClick={(ev) => { if (!duzenle && overlayDown.current && ev.target === ev.currentTarget) onKapat(); overlayDown.current = false }}>
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-surface shadow-float">
         <div className="flex items-start justify-between gap-2 border-b border-border-subtle px-5 py-3.5">
           <div className="flex items-center gap-2.5">
