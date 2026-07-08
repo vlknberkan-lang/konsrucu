@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Rücu Takip — UYAP Senkron",
   "version": "1.7.0",
-  "description": "UYAP Avukat Portalında açık oturumda rücu icra dosyalarını sorgular; durum, finansal ve evrak bilgisini Rücu Takip programına senkronlar.",
+  "description": "UYAP Avukat Portalındaki rücu icra dosyalarını Rücu Takip programına senkronlar: durum, finansal, evrak.",
   "permissions": ["storage", "alarms", "downloads"],
   "host_permissions": [
     "*://*.uyap.gov.tr/*",
