@@ -1,314 +1,247 @@
 /**
  * KonsRücü — Tanıtım / Landing (PUBLIC) · app/tanitim/page.tsx
- * Kimlik: Türk hukuk dosyası + süre/zamanaşımı korkusu. Mürekkep + manila + bordo + pirinç.
- * Spectral / IBM Plex Sans / IBM Plex Mono. İmza: "Süre Cetveli" + kaşe. Oturumsuz (middleware public).
+ * Beğenilen midnight+teal marka dili (promo videolarıyla aynı), cilalanmış:
+ * Sora başlık + Inter gövde, sade "K" logo, daha premium kartlar + ince hareket.
+ * Oturumsuz erişilir (middleware'de public rota). Auth/ctx KULLANMAZ.
  */
 import Link from 'next/link'
-import { Spectral, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google'
+import { Sora, Inter } from 'next/font/google'
+import {
+  Sparkles, CalendarClock, Gauge, Puzzle, Scale, Coins,
+  ShieldCheck, ArrowRight, Check, Mail, LogIn,
+} from 'lucide-react'
+import { KonsRucuMark } from '@/components/brand/konsrucu-mark'
 
-const display = Spectral({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['400', '500', '600', '700', '800'],
-  style: ['normal', 'italic'],
-  variable: '--f-display',
-})
-const body = IBM_Plex_Sans({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--f-body',
-})
-const mono = IBM_Plex_Mono({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['400', '500', '600'],
-  variable: '--f-mono',
-})
+const heading = Sora({ subsets: ['latin', 'latin-ext'], weight: ['500', '600', '700', '800'], variable: '--f-head' })
+const bodyF = Inter({ subsets: ['latin', 'latin-ext'], weight: ['400', '500', '600', '700'], variable: '--f-body' })
 
 export const dynamic = 'force-static'
 
 export const metadata = {
-  title: 'KonsRücü — Sigorta Geri Rücu · İcra Takip Sistemi',
+  title: 'KonsRücü — Sigorta Rücu Otomasyonu',
   description:
-    'Rücu dosyasının ilk dilekçeden son tahsilata her adımı tek yerde. AI belge çıkarımı, işleyen yasal sürelerin otomatik cetveli, UYAP senkron, kapasite panosu. Bir süre daha sessizce geçmesin.',
+    'Rücu dosyalarını uçtan uca yöneten platform: AI belge çıkarımı, otomatik süre radarı (zamanaşımı/itiraz/haciz), UYAP senkron, kapasite panosu. Hiçbir dosya, hiçbir süre kaçmaz.',
 }
 
-const MAIL = 'mailto:vberkanbiyikli@gmail.com?subject=KonsR%C3%BCc%C3%BC%20demo'
+const MAIL = 'mailto:vberkanbiyikli@gmail.com?subject=KonsR%C3%BCc%C3%BC%20demo%20talebi'
 
-/* ---- kaşe / mühür ---- */
-function Muhur({ size = 118, onBordo = false }: { size?: number; onBordo?: boolean }) {
-  const disk = onBordo ? 'var(--paper)' : 'var(--bordo)'
-  const kMark = onBordo ? 'var(--bordo)' : 'var(--paper)'
-  const arc = onBordo ? 'var(--bordo)' : 'var(--brass)'
-  return (
-    <svg viewBox="0 0 120 120" width={size} height={size} aria-hidden role="presentation">
-      <circle cx="60" cy="60" r="58" fill={disk} stroke="var(--brass)" strokeWidth="1.5" />
-      <circle cx="60" cy="60" r="49" fill="none" stroke="var(--brass)" strokeWidth="1" opacity="0.55" />
-      <defs>
-        <path id="muhurArc" d="M60,60 m-41,0 a41,41 0 1,1 82,0 a41,41 0 1,1 -82,0" />
-      </defs>
-      <text fill={arc} style={{ fontFamily: 'var(--f-mono)', fontSize: 8.2, letterSpacing: '3.2px' }}>
-        <textPath href="#muhurArc" startOffset="0%">· KONSRÜCÜ · SİGORTA GERİ RÜCU · İCRA TAKİP </textPath>
-      </text>
-      <g transform="translate(41.1,37.5) scale(0.45)">
-        <rect x="6" y="10" width="14" height="80" rx="2" fill={kMark} />
-        <path d="M22 50 L62 12 L78 12 L36 50 L78 88 L62 88 Z" fill={kMark} />
-        <circle cx="50" cy="50" r="8" fill="var(--brass)" />
-      </g>
-    </svg>
-  )
-}
-
-/* ---- süre cetveli satırları (imza öğe) ---- */
-const SURELER: { kod: string; ad: string; sure: string; kalan?: string; acil?: boolean }[] = [
-  { kod: 'İİK m.62', ad: 'Ödeme emrine itiraz', sure: '7 gün', kalan: '3 gün kaldı', acil: true },
-  { kod: 'İİK m.67', ad: 'İtirazın iptali davası', sure: '1 yıl' },
-  { kod: 'İİK m.78', ad: 'Haciz isteme', sure: '1 yıl' },
-  { kod: 'İİK m.106', ad: 'Satış isteme', sure: '1 yıl' },
-  { kod: 'KTK 109', ad: 'Trafik zamanaşımı', sure: '2 yıl', kalan: '12 gün' },
+const FEATURES = [
+  { icon: Sparkles, t: 'AI Belge Çıkarımı', d: 'Tüm evraktan borçlu(lar), kusur oranı, rücu tutarı, yetkili icra ve eyleme dönük öneriler — kaynağı gösterilerek, saniyeler içinde.' },
+  { icon: CalendarClock, t: 'Otomatik Süre Radarı', d: 'Zamanaşımı, itiraz (İİK 62), haciz (İİK 78), satış (İİK 106) süreleri otomatik izlenir; yaklaşan süre görev olarak önünüze gelir.' },
+  { icon: Gauge, t: 'Kapasite & Darboğaz', d: 'Portföy nerede yığılıyor, haftalık giriş/çıkış dengesi, en uzun bekleyen dosyalar — yönetim tek bakışta.' },
+  { icon: Puzzle, t: 'UYAP Senkron', d: 'Chrome eklentisiyle Avukat Portalından durum, safahat, evrak ve masraf canlı akar. Salt-okuma; takip açma yalnız avukat onayıyla.' },
+  { icon: Scale, t: 'Dava, Dilekçe & Emsal', d: 'İtirazın iptali/dava dilekçesi üreticisi, görevli mahkeme rücu yönünden; talep-anında Yargıtay emsal karar.' },
+  { icon: Coins, t: 'Taksit · Masraf · Faiz', d: 'Dönemsel kanuni faiz hesabı, taksit planı + hatırlatma, makbuzdan otomatik masraf çıkarımı ve rapor.' },
 ]
 
-const ISLER: { mark: string; ad: string; ac: string }[] = [
-  { mark: 'AI · ÇIKARIM', ad: 'Belgeyi okur, dosyayı kurar', ac: 'Tüm evraktan borçlu(lar), kusur oranı, rücu tutarı ve yetkili icra — her biri hangi belgeden çıktığı gösterilerek.' },
-  { mark: 'İİK 62·78·106', ad: 'Süreleri sayar', ac: 'İtiraz, haciz, satış ve zamanaşımı süreleri otomatik işler; yaklaşan süre görev olarak önünüze gelir.' },
-  { mark: 'UYAP · PORTAL', ad: 'Portalla senkron', ac: 'Avukat Portalından durum, safahat, finansal döküm, evrak ve masraf canlı akar. Salt-okuma; takip açma yalnız avukat onayıyla.' },
-  { mark: 'KAPASİTE', ad: 'Darboğazı gösterir', ac: 'Portföy nerede yığılıyor, haftalık giriş-çıkış dengesi, en uzun bekleyen dosyalar — yönetim tek bakışta görür.' },
-  { mark: 'HMK · EMSAL', ad: 'Dava ve dayanak', ac: 'İtirazın iptali dilekçesini üretir, görevli mahkemeyi rücu yönünden ayırır; talep-anında Yargıtay emsalı getirir.' },
-  { mark: 'TBK · FAİZ', ad: 'Tahsili tamamlar', ac: 'Dönemsel kanuni faiz, taksit planı ve hatırlatma, makbuzdan otomatik masraf ve tahsilat kaydı.' },
-]
+const ASAMALAR = ['İcra', 'İtiraz', 'Arabuluculuk', 'Dava', 'Karar', 'İnfaz', 'Tahsil']
 
-const DONGU = ['İcra', 'İtiraz', 'Arabuluculuk', 'Dava', 'Karar', 'İnfaz', 'Tahsil']
-
-const GUVENCE = [
-  ['KVKK', 'Kişisel veriler yalnız yetkili takip amacıyla, büronun sorumluluğunda işlenir.'],
-  ['İzolasyon', 'Çok-kiracılı yapı; her sorgu müşteri kapsamında, veriler ayrık.'],
-  ['Salt-okuma', 'UYAP tarafında yazma yok; tek istisna avukat onaylı tevzi.'],
-  ['Denetim izi', 'Her işlem, her süre, her olay kalıcı kayıtta.'],
+const GUVEN = [
+  'KVKK uyumlu; kişisel veriler yalnız yetkili takip amacıyla işlenir',
+  'Çok-kiracılı izolasyon — her sorgu müşteri kapsamında',
+  'UYAP tarafında salt-okuma; yazma yalnız avukat onaylı tevzi',
+  'Her işlem denetim izinde; süre ve olay kaydı kalıcı',
 ]
 
 const CSS = `
-.kx { font-family: var(--f-body); background: var(--ink); color: var(--paper); -webkit-font-smoothing: antialiased; }
-.kx ::selection { background: var(--bordo); color: var(--paper); }
-.kx a { color: inherit; text-decoration: none; }
-.kx :focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 2px; }
-.kx-serif { font-family: var(--f-display); }
-.kx-mono { font-family: var(--f-mono); }
-.kx-eyebrow { font-family: var(--f-mono); font-size: 12.5px; letter-spacing: 0.34em; text-transform: uppercase; color: var(--brass); }
-.kx-rule { height: 1px; background: linear-gradient(90deg, transparent, var(--brass), transparent); opacity: .5; }
-.kx-btn { font-family: var(--f-body); font-weight: 600; font-size: 15.5px; padding: 14px 26px; border-radius: 2px; display: inline-flex; align-items: center; gap: 10px; transition: transform .18s ease, background .18s ease, color .18s ease; }
-.kx-btn-primary { background: var(--bordo); color: var(--paper); border: 1px solid var(--bordoLit); }
-.kx-btn-primary:hover { transform: translateY(-1px); background: var(--bordoLit); }
-.kx-btn-ghost { border: 1px solid rgba(176,134,58,.45); color: var(--paper); }
-.kx-btn-ghost:hover { border-color: var(--brass); background: rgba(176,134,58,.08); }
-.kx-idx { border-top: 1px solid rgba(176,134,58,.18); transition: background .2s ease; }
-.kx-idx:hover { background: rgba(176,134,58,.05); }
-.kx-doc { background: var(--paper); color: var(--ink); border-radius: 3px; box-shadow: 0 30px 70px rgba(0,0,0,.5), 0 2px 0 var(--brass); }
-.kx-tick { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--ink); background: var(--paper); }
-@keyframes kxpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(166,50,59,0); } 50% { box-shadow: 0 0 0 5px rgba(166,50,59,.22); } }
-.kx-acil { animation: kxpulse 2.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .kx-acil { animation: none; } .kx-btn:hover { transform: none; } }
-@media (max-width: 760px) { .kx-h1 { font-size: 52px !important; } .kx-hero-grid { grid-template-columns: 1fr !important; } .kx-isler { grid-template-columns: 1fr !important; } }
+.lp { font-family: var(--f-body); }
+.lp .hd { font-family: var(--f-head); }
+.lp ::selection { background:#2fcad4; color:#04222a; }
+.lp :focus-visible { outline:2px solid #46d6e0; outline-offset:3px; border-radius:4px; }
+.lp-card { transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, background .22s ease; }
+.lp-card:hover { transform: translateY(-3px); border-color: rgba(47,202,212,.42); background: rgba(255,255,255,.05); box-shadow: 0 22px 55px rgba(0,0,0,.42); }
+.lp-ico { transition: color .22s ease; color:#46d6e0; }
+.lp-btn { transition: transform .18s ease, filter .18s ease; }
+.lp-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
+@keyframes lpglow { 0%,100%{opacity:.45; transform:scale(1)} 50%{opacity:.8; transform:scale(1.06)} }
+.lp-glow { animation: lpglow 6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce){ .lp-glow{animation:none} .lp-card:hover,.lp-btn:hover{transform:none} }
 `
+
+function Feature({ icon: Icon, t, d }: { icon: typeof Sparkles; t: string; d: string }) {
+  return (
+    <div className="lp-card rounded-2xl border border-white/10 bg-white/[0.025] p-6">
+      <Icon className="lp-ico h-6 w-6" strokeWidth={1.75} />
+      <h3 className="hd mt-4 text-[19px] font-bold tracking-[-0.01em] text-white">{t}</h3>
+      <p className="mt-2 text-[14.5px] leading-[1.6] text-slate-300/85">{d}</p>
+    </div>
+  )
+}
 
 export default function TanitimPage() {
   return (
-    <main
-      className={`kx ${display.variable} ${body.variable} ${mono.variable}`}
-      style={
-        {
-          '--ink': '#17130F',
-          '--ink2': '#221A13',
-          '--paper': '#EFE9DC',
-          '--paperLine': '#D7CBB2',
-          '--bordo': '#7C1D24',
-          '--bordoLit': '#A6323B',
-          '--brass': '#B0863A',
-          '--ink60': '#6B6154',
-          '--paper60': '#A99E8B',
-        } as React.CSSProperties
-      }
-    >
+    <main className={`lp ${heading.variable} ${bodyF.variable} min-h-screen bg-[#0a1628] text-white`}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
-      {/* künye şeridi (dosya başlığı gibi) */}
-      <div className="mx-auto flex max-w-[1160px] items-center justify-between px-6 py-5">
-        <div className="flex items-center gap-3">
-          <Muhur size={38} />
-          <span className="kx-serif" style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.01em' }}>KonsRücü</span>
-        </div>
-        <div className="flex items-center gap-6">
-          <span className="kx-mono hidden sm:inline" style={{ fontSize: 11.5, letterSpacing: '0.18em', color: 'var(--paper60)' }}>ESAS · SÜRE · SAFAHAT</span>
-          <Link href="/login" className="kx-mono" style={{ fontSize: 13, letterSpacing: '0.12em', color: 'var(--brass)' }}>GİRİŞ →</Link>
-        </div>
-      </div>
-      <div className="mx-auto max-w-[1160px] px-6"><div className="kx-rule" /></div>
+      {/* arka plan: derinlik + ince nokta dokusu + teal ışıltı */}
+      <div className="pointer-events-none fixed inset-0 -z-10" style={{
+        background:
+          'radial-gradient(60rem 40rem at 50% -10%, rgba(47,202,212,0.07), transparent 60%), linear-gradient(180deg,#0a1628,#0b1b2e 60%,#0a1628)',
+      }} />
+      <div className="pointer-events-none fixed inset-0 -z-10 opacity-[0.5]" style={{
+        backgroundImage: 'radial-gradient(rgba(255,255,255,0.045) 1px, transparent 1px)',
+        backgroundSize: '26px 26px',
+        maskImage: 'radial-gradient(70rem 50rem at 70% 0%, #000, transparent 70%)',
+        WebkitMaskImage: 'radial-gradient(70rem 50rem at 70% 0%, #000, transparent 70%)',
+      }} />
 
-      {/* HERO */}
-      <section className="mx-auto max-w-[1160px] px-6 pb-20 pt-14 sm:pt-20">
-        <div className="kx-hero-grid grid items-center gap-16" style={{ gridTemplateColumns: '1.08fr 0.92fr' }}>
+      {/* header */}
+      <header className="mx-auto flex max-w-[1140px] items-center justify-between px-6 py-5">
+        <div className="flex items-center gap-2.5">
+          <KonsRucuMark size={30} />
+          <span className="hd text-[20px] font-extrabold tracking-[-0.02em]">Kons<span className="text-[#46d6e0]">Rücu</span></span>
+        </div>
+        <Link href="/login" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3.5 py-2 text-[13.5px] font-semibold text-slate-200 transition hover:border-[#2fcad4]/50 hover:text-white">
+          <LogIn className="h-4 w-4" /> Giriş
+        </Link>
+      </header>
+
+      {/* hero */}
+      <section className="mx-auto max-w-[1140px] px-6 pb-16 pt-12 sm:pt-20">
+        <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
-            <div className="kx-eyebrow">Sigorta Geri Rücu · İcra Takip</div>
-            <h1 className="kx-serif kx-h1" style={{ marginTop: 22, fontSize: 84, lineHeight: 1.02, letterSpacing: '-0.025em', fontWeight: 700 }}>
-              Zamanaşımı<br />kimseyi<br /><span style={{ fontStyle: 'italic', color: 'var(--brass)' }}>beklemez.</span>
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#2fcad4]/25 bg-[#2fcad4]/[0.06] px-3.5 py-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#46d6e0]" />
+              <span className="font-mono text-[11.5px] uppercase tracking-[0.22em] text-[#8fe3ea]">Sigorta Rücu Otomasyonu</span>
+            </div>
+            <h1 className="hd mt-6 text-[46px] font-extrabold leading-[1.04] tracking-[-0.04em] sm:text-[62px]">
+              Rücu dosyalarınız,<br /><span className="text-[#46d6e0]">uçtan uca</span> tek platformda
             </h1>
-            <p style={{ marginTop: 28, maxWidth: '46ch', fontSize: 18, lineHeight: 1.62, color: '#D9D0BF' }}>
-              KonsRücü belgeyi okur, işleyen yasal süreleri sayar ve dosyayı ilk dilekçeden son tahsilata kadar yürütür — böylece bir süre daha sessizce geçmez.
+            <p className="mt-6 max-w-[50ch] text-[17.5px] leading-[1.6] text-slate-300">
+              Belgeyi AI okur ve dosyayı kurar; zamanaşımı–itiraz–haciz süreleri otomatik izlenir; portföyün nerede yığıldığı tek bakışta.
+              <b className="text-white"> Hiçbir dosya, hiçbir süre kaçmaz.</b>
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <a href={MAIL} className="kx-btn kx-btn-primary">Demo iste</a>
-              <Link href="/login" className="kx-btn kx-btn-ghost">Giriş yap →</Link>
+              <a href={MAIL} className="lp-btn inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-6 py-3.5 text-[15.5px] font-bold text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]">
+                <Mail className="h-[18px] w-[18px]" /> Demo iste
+              </a>
+              <Link href="/login" className="lp-btn inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3.5 text-[15.5px] font-semibold text-slate-100 hover:border-[#2fcad4]/50">
+                Giriş yap <ArrowRight className="h-[18px] w-[18px]" />
+              </Link>
             </div>
           </div>
 
-          {/* imza: SÜRE CETVELİ (manila evrak, dosya sekmeli) */}
-          <div>
-            <div className="kx-mono" style={{ display: 'inline-block', marginLeft: 20, background: 'var(--paper)', color: 'var(--bordo)', fontSize: 11, letterSpacing: '0.14em', padding: '6px 15px 7px', borderRadius: '3px 3px 0 0', borderBottom: '2px solid var(--brass)' }}>
-              ESAS · 2026/1487
-            </div>
-            <div className="kx-doc" style={{ padding: '30px 30px 26px' }}>
-              <div className="flex items-baseline justify-between">
-                <div className="kx-serif" style={{ fontSize: 21, fontWeight: 700, color: 'var(--ink)' }}>Süre Cetveli</div>
-                <div className="kx-mono" style={{ fontSize: 10.5, letterSpacing: '0.16em', color: 'var(--bordo)' }}>OTOMATİK</div>
-              </div>
-              <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--ink60)' }}>her dosyada işleyen yasal süreler</div>
-              <div style={{ height: 1, background: 'var(--paperLine)', margin: '18px 0 6px' }} />
-              <div style={{ position: 'relative' }}>
-                <div style={{ position: 'absolute', left: 4.5, top: 14, bottom: 14, width: 1, background: 'var(--paperLine)' }} />
-                {SURELER.map((s) => (
-                  <div key={s.kod} className="flex items-center gap-4" style={{ padding: '13px 0', position: 'relative' }}>
-                    <span className="kx-tick" style={s.acil ? { borderColor: 'var(--bordo)', background: 'var(--bordoLit)' } : undefined} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink)' }}>{s.ad}</div>
-                      <div className="kx-mono" style={{ fontSize: 11, color: 'var(--ink60)', marginTop: 1 }}>{s.kod}</div>
-                    </div>
-                    <span className="kx-mono" style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{s.sure}</span>
-                    {s.kalan && (
-                      <span
-                        className={`kx-mono ${s.acil ? 'kx-acil' : ''}`}
-                        style={{ fontSize: 11.5, fontWeight: 600, padding: '4px 10px', borderRadius: 2, color: 'var(--paper)', background: 'var(--bordo)', whiteSpace: 'nowrap' }}
-                      >
-                        {s.kalan}
-                      </span>
-                    )}
+          {/* hero görsel — AI çıkarım kartı */}
+          <div className="relative">
+            <div className="lp-glow pointer-events-none absolute -inset-8 -z-10 rounded-[40px]" style={{ background: 'radial-gradient(460px 320px at 62% 36%, rgba(47,202,212,0.22), transparent 70%)' }} />
+            <div className="rounded-2xl p-[1px]" style={{ background: 'linear-gradient(160deg, rgba(47,202,212,0.5), rgba(47,202,212,0.05) 45%, rgba(255,255,255,0.06))' }}>
+              <div className="rounded-2xl bg-[#0c1a2c]">
+                <div className="flex items-center gap-3 border-b border-white/8 px-5 py-4" style={{ background: 'linear-gradient(180deg,rgba(47,202,212,0.08),transparent)' }}>
+                  <KonsRucuMark size={26} />
+                  <div>
+                    <div className="hd text-[14.5px] font-bold">AI Çıkarımı</div>
+                    <div className="text-[11.5px] text-slate-400">tüm evraktan otomatik</div>
                   </div>
-                ))}
+                  <span className="ml-auto rounded-full bg-[#35c994]/16 px-2.5 py-1 text-[11px] font-bold text-[#5fd6a0]">✓ 12 alan</span>
+                </div>
+                <div className="px-5 py-2">
+                  {[['Borçlu', 'Sürücü + Ruhsat Sahibi'], ['Kusur oranı', '%75'], ['Rücu tutarı', '128.400,00 ₺'], ['Yetkili icra', 'Kaza yeri']].map(([k, v], i) => (
+                    <div key={k} className={`flex items-center gap-3 py-3 text-[13.5px] ${i > 0 ? 'border-t border-white/5' : ''}`}>
+                      <span className="w-[110px] shrink-0 text-slate-400">{k}</span>
+                      <span className="font-semibold text-slate-100">{v}</span>
+                    </div>
+                  ))}
+                  <div className="my-3 rounded-xl border border-[#2fcad4]/22 bg-[#2fcad4]/10 px-4 py-3 text-[12.5px] text-[#bfe9ee]">
+                    💡 Öneri: plaka tescil sorgusu — işleteni doğrula
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="kx-mono" style={{ marginTop: 14, textAlign: 'center', fontSize: 11, letterSpacing: '0.14em', color: 'var(--paper60)' }}>
-              hiçbir süre sessizce geçmez
             </div>
           </div>
         </div>
       </section>
 
-      {/* künye/stat bandı */}
-      <section style={{ borderTop: '1px solid rgba(176,134,58,.18)', borderBottom: '1px solid rgba(176,134,58,.18)', background: 'rgba(176,134,58,.03)' }}>
-        <div className="mx-auto grid max-w-[1160px] grid-cols-2 gap-x-6 gap-y-8 px-6 py-10 sm:grid-cols-4">
-          {[['1.000+', 'dosya / yıl'], ['13', 'aşama, tek dosyada'], ['UYAP', 'canlı senkron'], ['0', 'kaçan süre hedefi']].map(([n, l]) => (
-            <div key={l}>
-              <div className="kx-serif" style={{ fontSize: 40, fontWeight: 700, color: 'var(--paper)' }}>{n}</div>
-              <div className="kx-mono" style={{ marginTop: 4, fontSize: 11.5, letterSpacing: '0.1em', color: 'var(--paper60)', textTransform: 'uppercase' }}>{l}</div>
+      {/* stat şeridi */}
+      <section className="border-y border-white/8 bg-white/[0.02]">
+        <div className="mx-auto grid max-w-[1140px] grid-cols-2 gap-6 px-6 py-9 sm:grid-cols-4">
+          {[['1.000+', 'dosya/yıl kapasite'], ['13', 'aşama, tek dosyada'], ['UYAP', 'canlı senkron'], ['KVKK', 'uyumlu · izole']].map(([n, l]) => (
+            <div key={l} className="text-center">
+              <div className="hd text-[32px] font-extrabold tracking-[-0.02em] text-[#46d6e0]">{n}</div>
+              <div className="mt-1 text-[13px] text-slate-400">{l}</div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* İŞLER — dosya fihristi */}
-      <section className="mx-auto max-w-[1160px] px-6 py-20">
-        <div className="flex items-end justify-between gap-6">
-          <h2 className="kx-serif" style={{ fontSize: 44, lineHeight: 1.05, letterSpacing: '-0.02em', fontWeight: 700, maxWidth: '16ch' }}>
-            Dosya kapanana kadar<br />yanınızda
-          </h2>
-          <div className="kx-mono hidden sm:block" style={{ fontSize: 11.5, letterSpacing: '0.14em', color: 'var(--paper60)', textAlign: 'right', paddingBottom: 8 }}>FİHRİST · 6 BAŞLIK</div>
+      {/* özellikler */}
+      <section className="mx-auto max-w-[1140px] px-6 py-16 sm:py-20">
+        <div className="mx-auto max-w-[46ch] text-center">
+          <h2 className="hd text-[32px] font-extrabold tracking-[-0.03em] sm:text-[40px]">İcradan tahsile, her adım burada</h2>
+          <p className="mt-3 text-[15.5px] text-slate-300">Ayrı ayrı araçlar değil — rücunun tüm yaşam döngüsü tek sistemde.</p>
         </div>
-        <div className="kx-isler mt-10 grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-          {ISLER.map((it) => (
-            <div key={it.ad} className="kx-idx" style={{ padding: '26px 4px' }}>
-              <div className="flex items-start gap-5">
-                <div className="kx-mono" style={{ fontSize: 11, letterSpacing: '0.08em', color: 'var(--brass)', width: 118, flex: 'none', paddingTop: 5 }}>{it.mark}</div>
-                <div>
-                  <h3 className="kx-serif" style={{ fontSize: 23, fontWeight: 600, color: 'var(--paper)' }}>{it.ad}</h3>
-                  <p style={{ marginTop: 7, fontSize: 14.5, lineHeight: 1.6, color: '#B8AF9E', maxWidth: '42ch' }}>{it.ac}</p>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {FEATURES.map((f) => <Feature key={f.t} {...f} />)}
         </div>
       </section>
 
-      {/* YAŞAM DÖNGÜSÜ */}
-      <section style={{ background: 'var(--ink2)', borderTop: '1px solid rgba(176,134,58,.18)', borderBottom: '1px solid rgba(176,134,58,.18)' }}>
-        <div className="mx-auto max-w-[1160px] px-6 py-16">
-          <div className="kx-eyebrow" style={{ textAlign: 'center' }}>Dosyanın yaşam döngüsü</div>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-4">
-            {DONGU.map((d, i) => (
-              <div key={d} className="flex items-center gap-3">
-                <span className="flex items-center gap-2.5">
-                  <span className="kx-mono" style={{ fontSize: 11, color: 'var(--brass)' }}>{String(i + 1).padStart(2, '0')}</span>
-                  <span className="kx-serif" style={{ fontSize: 22, fontWeight: 600, color: 'var(--paper)' }}>{d}</span>
-                </span>
-                {i < DONGU.length - 1 && <span style={{ color: 'var(--bordo)', fontSize: 18 }}>—</span>}
+      {/* yaşam döngüsü */}
+      <section className="mx-auto max-w-[1140px] px-6 pb-16">
+        <div className="rounded-3xl border border-white/10 bg-white/[0.02] px-6 py-10 sm:px-10">
+          <div className="text-center font-mono text-[11px] uppercase tracking-[0.2em] text-[#8fe3ea]">Dosyanın yaşam döngüsü</div>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
+            {ASAMALAR.map((a, i) => (
+              <div key={a} className="flex items-center gap-2 sm:gap-2.5">
+                <span className="hd rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-[14px] font-semibold text-slate-100">{a}</span>
+                {i < ASAMALAR.length - 1 && <ArrowRight className="h-4 w-4 text-[#2fcad4]/70" />}
               </div>
             ))}
           </div>
-          <p style={{ margin: '26px auto 0', maxWidth: '58ch', textAlign: 'center', fontSize: 14.5, lineHeight: 1.6, color: '#B8AF9E' }}>
-            Toplantılar, duruşmalar, süreler ve AI yardımlı yazışmalar tek yerden yürür; aşama değişince süre görevleri kendiliğinden doğar.
+          <p className="mx-auto mt-6 max-w-[60ch] text-center text-[14px] leading-[1.6] text-slate-300/85">
+            Toplantılar, duruşmalar, süreler ve AI yardımlı yazışmalar tek yerden koordine edilir; aşama değişince süre görevleri otomatik doğar.
           </p>
         </div>
       </section>
 
-      {/* GÜVENCE */}
-      <section className="mx-auto max-w-[1160px] px-6 py-20">
-        <div className="grid gap-12" style={{ gridTemplateColumns: '0.9fr 1.1fr' }}>
+      {/* güvenlik */}
+      <section className="mx-auto max-w-[1140px] px-6 pb-16">
+        <div className="grid gap-8 rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.045] to-transparent px-6 py-10 sm:grid-cols-[0.8fr_1.2fr] sm:px-10">
           <div>
-            <div className="kx-eyebrow">Güvence</div>
-            <h2 className="kx-serif" style={{ marginTop: 18, fontSize: 40, lineHeight: 1.06, letterSpacing: '-0.02em', fontWeight: 700 }}>
-              Hukuki veri, hukukun<br />ciddiyetiyle
-            </h2>
-            <p style={{ marginTop: 16, fontSize: 15.5, lineHeight: 1.62, color: '#B8AF9E', maxWidth: '38ch' }}>
-              Sistem güvenle devredilebilir; erişim yetkiyle sınırlı, aktarım şifreli, her adım kayıtlı.
-            </p>
+            <ShieldCheck className="lp-ico h-8 w-8" strokeWidth={1.75} />
+            <h2 className="hd mt-3 text-[26px] font-extrabold tracking-[-0.02em]">Güvenlik & uyum</h2>
+            <p className="mt-2 text-[14.5px] leading-[1.6] text-slate-300/85">Hukuki veri ciddiyetle korunur; sistem güvenle devredilebilir.</p>
           </div>
-          <div>
-            {GUVENCE.map(([t, d]) => (
-              <div key={t} className="kx-idx" style={{ padding: '22px 0' }}>
-                <div className="flex items-baseline gap-5">
-                  <div className="kx-mono" style={{ fontSize: 12, letterSpacing: '0.12em', color: 'var(--brass)', width: 110, flex: 'none' }}>{t.toUpperCase()}</div>
-                  <p style={{ fontSize: 15.5, lineHeight: 1.55, color: 'var(--paper)' }}>{d}</p>
-                </div>
-              </div>
+          <ul className="grid gap-3">
+            {GUVEN.map((g) => (
+              <li key={g} className="flex items-start gap-3 text-[14.5px] text-slate-200">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md bg-[#35c994]/16 text-[#5fd6a0]"><Check className="h-3.5 w-3.5" /></span>
+                {g}
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       </section>
 
-      {/* CTA */}
-      <section style={{ background: 'var(--bordo)' }}>
-        <div className="mx-auto max-w-[1160px] px-6 py-20 text-center">
-          <div className="mx-auto w-fit"><Muhur size={92} onBordo /></div>
-          <h2 className="kx-serif" style={{ marginTop: 22, fontSize: 46, lineHeight: 1.05, letterSpacing: '-0.02em', fontWeight: 700, color: 'var(--paper)' }}>
-            Bürona uyarlayalım
-          </h2>
-          <p style={{ margin: '14px auto 0', maxWidth: '52ch', fontSize: 16, lineHeight: 1.6, color: '#F0E4D4' }}>
-            Kendi alacaklı, vekil ve faiz ayarlarınızla, UYAP senkronunuzla — birkaç günde canlıya.
+      {/* final CTA */}
+      <section className="mx-auto max-w-[1140px] px-6 pb-20">
+        <div className="relative overflow-hidden rounded-3xl border border-[#2fcad4]/25 px-6 py-14 text-center sm:px-10" style={{ background: 'radial-gradient(720px 420px at 50% 0%, rgba(47,202,212,0.16), transparent 62%), #0c1c30' }}>
+          <div className="mx-auto mb-5 w-fit"><KonsRucuMark size={56} /></div>
+          <h2 className="hd text-[32px] font-extrabold tracking-[-0.03em] sm:text-[42px]">Bürona uyarlayalım</h2>
+          <p className="mx-auto mt-3 max-w-[54ch] text-[16px] leading-[1.6] text-slate-300">
+            Çok-kiracılı yapı, kendi alacaklı/vekil/faiz ayarların ve UYAP senkronunla — birkaç günde canlıya.
           </p>
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-            <a href={MAIL} className="kx-btn" style={{ background: 'var(--paper)', color: 'var(--bordo)', fontWeight: 700 }}>Demo iste</a>
-            <Link href="/login" className="kx-btn" style={{ border: '1px solid rgba(239,233,220,.5)', color: 'var(--paper)' }}>Giriş yap →</Link>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <a href={MAIL} className="lp-btn inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-6 py-3.5 text-[15.5px] font-bold text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]">
+              <Mail className="h-[18px] w-[18px]" /> İletişime geç
+            </a>
+            <Link href="/login" className="lp-btn inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3.5 text-[15.5px] font-semibold text-slate-100 hover:border-[#2fcad4]/50">
+              Giriş yap <ArrowRight className="h-[18px] w-[18px]" />
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer>
-        <div className="mx-auto flex max-w-[1160px] flex-wrap items-center justify-between gap-4 px-6 py-9">
-          <div className="flex items-center gap-2.5">
-            <Muhur size={26} />
-            <span className="kx-serif" style={{ fontSize: 16, fontWeight: 700 }}>KonsRücü</span>
-            <span className="kx-mono" style={{ fontSize: 11, letterSpacing: '0.12em', color: 'var(--paper60)', marginLeft: 6 }}>SİGORTA RÜCU OTOMASYONU</span>
+      {/* footer */}
+      <footer className="border-t border-white/8">
+        <div className="mx-auto flex max-w-[1140px] flex-wrap items-center justify-between gap-4 px-6 py-8 text-[13px] text-slate-400">
+          <div className="flex items-center gap-2">
+            <KonsRucuMark size={22} />
+            <span className="hd font-bold text-slate-200">Kons<span className="text-[#46d6e0]">Rücu</span></span>
+            <span className="ml-2">· Sigorta Rücu Otomasyonu</span>
           </div>
-          <div className="kx-mono flex items-center gap-6" style={{ fontSize: 12, letterSpacing: '0.08em', color: 'var(--paper60)' }}>
-            <Link href="/gizlilik">GİZLİLİK</Link>
-            <a href={MAIL}>İLETİŞİM</a>
-            <Link href="/login">GİRİŞ</Link>
+          <div className="flex items-center gap-5">
+            <Link href="/gizlilik" className="transition hover:text-slate-200">Gizlilik</Link>
+            <a href={MAIL} className="transition hover:text-slate-200">İletişim</a>
+            <Link href="/login" className="transition hover:text-slate-200">Giriş</Link>
           </div>
         </div>
       </footer>
