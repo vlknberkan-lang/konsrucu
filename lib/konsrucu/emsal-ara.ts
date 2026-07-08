@@ -13,6 +13,7 @@
  * Yasal/etik: mahkeme kararları telifsiz; makul hız (dosya başına ~1 sorgu) + cache.
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { anthropic } from './ai-util'
 
 const BASE = 'https://karararama.yargitay.gov.tr'
 const UCUZ_MODEL = 'claude-haiku-4-5-20251001' // sorgu üretimi + ön eleme (katmanlı: önce ucuz)
@@ -197,7 +198,7 @@ async function alakaYaz(client: Anthropic, g: EmsalGirdi, metin: string): Promis
 export async function dosyadanEmsal(g: EmsalGirdi, sayi = 4): Promise<{ kelime: string; emsaller: EmsalSecim[] }> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new Error('ANTHROPIC_API_KEY yok')
-  const client = new Anthropic({ apiKey: key })
+  const client = anthropic(key)
 
   const kelime = await sorguUret(client, g)
   let satirlar = await aramaYargitay(kelime, 20)

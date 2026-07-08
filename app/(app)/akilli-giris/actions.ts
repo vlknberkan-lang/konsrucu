@@ -7,7 +7,7 @@ import { Prisma, BelgeKategori, DosyaDurum, Yol, Brans, BorcluRol, TeyitDurum, C
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
-import { analizEt, analizSonHata, enIyiHasarFotolari } from '@/lib/konsrucu/analiz'
+import { analizEt, enIyiHasarFotolari } from '@/lib/konsrucu/analiz'
 import { mentorKurallariOku, mentorKurallariMetne } from '@/lib/konsrucu/mentor-kural'
 import { takipOlayKaydet } from '@/lib/konsrucu/takip-olay'
 import { onemliOlayDosyadanTamamla } from '@/lib/konsrucu/onemli-olay'
@@ -260,10 +260,10 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
     prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { aciklamaFooter: true, alacakliUnvan: true } }),
     mentorKurallariOku(dosya.musteriId),
   ])
-  const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined, gorseller, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null)
+  let aiHata: string | null = null
+  const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined, gorseller, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null, (m) => { aiHata = m })
   if (!analiz) {
-    const neden = analizSonHata()
-    return { ok: false, error: neden ? `AI çıkarımı başarısız: ${neden}` : 'AI çıkarımı sonuç vermedi (model yanıtı boş).' }
+    return { ok: false, error: aiHata ? `AI çıkarımı başarısız: ${aiHata}` : 'AI çıkarımı sonuç vermedi (model yanıtı boş).' }
   }
 
   // Rücu oranını TUTARLARDAN deterministik türet (LLM yaya→%100 derken tutarı yarı verebiliyor).

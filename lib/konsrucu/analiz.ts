@@ -5,7 +5,9 @@
  * Forced tool-use ile şema-zorunlu JSON. Model ucuz katman = Haiku (gerekirse sonnet).
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { z } from 'zod'
 import { unvanGecir } from './unvan'
+import { anthropic, toolCikti } from './ai-util'
 
 const MODEL = 'claude-sonnet-4-6' // dedektif çıkarım: çok-belge bağlam + mentor akıl yürütme → güçlü model (haiku yetersiz)
 
@@ -105,6 +107,22 @@ const SCHEMA = {
   required: ['yol', 'yolGuven', 'olayTuru', 'borclular', 'aciklama', 'olayBaglami', 'teyit'],
 }
 
+/**
+ * analizEt tool çıktısı için RUNTIME doğrulama — yukarıdaki JSON Schema'nın `required` alanlarını
+ * birebir zorlar (yol/yolGuven/olayTuru/borclular/aciklama/olayBaglami/teyit; borçlu→adUnvan, teyit→not).
+ * Gerisini passthrough ile OLDUĞU GİBİ geçirir (kalite kaybı yok). Çekirdek şekil tutmazsa çıkarım
+ * "sonuç yok" sayılır → çağıran güvenle null yoluna düşer (borclular/dekontlar DB'ye bozuk yazılmaz).
+ */
+const ZAnalizSonuc = z.object({
+  yol: z.enum(['klasik', 'idari', 'belirsiz']),
+  yolGuven: z.number(),
+  olayTuru: z.string(),
+  borclular: z.array(z.object({ adUnvan: z.string() }).passthrough()),
+  aciklama: z.string(),
+  olayBaglami: z.string(),
+  teyit: z.array(z.object({ not: z.string() }).passthrough()),
+}).passthrough()
+
 const SISTEM = `Sen Ray Sigorta A.Ş. vekili K/Partners hukuk bürosunun rücu DEDEKTİFİ ve MENTORUSUN. Sana bir hasar dosyasının TÜM belgelerinden çıkarılmış ham metin verilir: kaza tespit tutanağı, görgü tutanağı, ifade/beyan tutanakları, bilirkişi raporu, ekspertiz raporu, poliçe, ruhsat, ehliyet, alkol/promil raporu, dekontlar ve Ray'in İÇ "Lehe / Hukuk Devir Formu". METNİN YANI SIRA dosyadaki FOTOĞRAFLAR da ek görüntü olarak verilir — ehliyet, ruhsat, tutanak ve plaka fotoğraflarındaki isim/TCKN/plaka bilgilerini de OKU ve bağlama kat (OCR metni eksik olabilir, görüntüye bak). Önce OLAYIN BAĞLAMINI kur, sonra alanları çıkar ve "kaydet" aracını çağır.
 
 ★★ ANA İŞ — ÖNCE OLAY BAĞLAMINI KUR ("olayBaglami"): Bütün belgeleri TEK TEK, baştan sona oku. Olayı yeniden inşa et: ne zaman, nerede, hangi araçlar/plakalar, hangi kişiler (sürücü / araç sahibi / işleten / yaya / tanık), kaza NASIL meydana geldi, KUSUR kimde ve hangi orana göre. Her kritik olgunun HANGİ BELGEDEN geldiğini söyle (ör. "kaza tespit tutanağına göre…", "görgü tutanağındaki tanık X'in beyanına göre…", "ifade tutanağında sürücü…", "bilirkişi raporunda %… kusur"). BAĞLAMI KURMADAN borçlu/kusur ÖNERME — öneri bu bağlamdan çıkmalı.
@@ -156,7 +174,7 @@ export type Gorsel = { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/
 export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2): Promise<number[] | null> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key || !gorseller.length) return null
-  const client = new Anthropic({ apiKey: key })
+  const client = anthropic(key)
   const imgs = gorseller.slice(0, 12)
   const content: Anthropic.ContentBlockParam[] = []
   imgs.forEach((g, i) => {
@@ -192,11 +210,9 @@ export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2): Promise<nu
   }
 }
 
-// Son analizEt hatasının OKUNUR nedeni — UI genel "sonuç vermedi" yerine gerçek sebebi göstersin.
-// (Saha bulgusu 2026-07-06: kredi bitince/istek büyüyünce catch hatayı yutuyor, kullanıcı "API
-// anahtarı yok" sanıyordu. Modül-seviyesi tanı değeri; eşzamanlı iki çıkarımda son yazan kazanır — tanı için yeterli.)
-let _sonHata: string | null = null
-export function analizSonHata(): string | null { return _sonHata }
+// analizEt hata nedeni REQUEST-SCOPED: onHata callback'i ile çağırana iletilir (modül-global _sonHata
+// KALDIRILDI — eşzamanlı iki çıkarım artık birbirinin tanısını EZMİYOR). Saha bulgusu 2026-07-06:
+// kredi bitince/istek büyüyünce catch hatayı yutuyordu; kullanıcı "API anahtarı yok" sanıyordu.
 function hataOku(e: unknown): string {
   const st = (e as { status?: number })?.status
   const msg = e instanceof Error ? e.message : String(e)
@@ -208,12 +224,11 @@ function hataOku(e: unknown): string {
   return `${st ?? ''} ${msg}`.trim().slice(0, 300)
 }
 
-export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[], ogrenilenKurallar?: string, alacakliUnvan?: string | null): Promise<AnalizSonuc | null> {
-  _sonHata = null
+export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[], ogrenilenKurallar?: string, alacakliUnvan?: string | null, onHata?: (mesaj: string) => void): Promise<AnalizSonuc | null> {
   const key = process.env.ANTHROPIC_API_KEY
-  if (!key) { _sonHata = 'ANTHROPIC_API_KEY tanımlı değil (sunucu ortam değişkeni)'; return null }
-  if (!metin.trim()) { _sonHata = 'belge metni boş'; return null }
-  const client = new Anthropic({ apiKey: key })
+  if (!key) { onHata?.('ANTHROPIC_API_KEY tanımlı değil (sunucu ortam değişkeni)'); return null }
+  if (!metin.trim()) { onHata?.('belge metni boş'); return null }
+  const client = anthropic(key)
   const imgs = (gorseller ?? []).slice(0, 12)
   const content: Anthropic.ContentBlockParam[] = [{ type: 'text', text: `Belge metni:\n\n${metin.slice(0, 150000)}` }]
   for (const g of imgs) content.push({ type: 'image', source: { type: 'base64', media_type: g.mime, data: g.b64 } })
@@ -228,11 +243,13 @@ export async function analizEt(metin: string, footer?: string, gorseller?: Gorse
       tool_choice: { type: 'tool', name: 'kaydet' },
     })
     const block = res.content.find((b) => b.type === 'tool_use')
-    if (!block || block.type !== 'tool_use') { _sonHata = 'model yanıtında beklenen çıktı (tool_use) yok'; return null }
-    return block.input as AnalizSonuc
+    if (!block || block.type !== 'tool_use') { onHata?.('model yanıtında beklenen çıktı (tool_use) yok'); return null }
+    const parsed = toolCikti(block.input, ZAnalizSonuc, 'analizEt')
+    if (!parsed) { onHata?.('model çıktısı şema doğrulamasını geçemedi (beklenen alanlar eksik/bozuk)'); return null }
+    return parsed as unknown as AnalizSonuc
   } catch (e) {
     console.error('analizEt hata:', e)
-    _sonHata = hataOku(e)
+    onHata?.(hataOku(e))
     return null
   }
 }

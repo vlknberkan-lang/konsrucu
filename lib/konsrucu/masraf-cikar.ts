@@ -8,12 +8,14 @@
  * dedup + Masraf.create) → dosyaMakbuzlariniTara (dosyadaki tüm DEKONT belgelerini tara).
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cinsEslesti, ogrenilenMap, normCins } from './masraf-cins'
 import { masrafDedupKey, paraGuvenli } from './masraf'
 import { pdfMetinCikar } from './pdf-metin'
+import { anthropic, toolCikti } from './ai-util'
 
 // KATMAN 2 (fallback): yerel parser düşemezse / makbuz taranmışsa LLM. Makbuz "oku ve sayıları dök"
 // işidir → en ucuz model yeter (Sonnet DEĞİL). Çoğu makbuz Katman 1'de ₺0'a çözülür, buraya azı düşer.
@@ -56,6 +58,11 @@ const SCHEMA = {
   },
   required: ['kalemler'],
 }
+
+// LLM tool çıktısı doğrulama: zarf şekli (kalemler dizi + reddiyat bayrağı) zorunlu; her kalem AYRI
+// süzülür (bir bozuk kalem TÜM makbuzu düşürmesin — belgedenMasrafCikar zaten kalem-bazlı filtreler).
+const ZMakbuzKalem = z.object({ tutar: z.number(), cinsHam: z.string() }).passthrough()
+const ZMakbuzZarf = z.object({ reddiyatMakbuzuMu: z.boolean().optional(), kalemler: z.array(z.unknown()).optional() }).passthrough()
 
 const SISTEM = `Bu bir Türk icra/dava belgesidir (harç-masraf ödeme makbuzu YA DA tahsilat/reddiyat makbuzu olabilir). Görevin: YALNIZ büronun mahkemeye/icraya/PTT'ye ÖDEDİĞİ HARÇ ve MASRAF kalemlerini çıkarmak.
 
@@ -220,7 +227,7 @@ export async function makbuzCikarPdf(
   // KATMAN 2 (fallback): ucuz LLM. Metin çıktıysa metni gönder (vision'dan ucuz); çıkmadıysa belge/görüntü.
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return []
-  const client = new Anthropic({ apiKey: key })
+  const client = anthropic(key)
 
   const ipucuSatirlari: string[] = []
   if (ipuclari?.dosyaAdi) ipucuSatirlari.push(`Belge adı: ${ipuclari.dosyaAdi}`)
@@ -242,9 +249,10 @@ export async function makbuzCikarPdf(
     })
     const block = res.content.find((b) => b.type === 'tool_use')
     if (!block || block.type !== 'tool_use') return []
-    const input = block.input as { kalemler?: unknown; reddiyatMakbuzuMu?: boolean }
-    if (input.reddiyatMakbuzuMu) return [] // reddiyat/tahsilat makbuzu → masraf kalemi yok
-    return Array.isArray(input.kalemler) ? (input.kalemler as MakbuzKalem[]) : []
+    const zarf = toolCikti(block.input, ZMakbuzZarf, 'makbuzCikarPdf')
+    if (!zarf || zarf.reddiyatMakbuzuMu) return [] // şema tutmadı ya da reddiyat/tahsilat → masraf kalemi yok
+    return (Array.isArray(zarf.kalemler) ? zarf.kalemler : [])
+      .flatMap((k) => { const r = ZMakbuzKalem.safeParse(k); return r.success ? [r.data as MakbuzKalem] : [] })
   } catch (e) {
     console.error('makbuzCikarPdf (LLM fallback) hata:', e)
     return []

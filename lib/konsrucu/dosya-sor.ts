@@ -3,8 +3,8 @@
  * Dosyanın bağlamından (taraflar/tutarlar/aşamalar/belge metinleri/çıkarım) avukatın sorusunu yanıtlar.
  */
 import 'server-only'
-import Anthropic from '@anthropic-ai/sdk'
 import { unvanGecir } from './unvan'
+import { anthropic } from './ai-util'
 
 const MODEL = 'claude-sonnet-4-6' // hukuki Q&A → kalite katmanı
 
@@ -27,7 +27,7 @@ Yalnız verilen bilgilere dayan; UYDURMA. Bilgi yoksa "dosyada bu bilgi yok" de.
 export async function dosyaYolGoster(baglam: string, alacakliUnvan?: string | null): Promise<{ ok: boolean; cevap?: string; error?: string }> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return { ok: false, error: 'AI anahtarı (ANTHROPIC_API_KEY) tanımlı değil.' }
-  const client = new Anthropic({ apiKey: key })
+  const client = anthropic(key)
   try {
     const res = await client.messages.create({
       model: MODEL,
@@ -46,7 +46,7 @@ export async function dosyaSor(baglam: string, soru: string, alacakliUnvan?: str
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return { ok: false, error: 'AI anahtarı (ANTHROPIC_API_KEY) tanımlı değil.' }
   if (!soru.trim()) return { ok: false, error: 'Soru boş.' }
-  const client = new Anthropic({ apiKey: key })
+  const client = anthropic(key)
   try {
     const res = await client.messages.create({
       model: MODEL,

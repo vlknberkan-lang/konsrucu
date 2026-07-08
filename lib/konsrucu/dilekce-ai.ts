@@ -7,6 +7,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Gorsel } from './analiz'
 import { unvanGecir } from './unvan'
+import { anthropic } from './ai-util'
 
 const MODEL = 'claude-sonnet-4-6'
 
@@ -45,7 +46,7 @@ Sadece anlatım metnini döndür (başlık/JSON yok).`
 export async function dilekceAnlatim(g: AnlatimGirdi): Promise<string | null> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return null
-  const client = new Anthropic({ apiKey: key })
+  const client = anthropic(key)
   const imgs = (g.gorseller ?? []).slice(0, 10)
   // base64/uzun metni JSON dökümünden çıkar
   const { gorseller: _g, belgeMetni: _b, alacakliUnvan: _a, ...kunye } = g
