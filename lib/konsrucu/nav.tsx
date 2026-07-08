@@ -2,7 +2,7 @@
  * KonsRücü — navigasyon sabitleri · lib/konsrucu/nav.tsx
  * RAIL_NAV + durum renkleri statik. Kullanıcı/tenant/son-dosyalar GERÇEK veriden prop gelir (sahte sabit YOK).
  */
-import { Sunrise, ClipboardList, AlertTriangle, CheckCircle2, CalendarDays, ListTodo, CreditCard, Receipt, Building2, Puzzle, type LucideIcon } from 'lucide-react'
+import { Sunrise, Gauge, ClipboardList, AlertTriangle, CheckCircle2, CalendarDays, ListTodo, CreditCard, Receipt, Building2, Puzzle, type LucideIcon } from 'lucide-react'
 
 export type NavItem = { id: string; label: string; icon: LucideIcon; href: string; ready: boolean }
 
@@ -12,6 +12,7 @@ export type NavCounts = { onemli?: number; gorevler?: number }
 // Aktif destinasyonlar: Bugün (sabah kokpiti) + Atanan Dosyalar (hub) + Önemli/Tamamlanan Olaylar + Takvim + Taksitler + Şirket Bilgileri + Eklenti.
 export const RAIL_NAV: NavItem[] = [
   { id: 'bugun', label: 'Bugün', icon: Sunrise, href: '/bugun', ready: true },
+  { id: 'panel', label: 'Kapasite', icon: Gauge, href: '/panel', ready: true },
   { id: 'atanan', label: 'Atanan Dosyalar', icon: ClipboardList, href: '/atanan-dosyalar', ready: true },
   { id: 'onemli', label: 'Önemli Olaylar', icon: AlertTriangle, href: '/onemli-olaylar', ready: true },
   { id: 'tamamlanan', label: 'Tamamlanan Olaylar', icon: CheckCircle2, href: '/tamamlanan-olaylar', ready: true },
