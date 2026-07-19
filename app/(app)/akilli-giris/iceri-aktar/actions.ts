@@ -20,6 +20,7 @@ import { Prisma, DosyaDurum, Brans } from '@prisma/client'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { hugoCozumle, kanonik, type ImportSonuc } from '@/lib/import/hugo'
+import { dosyaLimitKontrol } from '@/lib/konsrucu/ai-kredi'
 import { tarihTR } from '@/lib/konsrucu/format'
 
 /** Tekrar import'ta tespit edilen, avukat onayı bekleyen alan farkı. */
@@ -165,6 +166,9 @@ export async function hugoIceriAktar(formData: FormData): Promise<IceriAktarSonu
       faizBaslangic: s.faizBaslangic,
       kaynakJson: s.kaynak as unknown as Prisma.InputJsonValue,
     }))
+
+    // FREE plan dosya limiti — createMany'den ÖNCE (limiti aşacak import hiç başlamaz).
+    await dosyaLimitKontrol(musteriId, veriler.length)
 
     try {
       // Atomik: createMany + denetim kaydı aynı transaction'da.

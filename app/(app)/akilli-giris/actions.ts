@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { prisma } from '@/lib/prisma'
 import { analizEt, enIyiHasarFotolari } from '@/lib/konsrucu/analiz'
+import { dosyaLimitKontrol } from '@/lib/konsrucu/ai-kredi'
 import { mentorKurallariOku, mentorKurallariMetne } from '@/lib/konsrucu/mentor-kural'
 import { takipOlayKaydet } from '@/lib/konsrucu/takip-olay'
 import { onemliOlayDosyadanTamamla } from '@/lib/konsrucu/onemli-olay'
@@ -88,7 +89,8 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
     prisma.ayarlar.findUnique({ where: { musteriId }, select: { aciklamaFooter: true, alacakliUnvan: true } }),
     mentorKurallariOku(musteriId),
   ])
-  const analiz = payload.metin ? await analizEt(payload.metin, ayarlar?.aciklamaFooter ?? undefined, undefined, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null) : null
+  await dosyaLimitKontrol(musteriId) // FREE plan: 20 aktif dosya kapısı
+  const analiz = payload.metin ? await analizEt(payload.metin, ayarlar?.aciklamaFooter ?? undefined, undefined, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null, undefined, { musteriId }) : null
 
   const durum: DosyaDurum = analiz ? (analiz.yol === 'idari' ? DosyaDurum.IDARI_YOL : DosyaDurum.INCELENIYOR) : DosyaDurum.INCELENIYOR
   const yeniOdemeler = dekontlardanOdemeler(analiz?.dekontlar)
@@ -261,7 +263,7 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
     mentorKurallariOku(dosya.musteriId),
   ])
   let aiHata: string | null = null
-  const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined, gorseller, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null, (m) => { aiHata = m })
+  const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined, gorseller, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null, (m) => { aiHata = m }, { musteriId: dosya.musteriId, dosyaId })
   if (!analiz) {
     return { ok: false, error: aiHata ? `AI çıkarımı başarısız: ${aiHata}` : 'AI çıkarımı sonuç vermedi (model yanıtı boş).' }
   }
@@ -1049,7 +1051,7 @@ export async function hasarFotoSecAI(dosyaId: string): Promise<{ ok: boolean; se
   }
   if (!gorseller.length) return { ok: false, error: 'Fotoğraflar indirilemedi ya da uygun biçimde değil' }
 
-  const idx = await enIyiHasarFotolari(gorseller, 2)
+  const idx = await enIyiHasarFotolari(gorseller, 2, { musteriId: dosya.musteriId, dosyaId })
   if (idx == null) return { ok: false, error: 'AI seçim sonucu vermedi (API anahtarı yok ya da yanıt boş).' }
   const secilen = idx.map((i) => idMap[i]).filter(Boolean)
 
@@ -1078,7 +1080,7 @@ export async function emsalBul(dosyaId: string): Promise<{ ok: boolean; error?: 
   try {
     const { kelime, emsaller } = await dosyadanEmsal({
       olayBaglami: cj.olayBaglami ?? null, olayTuru: cj.olayTuru ?? null, brans: dosya.brans ?? null, kusurDurumu: dosya.kusurDurumu ?? null,
-    }, 4)
+    }, 4, { musteriId: dosya.musteriId, dosyaId })
     if (!emsaller.length) return { ok: true, kelime, eklenen: 0 }
     for (const e of emsaller) {
       await prisma.emsalKarar.upsert({
@@ -1191,7 +1193,7 @@ export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error
     davalilar: dosya.borclular.map((b) => ({ ad: b.adUnvan, rol: b.rol as string })),
     asilAlacak: anapara || null, rucuOrani: dosya.rucuOrani ?? null, kusurDurumu: dosya.kusurDurumu ?? null, odemeBilgi: null,
     belgeMetni, gorseller, dekontlar, alacakliUnvan: ayarlar?.alacakliUnvan ?? null,
-  })
+  }, { musteriId: dosya.musteriId, dosyaId: dosya.id })
 
   const girdi: DilekceGirdi = {
     davaciUnvan: ayarlar?.alacakliUnvan || 'RAY SİGORTA ANONİM ŞİRKETİ',

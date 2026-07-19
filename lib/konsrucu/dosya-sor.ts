@@ -24,10 +24,10 @@ Belgelerin TOPLAMINA ve kronolojik sırasına bakarak şu başlıklarla kısa, n
 4. **Sıradaki adımlar** — Somut, sıralı yapılacaklar; her birine kısa gerekçe (yol göster).
 Yalnız verilen bilgilere dayan; UYDURMA. Bilgi yoksa "dosyada bu bilgi yok" de. Tarih/numara verirken dosyadaki değeri aynen kullan.`
 
-export async function dosyaYolGoster(baglam: string, alacakliUnvan?: string | null): Promise<{ ok: boolean; cevap?: string; error?: string }> {
+export async function dosyaYolGoster(baglam: string, alacakliUnvan?: string | null, ai?: { musteriId?: string; dosyaId?: string }): Promise<{ ok: boolean; cevap?: string; error?: string }> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return { ok: false, error: 'AI anahtarı (ANTHROPIC_API_KEY) tanımlı değil.' }
-  const client = anthropic(key)
+  const client = anthropic(key, { yuzey: 'yol', ...ai })
   try {
     const res = await client.messages.create({
       model: MODEL,
@@ -42,11 +42,11 @@ export async function dosyaYolGoster(baglam: string, alacakliUnvan?: string | nu
   }
 }
 
-export async function dosyaSor(baglam: string, soru: string, alacakliUnvan?: string | null): Promise<{ ok: boolean; cevap?: string; error?: string }> {
+export async function dosyaSor(baglam: string, soru: string, alacakliUnvan?: string | null, ai?: { musteriId?: string; dosyaId?: string }): Promise<{ ok: boolean; cevap?: string; error?: string }> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return { ok: false, error: 'AI anahtarı (ANTHROPIC_API_KEY) tanımlı değil.' }
   if (!soru.trim()) return { ok: false, error: 'Soru boş.' }
-  const client = anthropic(key)
+  const client = anthropic(key, { yuzey: 'soru', ...ai })
   try {
     const res = await client.messages.create({
       model: MODEL,

@@ -171,10 +171,10 @@ export type Gorsel = { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/
  * Hasar fotoğrafı adayları arasından İCRA DOSYASINA konacak, araçtaki hasarın AÇIK göründüğü en iyi n
  * fotoğrafı seçer (0-tabanlı indeks listesi döner). Ucuz görsel ayıklama → Haiku. Yoksa/uygunsuzsa null.
  */
-export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2): Promise<number[] | null> {
+export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2, ai?: { musteriId?: string; dosyaId?: string }): Promise<number[] | null> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key || !gorseller.length) return null
-  const client = anthropic(key)
+  const client = anthropic(key, { yuzey: 'foto', ...ai })
   const imgs = gorseller.slice(0, 12)
   const content: Anthropic.ContentBlockParam[] = []
   imgs.forEach((g, i) => {
@@ -224,11 +224,11 @@ function hataOku(e: unknown): string {
   return `${st ?? ''} ${msg}`.trim().slice(0, 300)
 }
 
-export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[], ogrenilenKurallar?: string, alacakliUnvan?: string | null, onHata?: (mesaj: string) => void): Promise<AnalizSonuc | null> {
+export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[], ogrenilenKurallar?: string, alacakliUnvan?: string | null, onHata?: (mesaj: string) => void, ai?: { musteriId?: string; dosyaId?: string }): Promise<AnalizSonuc | null> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) { onHata?.('ANTHROPIC_API_KEY tanımlı değil (sunucu ortam değişkeni)'); return null }
   if (!metin.trim()) { onHata?.('belge metni boş'); return null }
-  const client = anthropic(key)
+  const client = anthropic(key, { yuzey: 'cikarim', ...ai })
   const imgs = (gorseller ?? []).slice(0, 12)
   const content: Anthropic.ContentBlockParam[] = [{ type: 'text', text: `Belge metni:\n\n${metin.slice(0, 150000)}` }]
   for (const g of imgs) content.push({ type: 'image', source: { type: 'base64', media_type: g.mime, data: g.b64 } })

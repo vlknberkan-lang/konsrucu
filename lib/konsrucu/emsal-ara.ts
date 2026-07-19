@@ -195,10 +195,10 @@ async function alakaYaz(client: Anthropic, g: EmsalGirdi, metin: string): Promis
  * Dosya bağlamından canlı emsal bul: sorgu üret → ara → ön ele → tam metin → alâka gerekçesi.
  * @param sayi Döndürülecek nihai emsal sayısı (varsayılan 4).
  */
-export async function dosyadanEmsal(g: EmsalGirdi, sayi = 4): Promise<{ kelime: string; emsaller: EmsalSecim[] }> {
+export async function dosyadanEmsal(g: EmsalGirdi, sayi = 4, ai?: { musteriId?: string; dosyaId?: string }): Promise<{ kelime: string; emsaller: EmsalSecim[] }> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new Error('ANTHROPIC_API_KEY yok')
-  const client = anthropic(key)
+  const client = anthropic(key, { yuzey: 'emsal', ...ai })
 
   const kelime = await sorguUret(client, g)
   let satirlar = await aramaYargitay(kelime, 20)

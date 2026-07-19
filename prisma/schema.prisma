@@ -180,12 +180,37 @@ model Musteri {
   id           String             @id @default(uuid())
   ad           String             @unique // "Ray Sigorta A.Ş."
   aktif        Boolean            @default(true)
+  // plan + AI kredi duvarı (self-serve): FREE=25 tek-seferlik kredi + 20 aktif dosya;
+  // KURUMSAL=sınırsız (mevcut Ray/Zurich kiracıları migration'da KURUMSAL yapıldı).
+  plan         String             @default("FREE") // FREE | BASLANGIC | BURO | KURUMSAL
+  aiKredi      Int                @default(25) // kalan kredi; KURUMSAL'da kontrol edilmez
   createdAt    DateTime           @default(now())
   ayarlar      Ayarlar?
   dosyalar     RucuDosyasi[]
   projeler     Proje[]
   kullanicilar MusteriKullanici[]
   mentorKurallar MentorKural[]
+  aiKullanimlar AiKullanim[]
+}
+
+// AI kullanım defteri — HER Anthropic çağrısı buraya düşer (maliyet görünürlüğü + faturalama temeli).
+// Kredi düşümü Musteri.aiKredi'de atomik yapılır; bu tablo salt kayıttır.
+model AiKullanim {
+  id          String   @id @default(uuid())
+  musteriId   String?
+  musteri     Musteri? @relation(fields: [musteriId], references: [id], onDelete: SetNull)
+  dosyaId     String? // FK değil — dosya silinse de maliyet kaydı kalsın
+  yuzey       String // cikarim | dilekce | emsal | soru | yol | makbuz | foto
+  model       String
+  girisToken  Int
+  cikisToken  Int
+  maliyetUsd  Decimal  @db.Decimal(10, 6)
+  krediBedeli Int      @default(0) // bu çağrıda düşülen kredi (işlemin ilk çağrısında)
+  hata        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([musteriId, createdAt])
+  @@index([createdAt])
 }
 
 model Kullanici {

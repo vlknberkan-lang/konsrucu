@@ -43,10 +43,10 @@ KURALLAR:
 - Tür "alkol" → promil ve %100 kusur; "olay yeri terk" → terk fiili ve delillerin toplanamaması; "çarpıp kaçma/park" → park halindeki araca çarpıp kaçma — yalnız OLGU düzeyinde.
 Sadece anlatım metnini döndür (başlık/JSON yok).`
 
-export async function dilekceAnlatim(g: AnlatimGirdi): Promise<string | null> {
+export async function dilekceAnlatim(g: AnlatimGirdi, ai?: { musteriId?: string; dosyaId?: string }): Promise<string | null> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return null
-  const client = anthropic(key)
+  const client = anthropic(key, { yuzey: 'dilekce', ...ai })
   const imgs = (g.gorseller ?? []).slice(0, 10)
   // base64/uzun metni JSON dökümünden çıkar
   const { gorseller: _g, belgeMetni: _b, alacakliUnvan: _a, ...kunye } = g

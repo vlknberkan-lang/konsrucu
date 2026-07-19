@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
   tl.sort((a, b) => a.t - b.t)
   if (tl.length) sat.push('KRONOLOJİK BELGE/OLAY DÖKÜMÜ (eskiden yeniye):\n' + tl.map((x) => `  - ${fmtDate(new Date(x.t))} · [${x.tip}] ${x.metin}`).join('\n'))
 
-  const r = mode === 'yol' ? await dosyaYolGoster(sat.join('\n'), ayar?.alacakliUnvan ?? null) : await dosyaSor(sat.join('\n'), soru, ayar?.alacakliUnvan ?? null)
+  const aiCtx = { musteriId: dosya.musteriId, dosyaId: dosya.id }
+  const r = mode === 'yol' ? await dosyaYolGoster(sat.join('\n'), ayar?.alacakliUnvan ?? null, aiCtx) : await dosyaSor(sat.join('\n'), soru, ayar?.alacakliUnvan ?? null, aiCtx)
   return NextResponse.json(r, { status: r.ok ? 200 : 500 })
 }

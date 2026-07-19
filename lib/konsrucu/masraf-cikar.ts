@@ -213,6 +213,7 @@ export function makbuzParseMetin(metin: string): MakbuzParseSonuc {
 export async function makbuzCikarPdf(
   pdfBytes: Buffer,
   ipuclari?: { dosyaAdi?: string; alacakliUnvan?: string },
+  ai?: { musteriId?: string; dosyaId?: string },
 ): Promise<MakbuzKalem[]> {
   if (!pdfBytes?.length) return []
 
@@ -227,7 +228,7 @@ export async function makbuzCikarPdf(
   // KATMAN 2 (fallback): ucuz LLM. Metin çıktıysa metni gönder (vision'dan ucuz); çıkmadıysa belge/görüntü.
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return []
-  const client = anthropic(key)
+  const client = anthropic(key, { yuzey: 'makbuz', ...ai })
 
   const ipucuSatirlari: string[] = []
   if (ipuclari?.dosyaAdi) ipucuSatirlari.push(`Belge adı: ${ipuclari.dosyaAdi}`)
@@ -300,7 +301,7 @@ export async function belgedenMasrafCikar(
     if (error || !data) return { eklendi: 0, atlandi: 0, toplam: 0, hata: `PDF indirilemedi: ${error?.message ?? 'boş'}` }
     const bytes = Buffer.from(await data.arrayBuffer())
 
-    const kalemler = await makbuzCikarPdf(bytes, { dosyaAdi: belge.dosyaAdi })
+    const kalemler = await makbuzCikarPdf(bytes, { dosyaAdi: belge.dosyaAdi }, { musteriId: belge.dosya.musteriId, dosyaId: belge.dosyaId })
     if (!kalemler.length) return { eklendi: 0, atlandi: 0, toplam: 0 }
 
     // öğrenilen cins sözlüğü (tenant)
