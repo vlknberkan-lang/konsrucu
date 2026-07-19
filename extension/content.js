@@ -1262,19 +1262,19 @@
   // ── canlılık şeridi: "program bağlı mı, en son ne zaman çalıştı, sıradaki oto ne zaman" tek bakışta ──
   async function seritGuncelle() {
     if (!serit) return;
-    if (_seritIlerleme) { serit.className = "s-run"; seritTxt.innerHTML = `Rücu Takip · senkron çalışıyor — ${esc(_seritIlerleme)}`; return; }
+    if (_seritIlerleme) { serit.className = "s-run"; seritTxt.innerHTML = `KonsLaw · senkron çalışıyor — ${esc(_seritIlerleme)}`; return; }
     const o = await st(["senkronToken", "senkronTokenlar", "sonOtoSync", "sonRapor"]);
     const anahtarSayisi = (Array.isArray(o.senkronTokenlar) && o.senkronTokenlar.length) ? o.senkronTokenlar.length : (o.senkronToken ? 1 : 0);
-    if (!anahtarSayisi) { serit.className = "s-err"; seritTxt.innerHTML = `Rücu Takip <b>bağlı değil</b> — senkron anahtarı girilmedi · tıkla → ⚙ Ayar`; return; }
+    if (!anahtarSayisi) { serit.className = "s-err"; seritTxt.innerHTML = `KonsLaw <b>bağlı değil</b> — senkron anahtarı girilmedi · tıkla → ⚙ Ayar`; return; }
     const son = o.sonOtoSync || 0;
     const r = o.sonRapor;
     const dkOnce = son ? Math.round((Date.now() - son) / 60000) : null;
     const siradaki = son ? Math.max(0, 30 - (dkOnce ?? 0)) : 0;
     const rapor = r ? ` · ${r.ok} dosya ✓${r.sorunlu ? ` · <b>${r.sorunlu} sorunlu</b>` : ""}` : "";
     const sirket = anahtarSayisi > 1 ? ` · ${anahtarSayisi} şirket` : "";
-    if (dkOnce == null) { serit.className = "s-idle"; seritTxt.innerHTML = `Rücu Takip hazır${sirket} — henüz senkron koşmadı · birazdan otomatik başlar (ya da tıkla → ▶)`; return; }
+    if (dkOnce == null) { serit.className = "s-idle"; seritTxt.innerHTML = `KonsLaw hazır${sirket} — henüz senkron koşmadı · birazdan otomatik başlar (ya da tıkla → ▶)`; return; }
     serit.className = dkOnce > 45 ? "s-idle" : "s-ok";
-    seritTxt.innerHTML = `Rücu Takip aktif${sirket} · son senkron <b>${dkOnce} dk önce</b>${rapor} · sıradaki oto ~${siradaki} dk`;
+    seritTxt.innerHTML = `KonsLaw aktif${sirket} · son senkron <b>${dkOnce} dk önce</b>${rapor} · sıradaki oto ~${siradaki} dk`;
   }
 
   function buildUi() {
@@ -1327,7 +1327,7 @@
 
   async function ayarSor() {
     const cur = await st(["programBase", "senkronTokenlar", "senkronToken"]);
-    const base = window.prompt("Program adresi:", cur.programBase || "https://konsrucu.vercel.app");
+    const base = window.prompt("Program adresi:", cur.programBase || "https://konslaw.app");
     if (base == null) return;
     const eskiListe = Array.isArray(cur.senkronTokenlar) && cur.senkronTokenlar.length ? cur.senkronTokenlar : (cur.senkronToken ? [cur.senkronToken] : []);
     const girdi = window.prompt(

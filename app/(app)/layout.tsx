@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { AppShell } from '@/components/shell/app-shell'
 import { signOutAction } from '@/app/actions/auth'
+import { superadminMi } from '@/lib/konsrucu/yonetici'
 
 const ROL_ETIKET: Record<string, string> = {
   ADMIN: 'Yönetici',
@@ -68,7 +69,13 @@ export default async function AppGroupLayout({ children }: { children: React.Rea
   return (
     <AppShell
       user={{ ad: dbUser.ad, rol: ROL_ETIKET[dbUser.rol] ?? dbUser.rol, init }}
-      tenant={aktif ? { musteri: aktif.ad, ofis: dbUser.ad, init: initials(aktif.ad) } : null}
+      tenant={aktif ? {
+        musteri: aktif.ad,
+        ofis: dbUser.ad,
+        init: initials(aktif.ad),
+        kredi: aktif.plan === 'KURUMSAL' ? null : { plan: aktif.plan, aiKredi: aktif.aiKredi },
+      } : null}
+      superadmin={superadminMi(dbUser.eposta)}
       navCounts={{ onemli: onemliSayi, gorevler: gorevSayi }}
     >
       {children}

@@ -7,7 +7,7 @@
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronsUpDown } from 'lucide-react'
+import { ChevronsUpDown, ShieldCheck, Zap } from 'lucide-react'
 import { RAIL_NAV, type ShellTenant, type NavCounts } from '@/lib/konsrucu/nav'
 import { KonsRucuWordmark } from '@/components/brand/konsrucu-mark'
 
@@ -15,7 +15,7 @@ function GLabel({ children }: { children: React.ReactNode }) {
   return <div className="font-mono px-2.5 pb-1.5 pt-3 text-[9px] uppercase tracking-[0.14em] text-muted-foreground">{children}</div>
 }
 
-export function Sidebar({ tenant, counts }: { tenant: ShellTenant | null; counts?: NavCounts }) {
+export function Sidebar({ tenant, counts, superadmin }: { tenant: ShellTenant | null; counts?: NavCounts; superadmin?: boolean }) {
   const pathname = usePathname()
   const item = 'flex w-full items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-[13.5px] font-medium transition'
   const off = 'text-foreground hover:bg-surface-muted'
@@ -49,6 +49,24 @@ export function Sidebar({ tenant, counts }: { tenant: ShellTenant | null; counts
       </div>
 
       <div className="border-t border-border-subtle p-3">
+        {superadmin && (
+          <Link href="/yonetim" className={`${item} mb-1.5 ${pathname.startsWith('/yonetim') ? on : off}`}>
+            <ShieldCheck className={`h-[17px] w-[17px] ${pathname.startsWith('/yonetim') ? 'text-kr' : 'text-muted-foreground'}`} />
+            <span className="min-w-0 flex-1 truncate">Yönetim</span>
+          </Link>
+        )}
+        {tenant?.kredi && (
+          <div
+            className="mb-2 flex items-center gap-2 rounded-xl border border-kr/25 bg-kr/[0.07] px-2.5 py-2"
+            title={`${tenant.kredi.plan} planı — kalan AI kredisi`}
+          >
+            <Zap className="h-[15px] w-[15px] shrink-0 text-kr" />
+            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">AI kredisi</span>
+            <span className={`font-mono text-[13px] font-bold ${tenant.kredi.aiKredi <= 5 ? 'text-danger' : 'text-kr'}`}>
+              {tenant.kredi.aiKredi}
+            </span>
+          </div>
+        )}
         <Link href="/dashboard" className="flex w-full items-center gap-2.5 rounded-xl border border-border-subtle bg-surface-muted p-2.5 text-left transition hover:border-kr/50">
           {tenant ? (
             <>

@@ -36,5 +36,11 @@ export const DURUM: Record<Durum, { label: string; dot: string }> = {
 
 // Gerçek veriden prop olarak geçer:
 export type ShellUser = { ad: string; rol: string; init: string }
-export type ShellTenant = { musteri: string; ofis: string; init: string }
+export type ShellTenant = {
+  musteri: string
+  ofis: string
+  init: string
+  /** FREE/paralı planlarda kalan AI kredisi rozeti; KURUMSAL'da null (rozet çizilmez). */
+  kredi?: { plan: string; aiKredi: number } | null
+}
 export type RecentCase = { hasarNo: string; durum: Durum; dusuk: number }

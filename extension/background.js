@@ -4,7 +4,7 @@
  * content script cross-origin fetch yapamaz, buradan geçer.  (3) 30 dk'lık poll alarmı: açık bir
  * UYAP sekmesi varsa otomatik senkron tetikler (oturum content tarafında zorunlu).
  */
-const PROGRAM_BASE_DEFAULT = "https://konsrucu.vercel.app";
+const PROGRAM_BASE_DEFAULT = "https://konslaw.app";
 
 chrome.action.onClicked.addListener((tab) => {
   if (!tab || !tab.id) return;

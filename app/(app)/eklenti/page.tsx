@@ -1,14 +1,15 @@
 /**
- * KonsRücü — Chrome Eklentisi · app/(app)/eklenti/page.tsx
- * "Rücu Takip — UYAP Senkron" eklentisini indir + kur (paketlenmemiş yükle) + kullan.
- * Chrome, web sayfasından sessiz kurulum YAPMAZ → indir + 2 adımda yükle akışı.
+ * KonsLaw — Chrome Eklentisi · app/(app)/eklenti/page.tsx
+ * "KonsLaw — UYAP Senkron": birincil kurulum Chrome Web Store (tek tık); mağaza
+ * bağlantısı (NEXT_PUBLIC_EKLENTI_STORE_URL) yoksa zip + paketlenmemiş-yükle yedeği gösterilir.
  */
 import Link from 'next/link'
-import { Download, Puzzle, ShieldCheck, Info, FolderOpen, Settings2, MousePointerClick, RefreshCw } from 'lucide-react'
+import { Download, Puzzle, ShieldCheck, Info, FolderOpen, Settings2, MousePointerClick, RefreshCw, Chrome } from 'lucide-react'
 import { Kopyala } from '@/components/akilli-giris/kopyala'
 
-const ZIP = '/uyap-eklenti-v1.6.0.zip'
-const SURUM = '1.6.0'
+const STORE_URL = process.env.NEXT_PUBLIC_EKLENTI_STORE_URL || null
+const ZIP = '/uyap-eklenti-v1.8.0.zip'
+const SURUM = '1.8.0'
 
 function Adim({ n, baslik, children, icon: Icon }: { n: number; baslik: string; children: React.ReactNode; icon: React.ElementType }) {
   return (
@@ -31,7 +32,7 @@ export default function EklentiPage() {
         <span className="font-mono rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">v{SURUM}</span>
       </h1>
       <p className="mt-2 max-w-[64ch] text-sm text-muted-foreground">
-        <b>Rücu Takip — UYAP Senkron v1</b>, UYAP Avukat Portalında <b>açık oturumda</b> rücu icra dosyalarını
+        <b>KonsLaw — UYAP Senkron</b>, UYAP Avukat Portalında <b>açık oturumda</b> icra dosyalarını
         <b className="text-foreground"> (İCRA DAİRESİ + ESAS NO) kimliğiyle</b> sorgular; durum, finansal (alacak/faiz/bakiye),
         taraf, evrak ve safahatı okuyup programa senkronlar. Aynı esas no'dan birden çok dosya varsa <b>alacaklısı bizim şirket
         olanı</b> seçer; <b className="text-foreground">bulamadığı dosyayı da programa RAPORLAR</b> — kör nokta kalmaz.
@@ -39,24 +40,43 @@ export default function EklentiPage() {
         UYAP <b>Ödeme İşlemlerim</b> ekranını listeledikten sonra tek tıkla harç/masraf kalemlerini dosyalara dağıtıp programa yazar.
       </p>
 
-      {/* indir + Chrome uyarısı */}
-      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
-        <div className="flex flex-wrap items-center gap-4 p-5">
-          <a href={ZIP} download className="inline-flex items-center gap-2.5 rounded-[12px] bg-kr px-5 py-3 text-[14.5px] font-semibold text-kr-foreground shadow-[0_2px_10px_hsl(var(--kr)/0.35)] transition hover:bg-kr/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50">
-            <Download className="h-[18px] w-[18px]" /> Eklentiyi indir (.zip)
-          </a>
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-bold text-foreground">uyap-eklenti-v{SURUM}.zip · ~30 KB</div>
-            <div className="text-[12px] text-muted-foreground">İndirdikten sonra aşağıdaki 4 adımı bir kez uygula.</div>
+      {/* kurulum — mağaza birincil */}
+      {STORE_URL ? (
+        <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+          <div className="flex flex-wrap items-center gap-4 p-5">
+            <a href={STORE_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2.5 rounded-[12px] bg-kr px-5 py-3 text-[14.5px] font-semibold text-kr-foreground shadow-[0_2px_10px_hsl(var(--kr)/0.35)] transition hover:bg-kr/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50">
+              <Chrome className="h-[18px] w-[18px]" /> Chrome Web Store&apos;dan ekle
+            </a>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-bold text-foreground">Tek tık kurulum · otomatik güncelleme</div>
+              <div className="text-[12px] text-muted-foreground">Mağazadan kurunca yeni sürümler kendiliğinden gelir — zip/klasör işi yok.</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2.5 border-t border-border-subtle bg-success-soft/40 p-[12px_18px] text-[12.5px] text-success">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Kurulumdan sonra tek yapman gereken: aşağıdaki <b>Programla senkron</b> bölümündeki anahtarı bir kez girmek.</span>
           </div>
         </div>
-        <div className="flex items-start gap-2.5 border-t border-border-subtle bg-warning-soft/40 p-[12px_18px] text-[12.5px] text-[hsl(var(--warning-fg))]">
-          <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>Chrome, güvenlik gereği eklentileri bir web sayfasından <b>tek tıkla otomatik kuramaz</b>. Bu yüzden eklenti <b>indirilir</b> ve aşağıdaki gibi <b>“Paketlenmemiş yükle”</b> ile eklenir (tek seferlik, ~1 dakika).</span>
+      ) : (
+        <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+          <div className="flex flex-wrap items-center gap-4 p-5">
+            <a href={ZIP} download className="inline-flex items-center gap-2.5 rounded-[12px] bg-kr px-5 py-3 text-[14.5px] font-semibold text-kr-foreground shadow-[0_2px_10px_hsl(var(--kr)/0.35)] transition hover:bg-kr/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50">
+              <Download className="h-[18px] w-[18px]" /> Eklentiyi indir (.zip)
+            </a>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-bold text-foreground">uyap-eklenti-v{SURUM}.zip · ~45 KB</div>
+              <div className="text-[12px] text-muted-foreground">Chrome Web Store sürümü incelemede — yayına girince burada tek tık kurulum görünecek.</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2.5 border-t border-border-subtle bg-warning-soft/40 p-[12px_18px] text-[12.5px] text-[hsl(var(--warning-fg))]">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Chrome, güvenlik gereği eklentileri bir web sayfasından <b>tek tıkla otomatik kuramaz</b>. Mağaza yayına girene dek eklenti <b>indirilir</b> ve aşağıdaki gibi <b>&ldquo;Paketlenmemiş yükle&rdquo;</b> ile eklenir (tek seferlik, ~1 dakika).</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* kurulum adımları */}
+      {/* kurulum adımları (yalnız zip yedeği aktifken) */}
+      {!STORE_URL && (
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
         <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-4">
           <Settings2 className="h-4 w-4 text-kr" /><h2 className="font-display text-[15px] font-bold">Kurulum (tek seferlik)</h2>
@@ -79,7 +99,7 @@ export default function EklentiPage() {
           </Adim>
           <Adim n={4} baslik="Paketlenmemiş yükle" icon={MousePointerClick}>
             <b>Paketlenmemiş öğe yükle</b> → 1. adımda çıkardığın <span className="font-mono">uyap-eklenti</span> klasörünü seç.
-            Araç çubuğunda <b>⚖ Rücu Tara</b> görünür; UYAP'a e-imzayla girince sağ altta panel açılır.
+            Araç çubuğunda <b>⚖ KonsLaw — UYAP Senkron</b> görünür; UYAP'a e-imzayla girince sağ altta panel açılır.
           </Adim>
         </ol>
         <div className="flex items-start gap-2.5 border-t border-border-subtle bg-surface-muted/40 p-[12px_18px] text-[12px] text-muted-foreground">
@@ -87,6 +107,7 @@ export default function EklentiPage() {
           <span><b>Güncelleme:</b> yeni sürüm çıkınca bu sayfadan tekrar indir, klasörün üzerine çıkar ve <span className="font-mono">chrome://extensions</span>'ta eklentideki <b>↻ yenile</b>'ye bas.</span>
         </div>
       </div>
+      )}
 
       {/* kullanım */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
@@ -95,9 +116,9 @@ export default function EklentiPage() {
         </div>
         <ol className="flex flex-col gap-3 p-5 text-[13px] text-foreground">
           <li className="flex gap-2.5"><span className="font-mono text-kr-ink">1.</span> <span><b>UYAP Avukat Portalı</b>na e-imza ile gir (herhangi bir sayfa açık olabilir).</span></li>
-          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">2.</span> <span>Sağ alttaki <b>⚖ Rücu Tara</b> panelini aç → <b>▶ Oto Sorgula</b> (dosyaları sırayla, insan hızında sorgular).</span></li>
+          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">2.</span> <span>Sağ alttaki <b>⚖ KonsLaw</b> panelini aç → <b>▶ Oto Sorgula</b> (dosyaları sırayla, insan hızında sorgular).</span></li>
           <li className="flex gap-2.5"><span className="font-mono text-kr-ink">3.</span> <span>Her dosya için durum (🟢 açık / 🔴 kapalı), alacak/faiz/bakiye ve evrak listesi derlenir; PDF'ler <span className="font-mono">İndirilenler\rucu-evrak\</span> altına iner.</span></li>
-          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">4.</span> <span><b>⬇ JSON</b> ya da <b>📋 Kopyala</b> ile sonucu Rücu Takip'e taşı. Yedek yöntem: dosyayı elle <b>Sorgula</b> → <b>➕ Tara &amp; Biriktir</b>.</span></li>
+          <li className="flex gap-2.5"><span className="font-mono text-kr-ink">4.</span> <span><b>⬇ JSON</b> ya da <b>📋 Kopyala</b> ile sonucu KonsLaw'a taşı. Yedek yöntem: dosyayı elle <b>Sorgula</b> → <b>➕ Tara &amp; Biriktir</b>.</span></li>
         </ol>
         <div className="flex items-start gap-2.5 border-t border-border-subtle bg-success-soft/40 p-[12px_18px] text-[12px] text-success">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
