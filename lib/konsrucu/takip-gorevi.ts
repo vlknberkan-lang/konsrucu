@@ -14,7 +14,7 @@ export const GOREV_INCLUDE = {
   dosya: {
     select: {
       id: true, hukukDosyaNo: true, hasarDosyaNo: true, icraDosyaNo: true, yetkiliIcra: true,
-      durum: true, asilAlacak: true, rucuTutari: true, faizTutari: true, zamanasimi: true,
+      durum: true, uyapDurum: true, asilAlacak: true, rucuTutari: true, faizTutari: true, zamanasimi: true,
       borclular: { select: { adUnvan: true }, orderBy: { id: 'asc' } },
     },
   },
