@@ -184,6 +184,7 @@ model Musteri {
   // KURUMSAL=sınırsız (mevcut Ray/Zurich kiracıları migration'da KURUMSAL yapıldı).
   plan         String             @default("FREE") // FREE | BASLANGIC | BURO | KURUMSAL
   aiKredi      Int                @default(25) // kalan kredi; KURUMSAL'da kontrol edilmez
+  donemBasi    DateTime? // paralı planlarda fatura dönemi başlangıcı; kredi-tahsis cronu 30 günde bir kotayı yeniler (FREE/KURUMSAL null)
   createdAt    DateTime           @default(now())
   ayarlar      Ayarlar?
   dosyalar     RucuDosyasi[]

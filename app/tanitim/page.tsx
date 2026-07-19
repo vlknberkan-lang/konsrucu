@@ -177,6 +177,53 @@ export default function TanitimPage() {
       {/* bir dosyanın yolculuğu — scroll'a bağlı canlandırma */}
       <SurecAnimasyon />
 
+      {/* fiyatlandırma */}
+      <section id="fiyat" className="mx-auto max-w-[1140px] px-6 pb-16">
+        <div className="mx-auto max-w-[46ch] text-center">
+          <h2 className="hd text-[32px] font-extrabold tracking-[-0.03em] sm:text-[40px]">Şeffaf fiyat, sürpriz yok</h2>
+          <p className="mt-3 text-[15.5px] text-slate-300">Güncellemeler dahil. Kurulum ücreti yok. İstediğin an iptal.</p>
+        </div>
+        <div className="mt-10 grid gap-5 md:grid-cols-3">
+          {[
+            {
+              ad: 'Ücretsiz', fiyat: '₺0', donem: 'süresiz', one: false,
+              m: ['20 aktif dosya', '1 kullanıcı', '25 AI kredisi (tek seferlik)', 'UYAP senkron + süre bekçileri', 'Takvim · görevler · taksit · masraf'],
+              cta: 'Ücretsiz başla',
+            },
+            {
+              ad: 'Başlangıç', fiyat: '₺2.250', donem: '/ay + KDV', one: true,
+              m: ['300 aktif dosya', '1 kullanıcı', '150 AI kredisi / ay', 'AI çıkarım · dilekçe · emsal · soru', 'E-posta desteği'],
+              cta: 'Başlangıç ile başla',
+            },
+            {
+              ad: 'Büro', fiyat: '₺5.500', donem: '/ay + KDV', one: false,
+              m: ['Sınırsız aktif dosya', '5 kullanıcı', '500 AI kredisi / ay', 'Tüm Başlangıç özellikleri', 'Öncelikli destek'],
+              cta: 'Büro ile başla',
+            },
+          ].map((p) => (
+            <div key={p.ad} className={`lp-card relative flex flex-col rounded-2xl border p-6 ${p.one ? 'border-[#2fcad4]/60 bg-[#2fcad4]/[0.06]' : 'border-white/10 bg-white/[0.025]'}`}>
+              {p.one && <span className="font-mono absolute -top-3 left-6 rounded-full bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#04222a]">En popüler</span>}
+              <div className="hd text-[17px] font-bold text-white">{p.ad}</div>
+              <div className="mt-2"><span className="hd text-[34px] font-extrabold tracking-[-0.02em]">{p.fiyat}</span> <span className="text-[13.5px] text-slate-400">{p.donem}</span></div>
+              <ul className="mt-5 flex flex-1 flex-col gap-2.5">
+                {p.m.map((x) => (
+                  <li key={x} className="flex items-start gap-2.5 text-[13.5px] text-slate-200">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#46d6e0]" /> {x}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/kayit" className={`lp-btn mt-6 rounded-xl py-3 text-center text-[14.5px] font-bold ${p.one ? 'bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]' : 'border border-white/15 text-slate-100 hover:border-[#2fcad4]/50'}`}>
+                {p.cta}
+              </Link>
+            </div>
+          ))}
+        </div>
+        <p className="mt-6 text-center text-[12.5px] text-slate-400">
+          Her plan ücretsiz başlar — kredi kartı istemiyoruz. Paralı plana geçiş uygulama içinden, dilediğin an.
+          Ek kredi paketi: 100 kredi · ₺500 + KDV.
+        </p>
+      </section>
+
       {/* güvenlik */}
       <section className="mx-auto max-w-[1140px] px-6 pb-16">
         <div className="grid gap-8 rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.045] to-transparent px-6 py-10 sm:grid-cols-[0.8fr_1.2fr] sm:px-10">

@@ -18,6 +18,7 @@ import { prisma } from '@/lib/prisma'
 import {
   KREDI_BEDELI, maliyetUsd, krediDus, krediIade, dosyaLimitKontrol,
   KrediYetersizHata, FREE_DOSYA_LIMITI, aiDurduruldu,
+  PLAN_AYLIK_KREDI, PLAN_DOSYA_LIMITI, donemYenileHesabi,
 } from '@/lib/konsrucu/ai-kredi'
 
 const findUnique = vi.mocked(prisma.musteri.findUnique)
@@ -102,10 +103,48 @@ describe('dosyaLimitKontrol — FREE 20 aktif dosya', () => {
     dosyaCount.mockResolvedValueOnce(5 as never)
     await expect(dosyaLimitKontrol('m1', 100)).rejects.toThrow(/aktif dosya/)
   })
-  it('KURUMSAL/BASLANGIC limite takılmaz', async () => {
+  it('KURUMSAL/BURO sınırsız — sayım sorgusu bile atılmaz', async () => {
     findUnique.mockResolvedValueOnce({ plan: 'KURUMSAL' } as never)
     await dosyaLimitKontrol('m1', 500)
+    findUnique.mockResolvedValueOnce({ plan: 'BURO' } as never)
+    await dosyaLimitKontrol('m1', 500)
     expect(dosyaCount).not.toHaveBeenCalled()
+  })
+  it('BASLANGIC 300 aktif dosya limitine takılır', async () => {
+    findUnique.mockResolvedValueOnce({ plan: 'BASLANGIC' } as never)
+    dosyaCount.mockResolvedValueOnce(300 as never)
+    await expect(dosyaLimitKontrol('m1', 1)).rejects.toThrow(/aktif dosya/)
+  })
+})
+
+describe('plan kotaları — satış sayfası + cron + yönetim tek kaynak', () => {
+  it('aylık kredi kotaları sabit', () => {
+    expect(PLAN_AYLIK_KREDI).toMatchObject({ FREE: 25, BASLANGIC: 150, BURO: 500 })
+  })
+  it('dosya limitleri sabit', () => {
+    expect(PLAN_DOSYA_LIMITI).toEqual({ FREE: FREE_DOSYA_LIMITI, BASLANGIC: 300, BURO: null, KURUMSAL: null })
+  })
+})
+
+describe('donemYenileHesabi — aylık tahsis saf hesabı', () => {
+  const gun = 86_400_000
+  it('30 günden önce yenilemez', () => {
+    const basi = new Date(2026, 6, 1)
+    const r = donemYenileHesabi(basi, new Date(basi.getTime() + 29 * gun))
+    expect(r.yenile).toBe(false)
+    expect(r.yeniDonemBasi).toEqual(basi)
+  })
+  it('30. günde yeniler ve dönem başını ilerletir', () => {
+    const basi = new Date(2026, 6, 1)
+    const r = donemYenileHesabi(basi, new Date(basi.getTime() + 30 * gun))
+    expect(r.yenile).toBe(true)
+    expect(r.yeniDonemBasi).toEqual(new Date(basi.getTime() + 30 * gun))
+  })
+  it('atlanan dönemlerde kredi BİRİKMEZ — dönem başı en yakın sınıra atlar (tek kota)', () => {
+    const basi = new Date(2026, 0, 1)
+    const r = donemYenileHesabi(basi, new Date(basi.getTime() + 75 * gun)) // 2,5 dönem geçmiş
+    expect(r.yenile).toBe(true)
+    expect(r.yeniDonemBasi).toEqual(new Date(basi.getTime() + 60 * gun)) // 2 tam dönem ilerler
   })
 })
 

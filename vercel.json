@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/uyap-senkron-sagligi",
       "schedule": "0 6 * * 1-5"
+    },
+    {
+      "path": "/api/cron/kredi-tahsis",
+      "schedule": "0 2 * * *"
     }
   ]
 }

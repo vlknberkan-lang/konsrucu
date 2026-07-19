@@ -129,19 +129,55 @@ export async function krediDurumu(musteriId: string): Promise<{ plan: string; ai
 /** FREE plan aktif dosya limiti. */
 export const FREE_DOSYA_LIMITI = 20
 
+/** Plan → aylık kredi kotası (satış sayfası + yönetim paneli + tahsis cronu TEK kaynaktan okur). */
+export const PLAN_AYLIK_KREDI: Record<string, number> = {
+  FREE: 25, // tek seferlik — cron YENİLEMEZ (donemBasi null)
+  BASLANGIC: 150,
+  BURO: 500,
+  KURUMSAL: 999999,
+}
+
+/** Plan → aktif dosya limiti (null = sınırsız). */
+export const PLAN_DOSYA_LIMITI: Record<string, number | null> = {
+  FREE: FREE_DOSYA_LIMITI,
+  BASLANGIC: 300,
+  BURO: null,
+  KURUMSAL: null,
+}
+
+const DONEM_MS = 30 * 86_400_000
+
 /**
- * Dosya limiti kapısı: FREE planda aktif (kapalı olmayan) dosya sayısı limiti aşacaksa hata.
- * Import (n satır) ve tekil oluşturma (n=1) öncesi çağrılır.
+ * SAF dönem hesabı: donemBasi'ndan bu yana ≥30 gün geçtiyse kredi yenilenir.
+ * Birden çok dönem atlandıysa (ödeme sorunu vb.) donemBasi bugüne en yakın dönem sınırına
+ * İLERLETİLİR ama kredi yalnız BİR kota olarak yüklenir (birikmez — kullan ya da kaybet).
+ */
+export function donemYenileHesabi(
+  donemBasi: Date,
+  simdi: Date,
+): { yenile: boolean; yeniDonemBasi: Date } {
+  const gecen = simdi.getTime() - donemBasi.getTime()
+  if (gecen < DONEM_MS) return { yenile: false, yeniDonemBasi: donemBasi }
+  const atlanan = Math.floor(gecen / DONEM_MS)
+  return { yenile: true, yeniDonemBasi: new Date(donemBasi.getTime() + atlanan * DONEM_MS) }
+}
+
+/**
+ * Dosya limiti kapısı: plan kotasını (PLAN_DOSYA_LIMITI) aşacak ekleme reddedilir.
+ * Kapalı dosyalar (TAHSIL/KAPANDI/IDARI_YOL) sayılmaz. Import (n satır) ve tekil
+ * oluşturma (n=1) öncesi çağrılır. Limitsiz planlarda (BURO/KURUMSAL) sorgu bile atılmaz.
  */
 export async function dosyaLimitKontrol(musteriId: string, eklenecek = 1): Promise<void> {
   const m = await prisma.musteri.findUnique({ where: { id: musteriId }, select: { plan: true } })
-  if (!m || m.plan !== 'FREE') return
+  if (!m) return
+  const limit = PLAN_DOSYA_LIMITI[m.plan] ?? null
+  if (limit == null) return
   const aktif = await prisma.rucuDosyasi.count({
     where: { musteriId, durum: { notIn: ['TAHSIL', 'KAPANDI', 'IDARI_YOL'] } },
   })
-  if (aktif + eklenecek > FREE_DOSYA_LIMITI) {
+  if (aktif + eklenecek > limit) {
     throw new Error(
-      `Ücretsiz planda en fazla ${FREE_DOSYA_LIMITI} aktif dosya tutabilirsiniz (şu an ${aktif}). ` +
+      `${m.plan === 'FREE' ? 'Ücretsiz planda' : 'Planınızda'} en fazla ${limit} aktif dosya tutabilirsiniz (şu an ${aktif}). ` +
         'Daha fazlası için planınızı yükseltin.',
     )
   }

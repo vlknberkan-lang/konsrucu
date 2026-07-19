@@ -56,16 +56,17 @@ export function Sidebar({ tenant, counts, superadmin }: { tenant: ShellTenant | 
           </Link>
         )}
         {tenant?.kredi && (
-          <div
-            className="mb-2 flex items-center gap-2 rounded-xl border border-kr/25 bg-kr/[0.07] px-2.5 py-2"
-            title={`${tenant.kredi.plan} planı — kalan AI kredisi`}
+          <Link
+            href="/abonelik"
+            className="mb-2 flex items-center gap-2 rounded-xl border border-kr/25 bg-kr/[0.07] px-2.5 py-2 transition hover:border-kr/50 hover:bg-kr/10"
+            title={`${tenant.kredi.plan} planı — kalan AI kredisi · plan ve yükseltme için tıkla`}
           >
             <Zap className="h-[15px] w-[15px] shrink-0 text-kr" />
             <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">AI kredisi</span>
             <span className={`font-mono text-[13px] font-bold ${tenant.kredi.aiKredi <= 5 ? 'text-danger' : 'text-kr'}`}>
               {tenant.kredi.aiKredi}
             </span>
-          </div>
+          </Link>
         )}
         <Link href="/dashboard" className="flex w-full items-center gap-2.5 rounded-xl border border-border-subtle bg-surface-muted p-2.5 text-left transition hover:border-kr/50">
           {tenant ? (
