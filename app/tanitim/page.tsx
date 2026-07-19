@@ -12,7 +12,7 @@ import {
   ShieldCheck, ArrowRight, Check, Mail, LogIn,
 } from 'lucide-react'
 import { KonsRucuMark } from '@/components/brand/konsrucu-mark'
-import { DemoForm } from '@/components/tanitim/demo-form'
+import { SurecAnimasyon } from '@/components/tanitim/surec-animasyon'
 
 const heading = Sora({ subsets: ['latin', 'latin-ext'], weight: ['500', '600', '700', '800'], variable: '--f-head' })
 const bodyF = Inter({ subsets: ['latin', 'latin-ext'], weight: ['400', '500', '600', '700'], variable: '--f-body' })
@@ -35,8 +35,6 @@ const FEATURES = [
   { icon: Scale, t: 'Dava, Dilekçe & Emsal', d: 'İtirazın iptali ve dava dilekçesi üreticisi, görevli mahkeme önerisiyle; talep-anında Yargıtay emsal karar.' },
   { icon: Coins, t: 'Taksit · Masraf · Faiz', d: 'Dönemsel kanuni faiz hesabı, taksit planı + hatırlatma, makbuzdan otomatik masraf çıkarımı ve rapor.' },
 ]
-
-const ASAMALAR = ['İcra', 'İtiraz', 'Arabuluculuk', 'Dava', 'Karar', 'İnfaz', 'Tahsil']
 
 const GUVEN = [
   'KVKK uyumlu; kişisel veriler yalnız yetkili takip amacıyla işlenir',
@@ -114,11 +112,11 @@ export default function TanitimPage() {
               <b className="text-white"> Hiçbir dosya, hiçbir süre kaçmaz.</b>
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <a href="#demo" className="lp-btn inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-6 py-3.5 text-[15.5px] font-bold text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]">
-                <Mail className="h-[18px] w-[18px]" /> Demo iste
-              </a>
+              <Link href="/kayit" className="lp-btn inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-6 py-3.5 text-[15.5px] font-bold text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]">
+                Ücretsiz başla <ArrowRight className="h-[18px] w-[18px]" />
+              </Link>
               <Link href="/login" className="lp-btn inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3.5 text-[15.5px] font-semibold text-slate-100 hover:border-[#2fcad4]/50">
-                Giriş yap <ArrowRight className="h-[18px] w-[18px]" />
+                Giriş yap
               </Link>
             </div>
           </div>
@@ -176,23 +174,8 @@ export default function TanitimPage() {
         </div>
       </section>
 
-      {/* yaşam döngüsü */}
-      <section className="mx-auto max-w-[1140px] px-6 pb-16">
-        <div className="rounded-3xl border border-white/10 bg-white/[0.02] px-6 py-10 sm:px-10">
-          <div className="text-center font-mono text-[11px] uppercase tracking-[0.2em] text-[#8fe3ea]">Dosyanın yaşam döngüsü</div>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
-            {ASAMALAR.map((a, i) => (
-              <div key={a} className="flex items-center gap-2 sm:gap-2.5">
-                <span className="hd rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-[14px] font-semibold text-slate-100">{a}</span>
-                {i < ASAMALAR.length - 1 && <ArrowRight className="h-4 w-4 text-[#2fcad4]/70" />}
-              </div>
-            ))}
-          </div>
-          <p className="mx-auto mt-6 max-w-[60ch] text-center text-[14px] leading-[1.6] text-slate-300/85">
-            Toplantılar, duruşmalar, süreler ve AI yardımlı yazışmalar tek yerden koordine edilir; aşama değişince süre görevleri otomatik doğar.
-          </p>
-        </div>
-      </section>
+      {/* bir dosyanın yolculuğu — scroll'a bağlı canlandırma */}
+      <SurecAnimasyon />
 
       {/* güvenlik */}
       <section className="mx-auto max-w-[1140px] px-6 pb-16">
@@ -213,22 +196,22 @@ export default function TanitimPage() {
         </div>
       </section>
 
-      {/* final CTA — demo kaydı */}
-      <section id="demo" className="mx-auto max-w-[1140px] px-6 pb-20">
-        <div className="relative overflow-hidden rounded-3xl border border-[#2fcad4]/25 px-6 py-12 sm:px-10" style={{ background: 'radial-gradient(720px 420px at 50% 0%, rgba(47,202,212,0.16), transparent 62%), #0c1c30' }}>
-          <div className="grid items-center gap-10 lg:grid-cols-[1fr_1fr]">
-            <div>
-              <div className="mb-5 w-fit"><KonsRucuMark size={56} /></div>
-              <h2 className="hd text-[32px] font-extrabold tracking-[-0.03em] sm:text-[42px]">Bürona uyarlayalım</h2>
-              <p className="mt-3 max-w-[46ch] text-[16px] leading-[1.6] text-slate-300">
-                Formu bırak, bir iş günü içinde arayalım: dosya devrini, şablonları ve UYAP akışını
-                büronun çalışma düzenine göre kuruyoruz — birkaç günde canlıya.
-              </p>
-              <p className="mt-4 text-[13px] text-slate-400">
-                E-postayı tercih edersen: <a href={MAIL} className="underline decoration-[#2fcad4]/50 underline-offset-2 hover:text-slate-200">vberkanbiyikli@gmail.com</a>
-              </p>
-            </div>
-            <DemoForm />
+      {/* final CTA — kayıt */}
+      <section id="kayit" className="mx-auto max-w-[1140px] px-6 pb-20">
+        <div className="relative overflow-hidden rounded-3xl border border-[#2fcad4]/25 px-6 py-14 text-center sm:px-10" style={{ background: 'radial-gradient(720px 420px at 50% 0%, rgba(47,202,212,0.16), transparent 62%), #0c1c30' }}>
+          <div className="mx-auto mb-5 w-fit"><KonsRucuMark size={56} /></div>
+          <h2 className="hd text-[32px] font-extrabold tracking-[-0.03em] sm:text-[42px]">İlk dosyanı bugün sisteme al</h2>
+          <p className="mx-auto mt-3 max-w-[54ch] text-[16px] leading-[1.6] text-slate-300">
+            Kurulum ücreti yok, kredi kartı istemiyoruz. Hesabını aç, Excel'ini yükle —
+            iki dakika içinde ilk dosyan radara girsin.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Link href="/kayit" className="lp-btn inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-6 py-3.5 text-[15.5px] font-bold text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]">
+              Ücretsiz hesap oluştur <ArrowRight className="h-[18px] w-[18px]" />
+            </Link>
+            <a href={MAIL} className="lp-btn inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3.5 text-[15.5px] font-semibold text-slate-100 hover:border-[#2fcad4]/50">
+              <Mail className="h-[18px] w-[18px]" /> Soru sor
+            </a>
           </div>
         </div>
       </section>
