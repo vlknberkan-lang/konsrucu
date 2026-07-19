@@ -79,7 +79,30 @@ Kalanlar:
 > (büyük ihtimalle değil) 9/42/45. sınıf başvurusunu bu hafta marka vekiliyle başlat.
 > TR tescili TR pazarı için yeterli koruma sağlar.
 
-### 1b. E-posta altyapısı: Resend (20 dk) — "kayıt olunca bizden mail gitsin" işi
+### 1b. E-posta altyapısı: Resend — "kayıt olunca bizden mail gitsin" işi
+
+✅ **YAPILDI (19 Tem):** Resend Vercel entegrasyonuyla bağlandı (DNS otomatik), API key
+env'lere kondu (yerel + Vercel production), `mail.ts`'e resend servisi eklendi ve
+**test maili no-reply@konslaw.app'tan başarıyla gönderildi** (HTTP 200).
+Artık tüm sistem mailleri (hatırlatma, rapor, görev, taksit) KonsLaw adresinden gider.
+
+**KALAN TEK ADIM (SEN — 3 dk): Supabase doğrulama maillerini de Resend'e bağla.**
+supabase.com → projeye gir → **Project Settings → Authentication → SMTP Settings** →
+"Enable Custom SMTP" aç ve aynen doldur:
+
+| Alan | Değer |
+|---|---|
+| Host | `smtp.resend.com` |
+| Port | `465` |
+| Username | `resend` |
+| Password | (Resend API key — bendekiyle aynı, panelden kopyala) |
+| Sender email | `no-reply@konslaw.app` |
+| Sender name | `KonsLaw` |
+
+Bunu yapınca kayıt doğrulama maili de KonsLaw markasıyla gider. (Site URL ayarını da
+1a'daki gibi `https://konslaw.app` yapmayı unutma — ikisi aynı ekranın yakınında.)
+
+--- *(aşağısı arşiv: ilk kurulum talimatları)* ---
 
 İki ayrı ihtiyaç var, karıştırma:
 

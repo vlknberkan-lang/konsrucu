@@ -1,7 +1,8 @@
 /**
- * KonsRücü — E-posta gönderimi · lib/konsrucu/mail.ts (server-only, nodejs runtime)
- * EMAIL_SERVICE = smtp (nodemailer) | console (dev/log). Tüm ayarlar env'den; sır client'a sızmaz.
- *   EMAIL_FROM, EMAIL_FROM_NAME, EMAIL_SERVICE, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+ * KonsLaw — E-posta gönderimi · lib/konsrucu/mail.ts (server-only, nodejs runtime)
+ * EMAIL_SERVICE = resend (API) | smtp (nodemailer) | console (dev/log). Sır client'a sızmaz.
+ *   EMAIL_FROM, EMAIL_FROM_NAME, EMAIL_SERVICE, RESEND_API_KEY, SMTP_HOST/PORT/USER/PASS
+ * Üretim: resend + no-reply@konslaw.app (domain Resend'de doğrulanmış olmalı).
  */
 import nodemailer from 'nodemailer'
 
@@ -35,6 +36,47 @@ export async function mailGonder(g: MailGirdi): Promise<{ ok: boolean; id?: stri
   if (servis === 'console') {
     console.log('[mail:console]', { to, konu: g.konu, htmlUzunluk: g.html.length, ek: g.attachments?.length ?? 0 })
     return { ok: true, id: 'console' }
+  }
+
+  if (servis === 'resend') {
+    const key = process.env.RESEND_API_KEY
+    if (!key) {
+      await hataLogla('RESEND_API_KEY eksik', g.konu)
+      return { ok: false, error: 'RESEND_API_KEY eksik' }
+    }
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: fromAdresi(),
+          to: Array.isArray(g.to) ? g.to.filter(Boolean) : [g.to],
+          subject: g.konu,
+          html: g.html,
+          ...(g.text ? { text: g.text } : {}),
+          ...(g.attachments?.length
+            ? {
+                attachments: g.attachments.map((a) => ({
+                  filename: a.filename,
+                  content: Buffer.isBuffer(a.content) ? a.content.toString('base64') : Buffer.from(a.content).toString('base64'),
+                })),
+              }
+            : {}),
+        }),
+        signal: AbortSignal.timeout(20_000),
+      })
+      const veri = (await res.json().catch(() => ({}))) as { id?: string; message?: string }
+      if (!res.ok) {
+        const msg = `Resend ${res.status}: ${veri.message ?? 'bilinmeyen hata'}`
+        await hataLogla(msg, g.konu)
+        return { ok: false, error: msg }
+      }
+      return { ok: true, id: veri.id }
+    } catch (e) {
+      const msg = `Resend istegi başarısız: ${(e as Error).message}`
+      await hataLogla(msg, g.konu)
+      return { ok: false, error: msg }
+    }
   }
 
   if (servis === 'smtp') {
