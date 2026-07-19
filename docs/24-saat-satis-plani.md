@@ -61,15 +61,18 @@ Ben kod tarafını bitiriyorum. Yarın bu saatte satış alabilir durumda oluyor
 > Riskimiz tek: "konslaw.com" yazan kullanıcı yabancı siteye düşer → bu yüzden pazarlamada
 > adres DAİMA tam yazılır (**konslaw.app**), Google marka aramasında zaten biz çıkarız.
 
-1. **Cloudflare Registrar** → cloudflare.com → hesap aç → "Register Domain" →
-   `konslaw.app` satın al (~$14). Aynı sepete `konslaw.ai` da ekle (savunma).
-2. `konslaw.com.tr` için: **isimtescil.net** veya natro → TRABİS kuralları gereği
-   .com.tr artık belgesiz alınabiliyor; boşsa al (~₺300).
-3. Satın alınca **bana söyle** → Vercel'e bağlama talimatını vereceğim
-   (Cloudflare DNS'e 2 kayıt: `A @ 76.76.21.21` ve `CNAME www cname.vercel-dns.com` —
-   ben Vercel tarafını hazırlarım, sen kopyala-yapıştır yaparsın; com.tr → .app'e yönlendirilir).
-4. E-posta adresleri de .app üzerinden: `no-reply@konslaw.app`, `info@konslaw.app`
-   (Resend + Zoho kurulumları 1b'de buna göre yapılır).
+✅ **YAPILDI (19 Tem):** `konslaw.app` doğrudan Vercel'den alındı ve projeye bağlandı —
+DNS de Vercel'de yönetiliyor (Cloudflare'e gerek kalmadı; aşağıdaki DNS işlemleri
+Vercel panelinden yapılır: proje → Settings → Domains / DNS Records).
+SSL sertifikası Vercel tarafından otomatik kesilir (ilk saat içinde aktifleşir).
+
+Kalanlar:
+1. `konslaw.com.tr` için: **isimtescil.net** veya natro → boşsa al (~₺300);
+   alınca Vercel'e ekleyip .app'e 308 yönlendirme yaparız.
+2. `konslaw.ai` savunma kaydı (Vercel Domains'ten aranıp alınabilir, ~$75) — isteğe bağlı ama önerilir.
+3. **ÖNEMLİ — Supabase Auth ayarı:** supabase.com → proje → Authentication → URL Configuration →
+   **Site URL**'i `https://konslaw.app` yap ve Redirect URLs'e `https://konslaw.app/**` ekle.
+   Bu yapılmazsa kayıt doğrulama mailindeki bağlantı eski vercel.app adresine götürür.
 
 > ⚠️ **Marka kontrolü (5 dk):** konslaw.com'un 2005'ten beri yaşıyor olması marka tescilinde
 > de dikkat gerektirir — turkpatent.gov.tr'de "konslaw" sorgula; TR'de tescilli değilse
@@ -88,8 +91,8 @@ Ben kod tarafını bitiriyorum. Yarın bu saatte satış alabilir durumda oluyor
 **Resend kurulumu:**
 1. resend.com → Sign up (GitHub hesabınla 1 dk).
 2. "Domains" → "Add Domain" → `konslaw.app` yaz.
-3. Sana 3-4 DNS kaydı gösterecek (SPF, DKIM). Bunları Cloudflare DNS'e
-   kopyala-yapıştır ekle (her biri "Add record" → türü ve değeri aynen yapıştır).
+3. Sana 3-4 DNS kaydı gösterecek (SPF, DKIM). Bunları **Vercel DNS'e** ekle:
+   vercel.com → Domains → konslaw.app → DNS Records → "Add" (türü ve değeri aynen yapıştır).
    *Bu kayıtlar "bu maili gerçekten konslaw.app gönderiyor" imzasıdır — spam'e düşmemenin anahtarı.*
 4. Domain "Verified" olunca → "API Keys" → key oluştur → **bana ilet** (iyzico key'iyle birlikte).
 5. Ben `mail.ts`'e Resend'i bağlarım + **Supabase Auth SMTP ayarını** Resend'e çeviririm
