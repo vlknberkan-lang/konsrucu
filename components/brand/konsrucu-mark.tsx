@@ -1,7 +1,8 @@
 /**
- * KonsRücü — marka markı + kelime markası · components/brand/konsrucu-mark.tsx
- * "K" aperture markı; aproksiyon noktası KonsRücü teal'i (#2fcad4).
- * Ayrı bir logo dosyası yok — wordmark da burada.
+ * KonsLaw — marka markı + kelime markası · components/brand/konsrucu-mark.tsx
+ * "K" aperture markı; aproksiyon noktası KonsLaw teal'i (#2fcad4).
+ * Ayrı bir logo dosyası yok — wordmark da burada. (Bileşen adları geçiş boyunca
+ * KonsRucu* kalır — 5+ dosyada import var; görünen metin tek kaynaktan KonsLaw.)
  */
 
 export function KonsRucuMark({ size = 32, dot = '#2fcad4', fill = '#fff' }: { size?: number; dot?: string; fill?: string }) {
@@ -14,7 +15,7 @@ export function KonsRucuMark({ size = 32, dot = '#2fcad4', fill = '#fff' }: { si
   )
 }
 
-/** Kelime markası — "Kons" + teal "Rücu". onDark=true ise koyu zemin için beyaz "Kons". */
+/** Kelime markası — "Kons" + teal "Law". onDark=true ise koyu zemin için beyaz "Kons". */
 export function KonsRucuWordmark({ size = 24, onDark = false }: { size?: number; onDark?: boolean }) {
   const teal = onDark ? '#46d6e0' : 'hsl(var(--kr))'
   return (
@@ -23,7 +24,7 @@ export function KonsRucuWordmark({ size = 24, onDark = false }: { size?: number;
       style={{ fontSize: size }}
     >
       <span style={{ color: onDark ? '#fff' : 'hsl(var(--foreground))' }}>Kons</span>
-      <span style={{ color: teal }}>Rücu</span>
+      <span style={{ color: teal }}>Law</span>
     </span>
   )
 }

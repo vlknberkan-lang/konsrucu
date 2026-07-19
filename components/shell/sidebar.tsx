@@ -25,7 +25,7 @@ export function Sidebar({ tenant, counts }: { tenant: ShellTenant | null; counts
     <nav className="hidden min-w-0 flex-col border-r border-border bg-surface md:flex">
       <div className="border-b border-border-subtle px-[18px] py-[18px]">
         <KonsRucuWordmark size={24} />
-        <div className="font-mono mt-1.5 text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">Sigorta Rücu Otomasyonu</div>
+        <div className="font-mono mt-1.5 text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">Avukatın UYAP Asistanı</div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">

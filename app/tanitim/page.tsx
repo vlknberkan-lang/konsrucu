@@ -1,8 +1,9 @@
 /**
- * KonsRücü — Tanıtım / Landing (PUBLIC) · app/tanitim/page.tsx
+ * KonsLaw — Tanıtım / Landing (PUBLIC) · app/tanitim/page.tsx
  * Beğenilen midnight+teal marka dili (promo videolarıyla aynı), cilalanmış:
  * Sora başlık + Inter gövde, sade "K" logo, daha premium kartlar + ince hareket.
  * Oturumsuz erişilir (middleware'de public rota). Auth/ctx KULLANMAZ.
+ * Demo kayıt formu → DemoKaydi (app/tanitim/actions.ts).
  */
 import Link from 'next/link'
 import { Sora, Inter } from 'next/font/google'
@@ -11,6 +12,7 @@ import {
   ShieldCheck, ArrowRight, Check, Mail, LogIn,
 } from 'lucide-react'
 import { KonsRucuMark } from '@/components/brand/konsrucu-mark'
+import { DemoForm } from '@/components/tanitim/demo-form'
 
 const heading = Sora({ subsets: ['latin', 'latin-ext'], weight: ['500', '600', '700', '800'], variable: '--f-head' })
 const bodyF = Inter({ subsets: ['latin', 'latin-ext'], weight: ['400', '500', '600', '700'], variable: '--f-body' })
@@ -18,19 +20,19 @@ const bodyF = Inter({ subsets: ['latin', 'latin-ext'], weight: ['400', '500', '6
 export const dynamic = 'force-static'
 
 export const metadata = {
-  title: 'KonsRücü — Sigorta Rücu Otomasyonu',
+  title: 'KonsLaw — Avukatın UYAP Asistanı',
   description:
-    'Rücu dosyalarını uçtan uca yöneten platform: AI belge çıkarımı, otomatik süre radarı (zamanaşımı/itiraz/haciz), UYAP senkron, kapasite panosu. Hiçbir dosya, hiçbir süre kaçmaz.',
+    'İcra dosyalarını uçtan uca yöneten platform: AI belge çıkarımı, otomatik süre radarı (zamanaşımı/itiraz/haciz), UYAP senkron, kapasite panosu. Hiçbir dosya, hiçbir süre kaçmaz.',
 }
 
-const MAIL = 'mailto:vberkanbiyikli@gmail.com?subject=KonsR%C3%BCc%C3%BC%20demo%20talebi'
+const MAIL = 'mailto:vberkanbiyikli@gmail.com?subject=KonsLaw%20demo%20talebi'
 
 const FEATURES = [
-  { icon: Sparkles, t: 'AI Belge Çıkarımı', d: 'Tüm evraktan borçlu(lar), kusur oranı, rücu tutarı, yetkili icra ve eyleme dönük öneriler — kaynağı gösterilerek, saniyeler içinde.' },
+  { icon: Sparkles, t: 'AI Belge Çıkarımı', d: 'Tüm evraktan borçlu(lar), alacak tutarı, dayanak belgeler, yetkili icra ve eyleme dönük öneriler — kaynağı gösterilerek, saniyeler içinde.' },
   { icon: CalendarClock, t: 'Otomatik Süre Radarı', d: 'Zamanaşımı, itiraz (İİK 62), haciz (İİK 78), satış (İİK 106) süreleri otomatik izlenir; yaklaşan süre görev olarak önünüze gelir.' },
   { icon: Gauge, t: 'Kapasite & Darboğaz', d: 'Portföy nerede yığılıyor, haftalık giriş/çıkış dengesi, en uzun bekleyen dosyalar — yönetim tek bakışta.' },
   { icon: Puzzle, t: 'UYAP Senkron', d: 'Chrome eklentisiyle Avukat Portalından durum, safahat, evrak ve masraf canlı akar. Salt-okuma; takip açma yalnız avukat onayıyla.' },
-  { icon: Scale, t: 'Dava, Dilekçe & Emsal', d: 'İtirazın iptali/dava dilekçesi üreticisi, görevli mahkeme rücu yönünden; talep-anında Yargıtay emsal karar.' },
+  { icon: Scale, t: 'Dava, Dilekçe & Emsal', d: 'İtirazın iptali ve dava dilekçesi üreticisi, görevli mahkeme önerisiyle; talep-anında Yargıtay emsal karar.' },
   { icon: Coins, t: 'Taksit · Masraf · Faiz', d: 'Dönemsel kanuni faiz hesabı, taksit planı + hatırlatma, makbuzdan otomatik masraf çıkarımı ve rapor.' },
 ]
 
@@ -89,7 +91,7 @@ export default function TanitimPage() {
       <header className="mx-auto flex max-w-[1140px] items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2.5">
           <KonsRucuMark size={30} />
-          <span className="hd text-[20px] font-extrabold tracking-[-0.02em]">Kons<span className="text-[#46d6e0]">Rücu</span></span>
+          <span className="hd text-[20px] font-extrabold tracking-[-0.02em]">Kons<span className="text-[#46d6e0]">Law</span></span>
         </div>
         <Link href="/login" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3.5 py-2 text-[13.5px] font-semibold text-slate-200 transition hover:border-[#2fcad4]/50 hover:text-white">
           <LogIn className="h-4 w-4" /> Giriş
@@ -102,17 +104,17 @@ export default function TanitimPage() {
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[#2fcad4]/25 bg-[#2fcad4]/[0.06] px-3.5 py-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-[#46d6e0]" />
-              <span className="font-mono text-[11.5px] uppercase tracking-[0.22em] text-[#8fe3ea]">Sigorta Rücu Otomasyonu</span>
+              <span className="font-mono text-[11.5px] uppercase tracking-[0.22em] text-[#8fe3ea]">Avukatın UYAP Asistanı</span>
             </div>
             <h1 className="hd mt-6 text-[46px] font-extrabold leading-[1.04] tracking-[-0.04em] sm:text-[62px]">
-              Rücu dosyalarınız,<br /><span className="text-[#46d6e0]">uçtan uca</span> tek platformda
+              İcra dosyalarınız,<br /><span className="text-[#46d6e0]">uçtan uca</span> tek platformda
             </h1>
             <p className="mt-6 max-w-[50ch] text-[17.5px] leading-[1.6] text-slate-300">
               Belgeyi AI okur ve dosyayı kurar; zamanaşımı–itiraz–haciz süreleri otomatik izlenir; portföyün nerede yığıldığı tek bakışta.
               <b className="text-white"> Hiçbir dosya, hiçbir süre kaçmaz.</b>
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <a href={MAIL} className="lp-btn inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-6 py-3.5 text-[15.5px] font-bold text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]">
+              <a href="#demo" className="lp-btn inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-6 py-3.5 text-[15.5px] font-bold text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]">
                 <Mail className="h-[18px] w-[18px]" /> Demo iste
               </a>
               <Link href="/login" className="lp-btn inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3.5 text-[15.5px] font-semibold text-slate-100 hover:border-[#2fcad4]/50">
@@ -135,7 +137,7 @@ export default function TanitimPage() {
                   <span className="ml-auto rounded-full bg-[#35c994]/16 px-2.5 py-1 text-[11px] font-bold text-[#5fd6a0]">✓ 12 alan</span>
                 </div>
                 <div className="px-5 py-2">
-                  {[['Borçlu', 'Sürücü + Ruhsat Sahibi'], ['Kusur oranı', '%75'], ['Rücu tutarı', '128.400,00 ₺'], ['Yetkili icra', 'Kaza yeri']].map(([k, v], i) => (
+                  {[['Borçlu(lar)', '2 kişi · teyit önerili'], ['Asıl alacak', '128.400,00 ₺'], ['Dayanak', 'Fatura + sözleşme'], ['Yetkili icra', 'Otomatik önerildi']].map(([k, v], i) => (
                     <div key={k} className={`flex items-center gap-3 py-3 text-[13.5px] ${i > 0 ? 'border-t border-white/5' : ''}`}>
                       <span className="w-[110px] shrink-0 text-slate-400">{k}</span>
                       <span className="font-semibold text-slate-100">{v}</span>
@@ -167,7 +169,7 @@ export default function TanitimPage() {
       <section className="mx-auto max-w-[1140px] px-6 py-16 sm:py-20">
         <div className="mx-auto max-w-[46ch] text-center">
           <h2 className="hd text-[32px] font-extrabold tracking-[-0.03em] sm:text-[40px]">İcradan tahsile, her adım burada</h2>
-          <p className="mt-3 text-[15.5px] text-slate-300">Ayrı ayrı araçlar değil — rücunun tüm yaşam döngüsü tek sistemde.</p>
+          <p className="mt-3 text-[15.5px] text-slate-300">Ayrı ayrı araçlar değil — takibin tüm yaşam döngüsü tek sistemde.</p>
         </div>
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f) => <Feature key={f.t} {...f} />)}
@@ -211,21 +213,22 @@ export default function TanitimPage() {
         </div>
       </section>
 
-      {/* final CTA */}
-      <section className="mx-auto max-w-[1140px] px-6 pb-20">
-        <div className="relative overflow-hidden rounded-3xl border border-[#2fcad4]/25 px-6 py-14 text-center sm:px-10" style={{ background: 'radial-gradient(720px 420px at 50% 0%, rgba(47,202,212,0.16), transparent 62%), #0c1c30' }}>
-          <div className="mx-auto mb-5 w-fit"><KonsRucuMark size={56} /></div>
-          <h2 className="hd text-[32px] font-extrabold tracking-[-0.03em] sm:text-[42px]">Bürona uyarlayalım</h2>
-          <p className="mx-auto mt-3 max-w-[54ch] text-[16px] leading-[1.6] text-slate-300">
-            Çok-kiracılı yapı, kendi alacaklı/vekil/faiz ayarların ve UYAP senkronunla — birkaç günde canlıya.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <a href={MAIL} className="lp-btn inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-6 py-3.5 text-[15.5px] font-bold text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]">
-              <Mail className="h-[18px] w-[18px]" /> İletişime geç
-            </a>
-            <Link href="/login" className="lp-btn inline-flex items-center gap-2 rounded-xl border border-white/15 px-6 py-3.5 text-[15.5px] font-semibold text-slate-100 hover:border-[#2fcad4]/50">
-              Giriş yap <ArrowRight className="h-[18px] w-[18px]" />
-            </Link>
+      {/* final CTA — demo kaydı */}
+      <section id="demo" className="mx-auto max-w-[1140px] px-6 pb-20">
+        <div className="relative overflow-hidden rounded-3xl border border-[#2fcad4]/25 px-6 py-12 sm:px-10" style={{ background: 'radial-gradient(720px 420px at 50% 0%, rgba(47,202,212,0.16), transparent 62%), #0c1c30' }}>
+          <div className="grid items-center gap-10 lg:grid-cols-[1fr_1fr]">
+            <div>
+              <div className="mb-5 w-fit"><KonsRucuMark size={56} /></div>
+              <h2 className="hd text-[32px] font-extrabold tracking-[-0.03em] sm:text-[42px]">Bürona uyarlayalım</h2>
+              <p className="mt-3 max-w-[46ch] text-[16px] leading-[1.6] text-slate-300">
+                Formu bırak, bir iş günü içinde arayalım: dosya devrini, şablonları ve UYAP akışını
+                büronun çalışma düzenine göre kuruyoruz — birkaç günde canlıya.
+              </p>
+              <p className="mt-4 text-[13px] text-slate-400">
+                E-postayı tercih edersen: <a href={MAIL} className="underline decoration-[#2fcad4]/50 underline-offset-2 hover:text-slate-200">vberkanbiyikli@gmail.com</a>
+              </p>
+            </div>
+            <DemoForm />
           </div>
         </div>
       </section>
@@ -235,8 +238,8 @@ export default function TanitimPage() {
         <div className="mx-auto flex max-w-[1140px] flex-wrap items-center justify-between gap-4 px-6 py-8 text-[13px] text-slate-400">
           <div className="flex items-center gap-2">
             <KonsRucuMark size={22} />
-            <span className="hd font-bold text-slate-200">Kons<span className="text-[#46d6e0]">Rücu</span></span>
-            <span className="ml-2">· Sigorta Rücu Otomasyonu</span>
+            <span className="hd font-bold text-slate-200">Kons<span className="text-[#46d6e0]">Law</span></span>
+            <span className="ml-2">· Avukatın UYAP Asistanı</span>
           </div>
           <div className="flex items-center gap-5">
             <Link href="/gizlilik" className="transition hover:text-slate-200">Gizlilik</Link>

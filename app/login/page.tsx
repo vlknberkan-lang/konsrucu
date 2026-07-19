@@ -32,13 +32,13 @@ export default function LoginPage() {
         <div className="relative z-10 flex items-center gap-3">
           <KonsRucuMark />
           <span className="font-display text-[26px] font-extrabold tracking-[-0.035em]">
-            Kons<span className="text-[#46d6e0]">Rücü</span>
+            Kons<span className="text-[#46d6e0]">Law</span>
             <span className="ml-0.5 inline-block h-1.5 w-1.5 translate-y-0.5 rounded-full bg-[#46d6e0]" />
           </span>
         </div>
 
         <div className="relative z-10">
-          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-white/55">Sigorta Rücu Otomasyonu</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-white/55">Avukatın UYAP Asistanı</div>
           <h1 className="font-display mt-3.5 max-w-[16ch] text-[38px] font-extrabold leading-[1.12] tracking-[-0.035em]">
             Ham evrak yığını içeri; <span className="text-[#46d6e0]">imzaya hazır</span> çıktı dışarı.
           </h1>

@@ -571,6 +571,24 @@ model SistemOlay {
   @@index([tip, createdAt])
 }
 
+// demo/satış kaydı — /tanitim sayfasındaki formdan gelen lead'ler. Tenant'a bağlı DEĞİL
+// (henüz müşteri değiller). KVKK: yalnız iletişim amacıyla, açık onayla toplanır.
+model DemoKaydi {
+  id        String   @id @default(uuid())
+  ad        String
+  eposta    String
+  telefon   String?
+  buroAd    String? // büro / şirket adı
+  mesaj     String?  @db.Text
+  kvkkOnay  Boolean  @default(false) // aydınlatma metni onayı (zorunlu; form false göndermez)
+  kaynak    String   @default("tanitim") // hangi sayfadan geldi
+  durum     String   @default("YENI") // YENI | ARANDI | DEMO_YAPILDI | KAZANILDI | KAYBEDILDI
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([durum, createdAt])
+}
+
 // önemli olay — yüksek öncelikli görev/alarm kuyruğu (borca itiraz → arabuluculuk iş akışı).
 // TakipOlayi (ham log) ve Asama (hukuki evre) ile karışmaz; bağımsız görev kaydı.
 model OnemliOlay {

@@ -56,7 +56,7 @@ export function LoginForm() {
       </div>
 
       <h2 className="font-display text-[26px] font-extrabold tracking-brand-tight">Tekrar hoş geldiniz</h2>
-      <p className="mb-6 mt-1.5 text-[13.5px] text-muted-foreground">Rücu havuzunuza erişmek için giriş yapın.</p>
+      <p className="mb-6 mt-1.5 text-[13.5px] text-muted-foreground">Dosya havuzunuza erişmek için giriş yapın.</p>
 
       {/* e-posta */}
       <label htmlFor="email" className="font-mono mb-1.5 block text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">

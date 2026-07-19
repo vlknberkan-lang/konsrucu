@@ -71,7 +71,7 @@ export default async function DashboardPage() {
                   {m.ad}
                 </div>
                 <div className="mt-1 font-mono text-[11px] uppercase tracking-label text-muted-foreground">
-                  Rücu havuzu →
+                  Dosya havuzu →
                 </div>
               </button>
             </form>
