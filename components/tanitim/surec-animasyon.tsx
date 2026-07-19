@@ -145,21 +145,23 @@ export function SurecAnimasyon() {
 
   useEffect(() => {
     if (azHareket) return
-    // scroll event'ine bel bağlama (bazı ortamlarda güvenilmez) — bölüm görünürken
-    // rAF döngüsüyle pozisyonu oku; görünmezken IntersectionObserver döngüyü durdurur.
+    // İki mekanizma birden: scroll event + IO-kapılı rAF döngüsü. Bazı ortamlar
+    // birini kısıyor (arka plan sekmesinde rAF, kimi webview'da scroll event) —
+    // hangisi çalışırsa adım güncellenir; hesap ucuz, çakışma zararsız.
+    const hesapla = () => {
+      const el = dis.current
+      if (!el) return
+      const toplam = el.offsetHeight - window.innerHeight
+      if (toplam <= 0) return
+      const p = Math.min(1, Math.max(0, -el.getBoundingClientRect().top / toplam))
+      const yeni = Math.min(ADIMLAR.length - 1, Math.floor(p * ADIMLAR.length))
+      setAdim((eski) => (eski === yeni ? eski : yeni))
+    }
     let gorunur = false
     let raf = 0
     const dongu = () => {
       if (!gorunur) { raf = 0; return }
-      const el = dis.current
-      if (el) {
-        const toplam = el.offsetHeight - window.innerHeight
-        if (toplam > 0) {
-          const p = Math.min(1, Math.max(0, -el.getBoundingClientRect().top / toplam))
-          const yeni = Math.min(ADIMLAR.length - 1, Math.floor(p * ADIMLAR.length))
-          setAdim((eski) => (eski === yeni ? eski : yeni))
-        }
-      }
+      hesapla()
       raf = requestAnimationFrame(dongu)
     }
     const io = new IntersectionObserver(([e]) => {
@@ -167,7 +169,13 @@ export function SurecAnimasyon() {
       if (gorunur && !raf) raf = requestAnimationFrame(dongu)
     })
     if (dis.current) io.observe(dis.current)
-    return () => { io.disconnect(); gorunur = false; if (raf) cancelAnimationFrame(raf) }
+    window.addEventListener('scroll', hesapla, { passive: true })
+    hesapla()
+    return () => {
+      io.disconnect(); gorunur = false
+      if (raf) cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', hesapla)
+    }
   }, [azHareket])
 
   // az-hareket: sticky/scroll yok — sahneler alt alta statik
