@@ -145,21 +145,29 @@ export function SurecAnimasyon() {
 
   useEffect(() => {
     if (azHareket) return
+    // scroll event'ine bel bağlama (bazı ortamlarda güvenilmez) — bölüm görünürken
+    // rAF döngüsüyle pozisyonu oku; görünmezken IntersectionObserver döngüyü durdurur.
+    let gorunur = false
     let raf = 0
-    const guncelle = () => {
-      raf = 0
+    const dongu = () => {
+      if (!gorunur) { raf = 0; return }
       const el = dis.current
-      if (!el) return
-      const rect = el.getBoundingClientRect()
-      const toplam = el.offsetHeight - window.innerHeight
-      if (toplam <= 0) return
-      const p = Math.min(1, Math.max(0, -rect.top / toplam))
-      setAdim(Math.min(ADIMLAR.length - 1, Math.floor(p * ADIMLAR.length)))
+      if (el) {
+        const toplam = el.offsetHeight - window.innerHeight
+        if (toplam > 0) {
+          const p = Math.min(1, Math.max(0, -el.getBoundingClientRect().top / toplam))
+          const yeni = Math.min(ADIMLAR.length - 1, Math.floor(p * ADIMLAR.length))
+          setAdim((eski) => (eski === yeni ? eski : yeni))
+        }
+      }
+      raf = requestAnimationFrame(dongu)
     }
-    const onScroll = () => { if (!raf) raf = requestAnimationFrame(guncelle) }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    guncelle()
-    return () => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf) }
+    const io = new IntersectionObserver(([e]) => {
+      gorunur = e.isIntersecting
+      if (gorunur && !raf) raf = requestAnimationFrame(dongu)
+    })
+    if (dis.current) io.observe(dis.current)
+    return () => { io.disconnect(); gorunur = false; if (raf) cancelAnimationFrame(raf) }
   }, [azHareket])
 
   // az-hareket: sticky/scroll yok — sahneler alt alta statik
