@@ -1,4 +1,46 @@
-# Chrome Web Store Yayını — Rücu Takip UYAP Senkron (UNLISTED)
+# Chrome Web Store Yayını — KonsLaw UYAP Senkron (UNLISTED)
+
+---
+
+## ⚡ v1.8.0 GÜNCELLEMESİ — adım adım (mevcut öğeye yeni sürüm yükleme)
+
+> Zip hazır: repo kökünde **`uyap-eklenti-store-v1.8.0.zip`**
+> (`C:\Users\SENFONİ-Berkan\Desktop\Yazılım\konsrucu\uyap-eklenti-store-v1.8.0.zip`)
+
+1. https://chrome.google.com/webstore/devconsole → v1.7.0'ı yüklediğin **aynı Google hesabıyla** gir.
+2. Listedeki öğeye tıkla ("Rücu Takip — UYAP Senkron" adıyla durur).
+3. Sol menü → **Package (Paket)** → **Upload new package (Yeni paket yükle)** →
+   yukarıdaki zip'i seç. Sürüm 1.7.0 → **1.8.0** olarak görünmeli (isim de manifest'ten
+   otomatik "KonsLaw — UYAP Senkron" olur).
+4. Sol menü → **Store listing** → şu üç alanı yeni metinlerle DEĞİŞTİR:
+   - **Özet (≤132):** `UYAP Avukat Portalındaki icra dosyalarını okur ve KonsLaw programına otomatik senkronlar.`
+   - **Açıklama:** aşağıdaki v1.8.0 açıklama bloğunu yapıştır.
+   - **Gizlilik politikası URL:** `https://konslaw.app/gizlilik`
+5. Sol menü → **Privacy practices** → izin gerekçelerinde iki satırı güncelle:
+   - `host: konslaw.app` — okunan veriyi programa iletmek (YENİ izin — gerekçesi bu).
+   - `host: konsrucu.vercel.app` — eski kurulumların geçiş dönemi uyumluluğu.
+6. Sağ üst **Submit for review / İncelemeye gönder** → onay genelde 1-3 iş günü.
+   Onaylanınca mevcut kurulumlar (Yelda dahil) **kendiliğinden** 1.8.0'a güncellenir.
+7. Öğenin **mağaza linkini** (chromewebstore.google.com/detail/…) kopyala → Berkan'dan
+   Claude'a iletilir → `NEXT_PUBLIC_EKLENTI_STORE_URL` env'i eklenir → /eklenti sayfası
+   tek tık "Web Store'dan ekle" butonuna döner.
+
+**v1.8.0 açıklama metni (4. adım için):**
+```
+Bu eklenti, bir hukuk bürosunun UYAP Avukat Portalında AÇIK oturumda görüntülediği icra
+takip dosyalarını okur ve büronun KonsLaw hesabına (konslaw.app) senkronlar:
+• Dosya durumu ve safahatı, işlemler
+• Finansal döküm (asıl alacak, işlemiş faiz, tahsilat, bakiye)
+• Ödeme İşlemlerim'den harç/masraf kalemleri (mükerrer atlanır)
+• Dosyaya ekli evrakın programa aktarımı
+Ayrıca "Takip Aç Kopilotu" ile takibe hazır dosyanın tevzi formunu doldurur ve harç provası
+yapar; nihai gönderim YALNIZCA avukatın açık onayıyla gerçekleşir (tek yazma işlemi budur).
+Diğer her şey salt-okumadır. Büroya özel senkron anahtarıyla çalışır; veriler yalnızca
+büronun kendi KonsLaw hesabına iletilir, üçüncü taraflarla paylaşılmaz.
+```
+
+---
+
 
 **Amaç:** eklentiyi Web Store'a **listelenmemiş (unlisted)** yayımlamak → otomatik güncelleme +
 kolay kurulum (link ile), aramada görünmez, rakiplere kapalı. Kaynak: `extension/` (v1.7.0).
