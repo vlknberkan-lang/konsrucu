@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     : await prisma.takipGorevi.findFirst({ where: { dosya: { musteriId: aktifMusteriId } }, orderBy: { createdAt: 'desc' }, include: GOREV_INCLUDE })
 
   if (gorev) {
-    const { html } = takipGoreviMail(gorevMailGirdisi(gorev, { atayanAd: 'Yelda', baseUrl: base }))
+    const { html } = takipGoreviMail(gorevMailGirdisi(gorev, { atayanAd: 'Sistem', baseUrl: base }))
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } })
   }
 
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
       baslik: 'Arabulucuyla iletişime geç, yeni gün ata',
       aciklama: 'Toplantı yapılmadı. Arabulucuyla iletişime geçip yeni bir gün belirle ve etkinliği yeni tarihle güncelle.',
       sonTarih: null,
-      atayanAd: 'Yelda',
+      atayanAd: 'Sistem',
       sorumluAd: 'Sude',
     },
     etkinlik: { tur: etk.tur, baslik: etk.baslik, baslar: etk.baslar.toISOString(), durum: etk.durum, sonucNot: etk.sonucNot },

@@ -123,7 +123,7 @@ const ZAnalizSonuc = z.object({
   teyit: z.array(z.object({ not: z.string() }).passthrough()),
 }).passthrough()
 
-const SISTEM = `Sen Ray Sigorta A.Ş. vekili K/Partners hukuk bürosunun rücu DEDEKTİFİ ve MENTORUSUN. Sana bir hasar dosyasının TÜM belgelerinden çıkarılmış ham metin verilir: kaza tespit tutanağı, görgü tutanağı, ifade/beyan tutanakları, bilirkişi raporu, ekspertiz raporu, poliçe, ruhsat, ehliyet, alkol/promil raporu, dekontlar ve Ray'in İÇ "Lehe / Hukuk Devir Formu". METNİN YANI SIRA dosyadaki FOTOĞRAFLAR da ek görüntü olarak verilir — ehliyet, ruhsat, tutanak ve plaka fotoğraflarındaki isim/TCKN/plaka bilgilerini de OKU ve bağlama kat (OCR metni eksik olabilir, görüntüye bak). Önce OLAYIN BAĞLAMINI kur, sonra alanları çıkar ve "kaydet" aracını çağır.
+const SISTEM = `Sen Ray Sigorta A.Ş. vekili hukuk bürosunun rücu DEDEKTİFİ ve MENTORUSUN. Sana bir hasar dosyasının TÜM belgelerinden çıkarılmış ham metin verilir: kaza tespit tutanağı, görgü tutanağı, ifade/beyan tutanakları, bilirkişi raporu, ekspertiz raporu, poliçe, ruhsat, ehliyet, alkol/promil raporu, dekontlar ve sigortacının İÇ "Lehe / Hukuk Devir Formu". METNİN YANI SIRA dosyadaki FOTOĞRAFLAR da ek görüntü olarak verilir — ehliyet, ruhsat, tutanak ve plaka fotoğraflarındaki isim/TCKN/plaka bilgilerini de OKU ve bağlama kat (OCR metni eksik olabilir, görüntüye bak). Önce OLAYIN BAĞLAMINI kur, sonra alanları çıkar ve "kaydet" aracını çağır.
 
 ★★ ANA İŞ — ÖNCE OLAY BAĞLAMINI KUR ("olayBaglami"): Bütün belgeleri TEK TEK, baştan sona oku. Olayı yeniden inşa et: ne zaman, nerede, hangi araçlar/plakalar, hangi kişiler (sürücü / araç sahibi / işleten / yaya / tanık), kaza NASIL meydana geldi, KUSUR kimde ve hangi orana göre. Her kritik olgunun HANGİ BELGEDEN geldiğini söyle (ör. "kaza tespit tutanağına göre…", "görgü tutanağındaki tanık X'in beyanına göre…", "ifade tutanağında sürücü…", "bilirkişi raporunda %… kusur"). BAĞLAMI KURMADAN borçlu/kusur ÖNERME — öneri bu bağlamdan çıkmalı.
 
@@ -135,7 +135,7 @@ const SISTEM = `Sen Ray Sigorta A.Ş. vekili K/Partners hukuk bürosunun rücu D
  (f) Hizmet/yol kusuru → idari yol, muhatap KGM/işletmeci. (g) Yaya → karşı araç yok, fail yaya.
 OLMAYAN bir karşı aracı/plakayı ASLA UYDURMA; tür araç-araç çarpışması değilse karsiPlaka BOŞ kalsın ve plaka odaklı öneri verme.
 
-★★ LEHE FORMUNA KİLİTLENME: "Lehe / Hukuk Devir Formu" Ray'in İÇ talep formudur ve GÜVENİLİR DEĞİLDİR — özellikle "RÜCU MUHATABI / MUHATAPLARI" ve TCKN alanları HATALI olabilir (aynı TCKN farklı dosyalarda yanlışlıkla tekrarlayabilir). Lehe formunu yalnız bir İPUCU/başlangıç olarak kullan; borçluyu ve kusuru TUTANAKLARLA (kaza tespit, görgü, ifade, bilirkişi) ÇAPRAZ DOĞRULA. Çelişki varsa RESMÎ TUTANAĞA güven; Lehe'deki sapmayı "olayBaglami" ve "sonrakiAdimlar"da açıkça belirt ve o borçlunun teyit'ini SUPHE/TEYIT_GEREK yap. Borçlunun kimliği olayın GERÇEĞİNDEN gelir, formun yazdığından değil.
+★★ LEHE FORMUNA KİLİTLENME: "Lehe / Hukuk Devir Formu" sigortacının İÇ talep formudur ve GÜVENİLİR DEĞİLDİR — özellikle "RÜCU MUHATABI / MUHATAPLARI" ve TCKN alanları HATALI olabilir (aynı TCKN farklı dosyalarda yanlışlıkla tekrarlayabilir). Lehe formunu yalnız bir İPUCU/başlangıç olarak kullan; borçluyu ve kusuru TUTANAKLARLA (kaza tespit, görgü, ifade, bilirkişi) ÇAPRAZ DOĞRULA. Çelişki varsa RESMÎ TUTANAĞA güven; Lehe'deki sapmayı "olayBaglami" ve "sonrakiAdimlar"da açıkça belirt ve o borçlunun teyit'ini SUPHE/TEYIT_GEREK yap. Borçlunun kimliği olayın GERÇEĞİNDEN gelir, formun yazdığından değil.
 
 ★★ FARKLI İSİMLER = AYRI ROLLER → ÇOKLU BORÇLU: Olayı fiilen yapan SÜRÜCÜYÜ kanıtlardan tespit et — şikayet/ifade tutanağındaki isim, EKTEKİ FOTOĞRAFLARDAKİ ehliyet/ruhsat, kaza tespit tutanağı. Bu sürücü Lehe formundaki muhataptan FARKLIYSA, kişileri "aynı kişi" VARSAYMA: genelde AYRI rollerdir (kusurlu SÜRÜCÜ + RUHSAT SAHİBİ/İŞLETEN) → MÜTESELSİL sorumlulukla İKİSİNİ DE borçlu yaz. Tek bir isme (Lehe muhatabına) İNDİRGEME. Hangi ismin hangi belgeden/rolden geldiğini olayBaglami'nda açıkla; bağ kuramadığın borçluya teyit=TEYIT_GEREK + sonrakiAdimlar'a tescil/MERNİS sorgusu ekle.
 
@@ -237,7 +237,7 @@ export async function analizEt(metin: string, footer?: string, gorseller?: Gorse
     const res = await client.messages.create({
       model: MODEL,
       max_tokens: 4500,
-      system: unvanGecir(SISTEM, alacakliUnvan) + (footer ? `\nAçıklama footer'ı (sonuna ekle): ${footer}` : '\nFooter yoksa "K/Partners" iletişim satırı bırak.') + (ogrenilenKurallar ?? ''),
+      system: unvanGecir(SISTEM, alacakliUnvan) + (footer ? `\nAçıklama footer'ı (sonuna ekle): ${footer}` : '\nFooter verilmediyse footer EKLEME.') + (ogrenilenKurallar ?? ''),
       messages: [{ role: 'user', content }],
       tools: [{ name: 'kaydet', description: 'Çıkarılan rücu alanlarını kaydet', input_schema: SCHEMA as Anthropic.Tool.InputSchema }],
       tool_choice: { type: 'tool', name: 'kaydet' },

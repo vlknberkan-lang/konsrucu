@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   const d = kayit.dosya
   const za = d.zamanasimi
   const girdi: HatirlatmaGirdi = {
-    aliciAd: 'Yelda',
+    aliciAd: 'Avukat',
     etkinlik: {
       tur: kayit.tur,
       baslik: kayit.baslik,

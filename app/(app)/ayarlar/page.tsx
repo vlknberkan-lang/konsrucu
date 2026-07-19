@@ -87,7 +87,7 @@ export default async function AyarlarPage({ searchParams }: { searchParams: { ok
           </div>
           <div className="sm:col-span-2">
             <label htmlFor="aciklamaFooter" className={LABEL}>Takip açıklaması footer'ı (UYAP metninin sonuna eklenir)</label>
-            <textarea id="aciklamaFooter" name="aciklamaFooter" rows={3} defaultValue={ayarlar?.aciklamaFooter ?? ''} placeholder="Örn. K/Partners: iletişim / vekâlet bilgisi…" className={`${ALAN} resize-y`} />
+            <textarea id="aciklamaFooter" name="aciklamaFooter" rows={3} defaultValue={ayarlar?.aciklamaFooter ?? ''} placeholder="Örn. büro iletişim / vekâlet bilgisi…" className={`${ALAN} resize-y`} />
           </div>
 
           <div className="sm:col-span-2 border-t border-border-subtle pt-3">

@@ -37,7 +37,7 @@ export default function GizlilikPage() {
 
         <Madde baslik="1. Veri sorumlusu">
           <p>
-            Veri sorumlusu, eklentiyi kullanan yetkili hukuk bürosudur (Küçükislamoğlu Hukuk Bürosu — K/Partners).
+            Veri sorumlusu, eklentiyi kullanan yetkili hukuk bürosudur (uygulamayı kullanan hukuk bürosu).
             Sorularınız için: <b>vberkanbiyikli@gmail.com</b>.
           </p>
         </Madde>

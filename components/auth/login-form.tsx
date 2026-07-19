@@ -29,7 +29,14 @@ export function LoginForm() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       setBusy(false)
-      setError('E-posta veya şifre hatalı.')
+      // Supabase hatalarını Türkçe + doğru yönlendirmeyle göster (hepsine "şifre hatalı" deme)
+      if (/not confirmed/i.test(error.message)) {
+        setError('E-postan henüz doğrulanmamış — gelen kutundaki (gerekirse spam) doğrulama bağlantısına tıkla, sonra tekrar gir.')
+      } else if (/invalid login credentials/i.test(error.message)) {
+        setError('E-posta veya şifre hatalı. Şifreni hatırlamıyorsan aşağıdan sıfırlayabilirsin.')
+      } else {
+        setError(`Giriş yapılamadı: ${error.message}`)
+      }
       return
     }
     router.push('/dashboard')
@@ -80,7 +87,7 @@ export function LoginForm() {
         <label htmlFor="password" className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground">
           Şifre
         </label>
-        <a href="#" className="text-[11px] font-medium text-kr hover:underline">Şifremi unuttum</a>
+        <a href="/sifre-sifirla" className="text-[11px] font-medium text-kr hover:underline">Şifremi unuttum</a>
       </div>
       <div className="relative mb-[18px]">
         <Lock className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-muted-foreground" />

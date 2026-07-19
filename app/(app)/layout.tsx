@@ -68,7 +68,7 @@ export default async function AppGroupLayout({ children }: { children: React.Rea
   return (
     <AppShell
       user={{ ad: dbUser.ad, rol: ROL_ETIKET[dbUser.rol] ?? dbUser.rol, init }}
-      tenant={aktif ? { musteri: aktif.ad, ofis: 'Küçükislamoğlu Hukuk Bürosu', init: initials(aktif.ad) } : null}
+      tenant={aktif ? { musteri: aktif.ad, ofis: dbUser.ad, init: initials(aktif.ad) } : null}
       navCounts={{ onemli: onemliSayi, gorevler: gorevSayi }}
     >
       {children}

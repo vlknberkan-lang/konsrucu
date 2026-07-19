@@ -64,7 +64,7 @@ export async function GET(req: Request) {
   const zamanasimiGecti = zaGectiKayit.filter((d) => d.zamanasimi && dosyaAktif(d)).map(zaSatir)
 
   const { html } = haftalikRaporHtml({
-    aliciAd: 'Yelda',
+    aliciAd: 'Avukat',
     bugun: bas.toISOString(),
     gunSayisi: 7,
     etkinlikler,

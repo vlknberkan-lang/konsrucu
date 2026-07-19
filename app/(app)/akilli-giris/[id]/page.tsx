@@ -531,7 +531,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
                     ? (footerIcerir(cj.aciklama, footer)
                       ? null
                       : <pre className="mt-2 whitespace-pre-wrap border-t border-border-subtle pt-2 font-mono text-[11px] leading-relaxed text-muted-foreground">{footer}</pre>)
-                    : <div className="mt-1.5 text-[11px] text-muted-foreground">Sondaki K/Partners iletişim satırı için <b>Şirket Bilgileri → Açıklama footer</b>'ını doldurun.</div>}
+                    : <div className="mt-1.5 text-[11px] text-muted-foreground">Sondaki iletişim/vekâlet satırı için <b>Şirket Bilgileri → Açıklama footer</b>'ını doldurun.</div>}
                 </div>
               </div>
             )}

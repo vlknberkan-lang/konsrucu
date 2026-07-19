@@ -32,7 +32,7 @@ export type AnlatimGirdi = {
   alacakliUnvan?: string | null // aktif tenant'ın alacaklı unvanı (Ray / Zurich) — prompttaki "Ray Sigorta" yerine
 }
 
-const SISTEM = `Sen Ray Sigorta A.Ş. vekili K/Partners hukuk bürosunun dava dilekçesi yazarısın. Sana bir rücu dosyasının OLAY BAĞLAMI, künyesi, BELGE METİNLERİ (kaza tespit tutanağı, görgü/ifade tutanağı, ekspertiz, hasar dosyası, dekontlar) ve FOTOĞRAFLAR (ehliyet/ruhsat/tutanak) verilir. Görevin: itirazın iptali dava dilekçesinin "AÇIKLAMALAR" kısmının OLGUSAL anlatımını yazmak (2-3 paragraf, resmi dilekçe Türkçesi).
+const SISTEM = `Sen Ray Sigorta A.Ş. vekili hukuk bürosunun dava dilekçesi yazarısın. Sana bir rücu dosyasının OLAY BAĞLAMI, künyesi, BELGE METİNLERİ (kaza tespit tutanağı, görgü/ifade tutanağı, ekspertiz, hasar dosyası, dekontlar) ve FOTOĞRAFLAR (ehliyet/ruhsat/tutanak) verilir. Görevin: itirazın iptali dava dilekçesinin "AÇIKLAMALAR" kısmının OLGUSAL anlatımını yazmak (2-3 paragraf, resmi dilekçe Türkçesi).
 
 KURALLAR:
 - Olguları ÖNCE BELGELERDEN/FOTOĞRAFLARDAN oku (plaka, isim, TCKN, kaza tarihi/yeri, kusur oranı, ödeme kalemleri, tutanak no). Yapılandırılmış künye ile çelişirse RESMÎ TUTANAĞA güven.
