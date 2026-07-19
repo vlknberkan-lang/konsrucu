@@ -57,3 +57,10 @@ Thumbs.db
 
 # yerel storage yedekleri (scripts/yedek-al.mjs)
 yedekler/
+
+# ─── kökteki tanıtım/medya kalıntıları (repo'ya girmesin; dosyalar diskte durur) ───
+/*.mp4
+/*.png
+/*.zip
+/*.rar
+/c*tmpzurich-verify.js
