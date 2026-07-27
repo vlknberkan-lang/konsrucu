@@ -57,11 +57,11 @@ export default async function TakvimPage() {
   // "Etkinlik Ekle" için dosya listesi (aranabilir seçim)
   const dosyaKayit = await prisma.rucuDosyasi.findMany({
     where: { musteriId: aktifMusteriId },
-    select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } },
+    select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true, icraDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } },
     orderBy: { createdAt: 'desc' },
     take: 3000,
   })
-  const dosyalar: DosyaSecenek[] = dosyaKayit.map((d) => ({ id: d.id, hukukNo: d.hukukDosyaNo ?? d.hasarDosyaNo, borclu: d.borclular[0]?.adUnvan ?? null }))
+  const dosyalar: DosyaSecenek[] = dosyaKayit.map((d) => ({ id: d.id, hukukNo: d.hukukDosyaNo ?? d.hasarDosyaNo, icraNo: d.icraDosyaNo, borclu: d.borclular[0]?.adUnvan ?? null }))
 
   return (
     <div className="mx-auto max-w-[1400px] px-7 py-6">

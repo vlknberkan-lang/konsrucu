@@ -1,7 +1,9 @@
 /**
- * KonsRücü — Haftalık takvim raporu e-postası (HTML + düz metin) · lib/konsrucu/rapor-mail.ts
+ * KonsRücü — Sabah takvim raporu e-postası (HTML + düz metin) · lib/konsrucu/rapor-mail.ts
  * Saf üretici (DB yok). Önümüzdeki N günün etkinliklerini güne göre gruplar; e-posta-güvenli
  * (tablo düzeni + inline stil). Hem /takvim/rapor önizlemesi hem de zamanlı gönderim aynı kaynağı kullanır.
+ * ÇOK-ŞİRKET: rapor "bölümler" alır — alıcı birden fazla şirkete üyeyse (Yelda: Ray + Zurich)
+ * hepsi TEK mailde, şirket başına ayrı bantla gider; tek şirkette bant basılmaz.
  * Sunucu UTC çalışır: tüm tarih/saat gösterimi + gün gruplaması İSTANBUL gününe göredir (lib/konsrucu/format).
  */
 import { tarihTR, kalanGun, bugunIstBasi } from './format'
@@ -19,14 +21,20 @@ export type RaporEtkinlik = {
 
 export type RaporZamanasimi = { hukukNo: string | null; borclu: string | null; tarih: string; kalanGun: number }
 
-export type RaporGirdi = {
-  aliciAd: string
-  bugun: string // ISO ('YYYY-MM-DD' veya tam ISO) — raporun referans günü
-  gunSayisi?: number // varsayılan 7
+/** Bir şirketin (tenant) rapor verisi — alıcı kaç şirkete üyeyse o kadar bölüm. */
+export type RaporBolum = {
+  musteriAd: string | null // null → şirket bandı basılmaz (tek-tenant önizleme)
   etkinlikler: RaporEtkinlik[]
   zamanasimi?: RaporZamanasimi[] // pencerede dolan zamanaşımları (ops.)
   zamanasimiGecti?: RaporZamanasimi[] // tarihi GEÇMİŞ, takibi açılmamış dosyalar — kırmızı alarm (ops.)
   zamanasimiBosSayisi?: number // zamanaşımı tarihi hiç girilmemiş açık dosya sayısı (ops.)
+}
+
+export type RaporGirdi = {
+  aliciAd: string
+  bugun: string // ISO ('YYYY-MM-DD' veya tam ISO) — raporun referans günü
+  gunSayisi?: number // varsayılan 7
+  bolumler: RaporBolum[]
   panelUrl?: string // "Takvime git" linki
 }
 
@@ -67,88 +75,115 @@ function gunEtiketi(d: Date, bugun: Date): string {
   return tarih
 }
 
-/** Haftalık takvim raporu → { konu, html, text }. */
+/** Sabah takvim raporu → { konu, html, text }. Alıcının tüm şirketleri tek mailde. */
 export function haftalikRaporHtml(g: RaporGirdi): { konu: string; html: string; text: string } {
   const gunSayisi = g.gunSayisi ?? 7
   const bugun = new Date(g.bugun)
   const bas = bugunIstBasi(bugun)
   const son = new Date(bas.getTime() + gunSayisi * 86_400_000)
-
-  // pencere içindeki etkinlikler, güne göre grupla
-  const pencere = g.etkinlikler
-    .filter((e) => { const t = new Date(e.baslar).getTime(); return t >= bas.getTime() && t < son.getTime() })
-    .sort((a, b) => a.baslar.localeCompare(b.baslar))
-  const gunMap = new Map<string, RaporEtkinlik[]>()
-  for (const e of pencere) { const k = gunKey(new Date(e.baslar)); if (!gunMap.has(k)) gunMap.set(k, []); gunMap.get(k)!.push(e) }
-
   const gunler = Array.from({ length: gunSayisi }, (_, i) => new Date(bas.getTime() + i * 86_400_000))
   const aralik = `${tarihUzun(bas)} – ${tarihUzun(new Date(son.getTime() - 86_400_000))}`
-  const zaGecti = g.zamanasimiGecti ?? []
-  const konu = `Haftalık Takvim · ${pencere.length} etkinlik${zaGecti.length ? ` · ⛔ ${zaGecti.length} zamanaşımı geçti` : ''} · ${tarihTR(bas)}–${tarihTR(new Date(son.getTime() - 86_400_000))}`
+  const cok = g.bolumler.length > 1
 
-  // ── HTML ──
-  const gunBloklari = gunler.map((d) => {
-    const evs = gunMap.get(gunKey(d)) ?? []
-    const bos = evs.length === 0
-    const satirlar = bos
-      ? `<tr><td style="padding:8px 16px;color:${MUTED};font-size:13px;">— etkinlik yok</td></tr>`
-      : evs.map((e) => {
-          const m = turMeta(e.tur)
-          const yer = e.yer ? `${e.online ? '🎥 ' : '📍 '}${esc(e.yer)}` : ''
-          const kim = esc(e.borclu ?? e.baslik)
-          const no = e.hukukNo ? `<span style="font-family:monospace;color:${MUTED};font-size:12px;"> · ${esc(e.hukukNo)}</span>` : ''
-          const aralikSaat = `${saat(e.baslar)}${e.biter ? '–' + saat(e.biter) : ''}`
-          return `<tr>
-            <td valign="top" style="padding:8px 8px 8px 16px;white-space:nowrap;font-family:monospace;font-size:13px;font-weight:bold;color:${AKSAN};">${aralikSaat}</td>
-            <td valign="top" style="padding:8px 16px 8px 0;">
-              <span style="display:inline-block;background:${m.bg};color:${m.fg};font-size:11px;font-weight:bold;padding:2px 8px;border-radius:999px;">${m.label}</span>
-              <div style="margin-top:3px;font-size:14px;font-weight:600;color:${INK};">${kim}${no}</div>
-              ${yer ? `<div style="font-size:12px;color:${MUTED};margin-top:2px;">${yer}</div>` : ''}
-            </td>
-          </tr>`
-        }).join('')
-    return `
-      <tr><td style="padding:16px 0 6px;">
-        <div style="font-size:13px;font-weight:bold;color:${INK};border-bottom:2px solid ${BORDER};padding-bottom:4px;">${esc(gunEtiketi(d, bugun))}${bos ? '' : ` <span style="color:${MUTED};font-weight:normal;">· ${evs.length}</span>`}</div>
+  // ── bölüm başına hazırlık: pencere + gün haritası ──
+  const hazir = g.bolumler.map((b) => {
+    const pencere = b.etkinlikler
+      .filter((e) => { const t = new Date(e.baslar).getTime(); return t >= bas.getTime() && t < son.getTime() })
+      .sort((a, z) => a.baslar.localeCompare(z.baslar))
+    const gunMap = new Map<string, RaporEtkinlik[]>()
+    for (const e of pencere) { const k = gunKey(new Date(e.baslar)); if (!gunMap.has(k)) gunMap.set(k, []); gunMap.get(k)!.push(e) }
+    return { ...b, pencere, gunMap, za: b.zamanasimi ?? [], zaGecti: b.zamanasimiGecti ?? [], zaBos: b.zamanasimiBosSayisi ?? 0 }
+  })
+  const toplamEtkinlik = hazir.reduce((n, b) => n + b.pencere.length, 0)
+  const toplamZaGecti = hazir.reduce((n, b) => n + b.zaGecti.length, 0)
+  const toplamZa = hazir.reduce((n, b) => n + b.za.length, 0)
+  const toplamZaBos = hazir.reduce((n, b) => n + b.zaBos, 0)
+
+  // ── konu ──
+  const tarihAraligi = `${tarihTR(bas)}–${tarihTR(new Date(son.getTime() - 86_400_000))}`
+  const zaGectiEk = toplamZaGecti ? ` · ⛔ ${toplamZaGecti} zamanaşımı geçti` : ''
+  const konu = cok
+    ? `Sabah Özeti · ${toplamEtkinlik} etkinlik (${hazir.map((b) => `${b.musteriAd ?? '—'} ${b.pencere.length}`).join(' · ')})${zaGectiEk} · ${tarihAraligi}`
+    : `Haftalık Takvim · ${toplamEtkinlik} etkinlik${zaGectiEk} · ${tarihAraligi}${hazir[0]?.musteriAd ? ` · ${hazir[0].musteriAd}` : ''}`
+
+  // ── HTML: bölüm gövdesi ──
+  const bolumHtml = (b: (typeof hazir)[number]) => {
+    const gunBloklari = gunler.map((d) => {
+      const evs = b.gunMap.get(gunKey(d)) ?? []
+      const bos = evs.length === 0
+      const satirlar = bos
+        ? `<tr><td style="padding:8px 16px;color:${MUTED};font-size:13px;">— etkinlik yok</td></tr>`
+        : evs.map((e) => {
+            const m = turMeta(e.tur)
+            const yer = e.yer ? `${e.online ? '🎥 ' : '📍 '}${esc(e.yer)}` : ''
+            const kim = esc(e.borclu ?? e.baslik)
+            const no = e.hukukNo ? `<span style="font-family:monospace;color:${MUTED};font-size:12px;"> · ${esc(e.hukukNo)}</span>` : ''
+            const aralikSaat = `${saat(e.baslar)}${e.biter ? '–' + saat(e.biter) : ''}`
+            return `<tr>
+              <td valign="top" style="padding:8px 8px 8px 16px;white-space:nowrap;font-family:monospace;font-size:13px;font-weight:bold;color:${AKSAN};">${aralikSaat}</td>
+              <td valign="top" style="padding:8px 16px 8px 0;">
+                <span style="display:inline-block;background:${m.bg};color:${m.fg};font-size:11px;font-weight:bold;padding:2px 8px;border-radius:999px;">${m.label}</span>
+                <div style="margin-top:3px;font-size:14px;font-weight:600;color:${INK};">${kim}${no}</div>
+                ${yer ? `<div style="font-size:12px;color:${MUTED};margin-top:2px;">${yer}</div>` : ''}
+              </td>
+            </tr>`
+          }).join('')
+      return `
+        <tr><td style="padding:16px 0 6px;">
+          <div style="font-size:13px;font-weight:bold;color:${INK};border-bottom:2px solid ${BORDER};padding-bottom:4px;">${esc(gunEtiketi(d, bugun))}${bos ? '' : ` <span style="color:${MUTED};font-weight:normal;">· ${evs.length}</span>`}</div>
+        </td></tr>
+        <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${satirlar}</table></td></tr>`
+    }).join('')
+
+    const zaGoster = b.za.slice(0, LISTE_MAX)
+    const zaKalan = b.za.length - zaGoster.length
+    const zaBlok = b.za.length === 0 ? '' : `
+      <tr><td style="padding:18px 0 6px;">
+        <div style="font-size:13px;font-weight:bold;color:#b45309;">⏳ Yaklaşan Zamanaşımı (${b.za.length})</div>
       </td></tr>
-      <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${satirlar}</table></td></tr>`
-  }).join('')
+      <tr><td>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;">
+          ${zaGoster.map((z) => `<tr>
+            <td style="padding:7px 14px;font-size:13px;color:${INK};">${esc(z.borclu ?? z.hukukNo ?? '—')}<span style="font-family:monospace;color:${MUTED};font-size:12px;"> · ${esc(z.hukukNo ?? '')}</span></td>
+            <td align="right" style="padding:7px 14px;font-family:monospace;font-size:12.5px;font-weight:bold;color:${z.kalanGun <= 30 ? '#b91c1c' : '#b45309'};">${tarihTR(z.tarih)} · ${z.kalanGun}g</td>
+          </tr>`).join('')}
+          ${zaKalan > 0 ? `<tr><td colspan="2" style="padding:7px 14px;font-size:12px;color:${MUTED};">… ve ${zaKalan} dosya daha — tam liste panelde.</td></tr>` : ''}
+        </table>
+      </td></tr>`
 
-  const za = g.zamanasimi ?? []
-  const zaGoster = za.slice(0, LISTE_MAX)
-  const zaKalan = za.length - zaGoster.length
-  const zaBlok = za.length === 0 ? '' : `
-    <tr><td style="padding:18px 0 6px;">
-      <div style="font-size:13px;font-weight:bold;color:#b45309;">⏳ Yaklaşan Zamanaşımı (${za.length})</div>
-    </td></tr>
-    <tr><td>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;">
-        ${zaGoster.map((z) => `<tr>
-          <td style="padding:7px 14px;font-size:13px;color:${INK};">${esc(z.borclu ?? z.hukukNo ?? '—')}<span style="font-family:monospace;color:${MUTED};font-size:12px;"> · ${esc(z.hukukNo ?? '')}</span></td>
-          <td align="right" style="padding:7px 14px;font-family:monospace;font-size:12.5px;font-weight:bold;color:${z.kalanGun <= 30 ? '#b91c1c' : '#b45309'};">${tarihTR(z.tarih)} · ${z.kalanGun}g</td>
-        </tr>`).join('')}
-        ${zaKalan > 0 ? `<tr><td colspan="2" style="padding:7px 14px;font-size:12px;color:${MUTED};">… ve ${zaKalan} dosya daha — tam liste panelde.</td></tr>` : ''}
-      </table>
-    </td></tr>`
+    // tarihi GEÇMİŞ zamanaşımları — takibi açılmamış dosyalar için kırmızı alarm (asla sessizce gizlenmez)
+    const zaGectiGoster = b.zaGecti.slice(0, LISTE_MAX)
+    const zaGectiKalan = b.zaGecti.length - zaGectiGoster.length
+    const zaGectiBlok = b.zaGecti.length === 0 ? '' : `
+      <tr><td style="padding:18px 0 6px;">
+        <div style="font-size:13px;font-weight:bold;color:#b91c1c;">⛔ ZAMANAŞIMI GEÇTİ — takip açılmamış (${b.zaGecti.length})</div>
+      </td></tr>
+      <tr><td>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;">
+          ${zaGectiGoster.map((z) => `<tr>
+            <td style="padding:7px 14px;font-size:13px;color:${INK};">${esc(z.borclu ?? z.hukukNo ?? '—')}<span style="font-family:monospace;color:${MUTED};font-size:12px;"> · ${esc(z.hukukNo ?? '')}</span></td>
+            <td align="right" style="padding:7px 14px;font-family:monospace;font-size:12.5px;font-weight:bold;color:#b91c1c;">${tarihTR(z.tarih)} · ${Math.abs(z.kalanGun)}g önce</td>
+          </tr>`).join('')}
+          ${zaGectiKalan > 0 ? `<tr><td colspan="2" style="padding:7px 14px;font-size:12px;color:${MUTED};">… ve ${zaGectiKalan} dosya daha — tam liste panelde.</td></tr>` : ''}
+        </table>
+      </td></tr>`
 
-  // tarihi GEÇMİŞ zamanaşımları — takibi açılmamış dosyalar için kırmızı alarm (asla sessizce gizlenmez)
-  const zaGectiGoster = zaGecti.slice(0, LISTE_MAX)
-  const zaGectiKalan = zaGecti.length - zaGectiGoster.length
-  const zaGectiBlok = zaGecti.length === 0 ? '' : `
-    <tr><td style="padding:18px 0 6px;">
-      <div style="font-size:13px;font-weight:bold;color:#b91c1c;">⛔ ZAMANAŞIMI GEÇTİ — takip açılmamış (${zaGecti.length})</div>
-    </td></tr>
-    <tr><td>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;">
-        ${zaGectiGoster.map((z) => `<tr>
-          <td style="padding:7px 14px;font-size:13px;color:${INK};">${esc(z.borclu ?? z.hukukNo ?? '—')}<span style="font-family:monospace;color:${MUTED};font-size:12px;"> · ${esc(z.hukukNo ?? '')}</span></td>
-          <td align="right" style="padding:7px 14px;font-family:monospace;font-size:12.5px;font-weight:bold;color:#b91c1c;">${tarihTR(z.tarih)} · ${Math.abs(z.kalanGun)}g önce</td>
-        </tr>`).join('')}
-        ${zaGectiKalan > 0 ? `<tr><td colspan="2" style="padding:7px 14px;font-size:12px;color:${MUTED};">… ve ${zaGectiKalan} dosya daha — tam liste panelde.</td></tr>` : ''}
-      </table>
-    </td></tr>`
+    // çok-şirket: bölümün başına şirket bandı (+ bant altına o şirketin uyarı satırı)
+    const bant = cok && b.musteriAd ? `
+      <tr><td style="padding:26px 0 4px;">
+        <div style="background:#e6f6f7;border:1px solid #bfe6e9;border-radius:10px;padding:9px 14px;">
+          <span style="font-size:13.5px;font-weight:800;color:#0f6b72;">🏢 ${esc(b.musteriAd)}</span>
+          <span style="font-size:12.5px;color:${MUTED};"> · ${b.pencere.length} etkinlik${b.za.length ? ` · <b style="color:#b45309;">${b.za.length} zamanaşımı yaklaşıyor</b>` : ''}${b.zaGecti.length ? ` · <b style="color:#b91c1c;">${b.zaGecti.length} zamanaşımı GEÇTİ</b>` : ''}${b.zaBos ? ` · ${b.zaBos} dosyada tarih boş` : ''}</span>
+        </div>
+      </td></tr>` : ''
 
-  const zaBos = g.zamanasimiBosSayisi ?? 0
+    return `${bant}${zaGectiBlok}${gunBloklari}${zaBlok}`
+  }
+
+  // giriş cümlesi: tek şirkette eski ayrıntılı hâli, çok şirkette toplamlar
+  const giris = cok
+    ? `Önümüzdeki ${gunSayisi} günde ${g.bolumler.length} şirkette toplam <b style="color:${INK};">${toplamEtkinlik} etkinlik</b> var.${toplamZa ? ` Ayrıca <b style="color:#b45309;">${toplamZa}</b> dosyada zamanaşımı yaklaşıyor.` : ''}${toplamZaGecti ? ` <b style="color:#b91c1c;">${toplamZaGecti} dosyada zamanaşımı GEÇMİŞ görünüyor.</b>` : ''}`
+    : `Önümüzdeki ${gunSayisi} günde <b style="color:${INK};">${toplamEtkinlik} etkinlik</b> var.${toplamZa ? ` Ayrıca <b style="color:#b45309;">${toplamZa}</b> dosyada zamanaşımı yaklaşıyor.` : ''}${toplamZaGecti ? ` <b style="color:#b91c1c;">${toplamZaGecti} dosyada zamanaşımı GEÇMİŞ görünüyor.</b>` : ''}${toplamZaBos ? ` <span style="color:#b45309;">${toplamZaBos} açık dosyada zamanaşımı tarihi boş — radar dışındalar.</span>` : ''}`
 
   const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(konu)}</title></head>
 <body style="margin:0;padding:0;background:#f1f5f9;">
@@ -157,18 +192,16 @@ export function haftalikRaporHtml(g: RaporGirdi): { konu: string; html: string; 
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid ${BORDER};font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
         <tr><td style="background:${AKSAN};padding:20px 24px;">
           <div style="color:#bdeef1;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:monospace;">KonsRücu · Ajanda</div>
-          <div style="color:#ffffff;font-size:22px;font-weight:800;margin-top:4px;">Haftalık Takvim Raporu</div>
-          <div style="color:#d7f3f5;font-size:13px;margin-top:4px;">${esc(aralik)}</div>
+          <div style="color:#ffffff;font-size:22px;font-weight:800;margin-top:4px;">${cok ? 'Sabah Özeti' : 'Haftalık Takvim Raporu'}</div>
+          <div style="color:#d7f3f5;font-size:13px;margin-top:4px;">${esc(aralik)}${cok ? ` · ${g.bolumler.map((b) => esc(b.musteriAd ?? '—')).join(' + ')}` : ''}</div>
         </td></tr>
         <tr><td style="padding:20px 24px 4px;">
           <div style="font-size:15px;color:${INK};">Günaydın <b>${esc(g.aliciAd)}</b>,</div>
-          <div style="font-size:13.5px;color:${MUTED};margin-top:4px;">Önümüzdeki ${gunSayisi} günde <b style="color:${INK};">${pencere.length} etkinlik</b> var.${za.length ? ` Ayrıca <b style="color:#b45309;">${za.length}</b> dosyada zamanaşımı yaklaşıyor.` : ''}${zaGecti.length ? ` <b style="color:#b91c1c;">${zaGecti.length} dosyada zamanaşımı GEÇMİŞ görünüyor.</b>` : ''}${zaBos ? ` <span style="color:#b45309;">${zaBos} açık dosyada zamanaşımı tarihi boş — radar dışındalar.</span>` : ''}</div>
+          <div style="font-size:13.5px;color:${MUTED};margin-top:4px;">${giris}</div>
         </td></tr>
         <tr><td style="padding:4px 24px 8px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-            ${zaGectiBlok}
-            ${gunBloklari}
-            ${zaBlok}
+            ${hazir.map(bolumHtml).join('')}
           </table>
         </td></tr>
         ${g.panelUrl ? `<tr><td style="padding:8px 24px 20px;">
@@ -183,16 +216,24 @@ export function haftalikRaporHtml(g: RaporGirdi): { konu: string; html: string; 
 </body></html>`
 
   // ── düz metin ──
-  const textGun = gunler.map((d) => {
-    const evs = gunMap.get(gunKey(d)) ?? []
-    const head = gunEtiketi(d, bugun)
-    if (evs.length === 0) return `${head}\n  — etkinlik yok`
-    return `${head}\n` + evs.map((e) => `  ${saat(e.baslar)}${e.biter ? '–' + saat(e.biter) : ''}  [${turMeta(e.tur).label}] ${e.borclu ?? e.baslik}${e.hukukNo ? ' · ' + e.hukukNo : ''}${e.yer ? ' · ' + e.yer : ''}`).join('\n')
-  }).join('\n\n')
-  const textZa = za.length ? `\n\nYAKLAŞAN ZAMANAŞIMI (${za.length}):\n` + zaGoster.map((z) => `  ${z.borclu ?? z.hukukNo ?? '—'} · ${z.hukukNo ?? ''} · ${tarihTR(z.tarih)} (${z.kalanGun}g)`).join('\n') + (zaKalan > 0 ? `\n  … ve ${zaKalan} dosya daha (panelde)` : '') : ''
-  const textZaGecti = zaGecti.length ? `\n\n⛔ ZAMANAŞIMI GEÇTİ — TAKİP AÇILMAMIŞ (${zaGecti.length}):\n` + zaGectiGoster.map((z) => `  ${z.borclu ?? z.hukukNo ?? '—'} · ${z.hukukNo ?? ''} · ${tarihTR(z.tarih)} (${Math.abs(z.kalanGun)}g önce)`).join('\n') + (zaGectiKalan > 0 ? `\n  … ve ${zaGectiKalan} dosya daha (panelde)` : '') : ''
-  const textZaBos = zaBos ? `\n\nUYARI: ${zaBos} açık dosyada zamanaşımı tarihi boş — bu dosyalar zamanaşımı radarının DIŞINDA.` : ''
-  const text = `Günaydın ${g.aliciAd},\nÖnümüzdeki ${gunSayisi} günde ${pencere.length} etkinlik.\n${aralik}${textZaGecti}\n\n${textGun}${textZa}${textZaBos}\n\n—\nBu otomatik rapor her sabah 07:00'de gönderilir · info@konstraerp.com`
+  const bolumText = (b: (typeof hazir)[number]) => {
+    const bant = cok && b.musteriAd ? `═══ ${b.musteriAd} — ${b.pencere.length} etkinlik ═══\n\n` : ''
+    const textGun = gunler.map((d) => {
+      const evs = b.gunMap.get(gunKey(d)) ?? []
+      const head = gunEtiketi(d, bugun)
+      if (evs.length === 0) return `${head}\n  — etkinlik yok`
+      return `${head}\n` + evs.map((e) => `  ${saat(e.baslar)}${e.biter ? '–' + saat(e.biter) : ''}  [${turMeta(e.tur).label}] ${e.borclu ?? e.baslik}${e.hukukNo ? ' · ' + e.hukukNo : ''}${e.yer ? ' · ' + e.yer : ''}`).join('\n')
+    }).join('\n\n')
+    const zaGoster = b.za.slice(0, LISTE_MAX)
+    const zaKalan = b.za.length - zaGoster.length
+    const textZa = b.za.length ? `\n\nYAKLAŞAN ZAMANAŞIMI (${b.za.length}):\n` + zaGoster.map((z) => `  ${z.borclu ?? z.hukukNo ?? '—'} · ${z.hukukNo ?? ''} · ${tarihTR(z.tarih)} (${z.kalanGun}g)`).join('\n') + (zaKalan > 0 ? `\n  … ve ${zaKalan} dosya daha (panelde)` : '') : ''
+    const zaGectiGoster = b.zaGecti.slice(0, LISTE_MAX)
+    const zaGectiKalan = b.zaGecti.length - zaGectiGoster.length
+    const textZaGecti = b.zaGecti.length ? `⛔ ZAMANAŞIMI GEÇTİ — TAKİP AÇILMAMIŞ (${b.zaGecti.length}):\n` + zaGectiGoster.map((z) => `  ${z.borclu ?? z.hukukNo ?? '—'} · ${z.hukukNo ?? ''} · ${tarihTR(z.tarih)} (${Math.abs(z.kalanGun)}g önce)`).join('\n') + (zaGectiKalan > 0 ? `\n  … ve ${zaGectiKalan} dosya daha (panelde)` : '') + '\n\n' : ''
+    const textZaBos = b.zaBos ? `\nUYARI: ${b.zaBos} açık dosyada zamanaşımı tarihi boş — bu dosyalar zamanaşımı radarının DIŞINDA.` : ''
+    return `${bant}${textZaGecti}${textGun}${textZa}${textZaBos}`
+  }
+  const text = `Günaydın ${g.aliciAd},\nÖnümüzdeki ${gunSayisi} günde ${cok ? `${g.bolumler.length} şirkette toplam ` : ''}${toplamEtkinlik} etkinlik.\n${aralik}\n\n${hazir.map(bolumText).join('\n\n')}\n\n—\nBu otomatik rapor her sabah 07:00'de gönderilir · info@konstraerp.com`
 
   return { konu, html, text }
 }

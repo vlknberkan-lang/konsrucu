@@ -67,10 +67,7 @@ export async function GET(req: Request) {
     aliciAd: 'Avukat',
     bugun: bas.toISOString(),
     gunSayisi: 7,
-    etkinlikler,
-    zamanasimi,
-    zamanasimiGecti,
-    zamanasimiBosSayisi: zaBosSayisi,
+    bolumler: [{ musteriAd: null, etkinlikler, zamanasimi, zamanasimiGecti, zamanasimiBosSayisi: zaBosSayisi }],
     panelUrl: new URL('/takvim', req.url).toString(),
   })
 

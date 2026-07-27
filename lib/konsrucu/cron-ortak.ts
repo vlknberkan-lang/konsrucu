@@ -27,6 +27,7 @@ export type CronTenant = {
   musteriAd: string
   alicilar: string[]
   aliciAd: string
+  uyeler: { eposta: string; ad: string }[] // kişi-bazlı (birleşik) mailler için: alıcı adını e-postadan çöz
 }
 
 /**
@@ -55,7 +56,7 @@ export async function cronTenantlar(override?: string | null): Promise<CronTenan
     const admin = uyeler.find((u) => u.rol === Rol.ADMIN)
     const alicilar = override ? [override] : ekipMail.length ? ekipMail : process.env.RAPOR_ALICI ? [process.env.RAPOR_ALICI] : []
     const aliciAd = alicilar.length > 1 ? 'Ekip' : (admin?.ad ?? uyeler[0]?.ad)?.split(/\s+/)[0] || 'Avukat'
-    return { musteriId: m.id, musteriAd: m.ad, alicilar, aliciAd }
+    return { musteriId: m.id, musteriAd: m.ad, alicilar, aliciAd, uyeler: uyeler.flatMap((u) => (u.eposta ? [{ eposta: u.eposta, ad: u.ad }] : [])) }
   })
 }
 

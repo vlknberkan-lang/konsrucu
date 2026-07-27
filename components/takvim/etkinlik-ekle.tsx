@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation'
 import { CalendarPlus, X, Loader2, Search, Handshake, Scale, AlarmClock, CalendarDays, Bell, Check } from 'lucide-react'
 import { etkinlikKaydet } from '@/app/(app)/akilli-giris/actions'
 
-export type DosyaSecenek = { id: string; hukukNo: string | null; borclu: string | null }
+export type DosyaSecenek = { id: string; hukukNo: string | null; icraNo: string | null; borclu: string | null }
 
 const TURLER: { val: string; label: string; Icon: typeof Handshake }[] = [
   { val: 'DURUSMA', label: 'Duruşma', Icon: Scale },
@@ -40,7 +40,14 @@ export function EtkinlikEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
 
   const sonuc = useMemo(() => {
     const q = ara.trim().toLocaleLowerCase('tr')
-    const list = q ? dosyalar.filter((d) => (d.hukukNo ?? '').toLocaleLowerCase('tr').includes(q) || (d.borclu ?? '').toLocaleLowerCase('tr').includes(q)) : dosyalar
+    const list = q
+      ? dosyalar.filter(
+          (d) =>
+            (d.hukukNo ?? '').toLocaleLowerCase('tr').includes(q) ||
+            (d.icraNo ?? '').toLocaleLowerCase('tr').includes(q) ||
+            (d.borclu ?? '').toLocaleLowerCase('tr').includes(q)
+        )
+      : dosyalar
     return list.slice(0, 30)
   }, [ara, dosyalar])
 
@@ -102,7 +109,7 @@ export function EtkinlikEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
                       value={ara}
                       onChange={(e) => { setAra(e.target.value); setAcikListe(true) }}
                       onFocus={() => setAcikListe(true)}
-                      placeholder="Hukuk no veya borçlu ara…"
+                      placeholder="Hukuk no, icra esas no veya borçlu ara…"
                       className={`${INP} pl-9`}
                     />
                     {acikListe && (
@@ -117,7 +124,7 @@ export function EtkinlikEkle({ dosyalar }: { dosyalar: DosyaSecenek[] }) {
                             className="flex w-full items-center gap-2 border-b border-border-subtle px-3 py-2 text-left text-[12.5px] last:border-0 transition hover:bg-surface-muted"
                           >
                             <span className="min-w-0 flex-1 truncate font-semibold">{d.borclu ?? '—'}</span>
-                            <span className="font-mono shrink-0 text-[11px] text-muted-foreground">{d.hukukNo ?? d.id.slice(0, 8)}</span>
+                            <span className="font-mono shrink-0 text-[11px] text-muted-foreground">{d.hukukNo ?? d.id.slice(0, 8)}{d.icraNo ? ` · İcra ${d.icraNo}` : ''}</span>
                           </button>
                         ))}
                       </div>

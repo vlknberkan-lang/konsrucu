@@ -1,18 +1,21 @@
 /**
  * KonsRücü — Zamanlı görev · GET/POST /api/cron/haftalik-rapor
  * Her sabah 07:00 (TRT) = 04:00 UTC — Vercel Cron tetikler (bkz. vercel.json).
- * TÜM AKTİF TENANT'LAR için (Ray + Zurich…) ayrı ayrı: önümüzdeki 7 günün takvim raporu +
- * yaklaşan/GEÇMİŞ zamanaşımıları + zamanaşımı-boş dosya sayısı, tenant ekibine e-posta gider.
+ * KİŞİ BAŞINA TEK MAİL: önce her aktif tenant'ın (Ray + Zurich…) 7 günlük takvim + zamanaşımı
+ * verisi hazırlanır, sonra alıcılar kişi bazında gruplanır — birden fazla şirkete üye olan
+ * (Yelda) tüm şirketlerini TEK mailde şirket bantlarıyla alır; tek şirkete üye olan (Sude)
+ * yalnız kendi şirketini görür (tenant izolasyonu alıcı bazında korunur).
  * Zamanaşımı radarı yalnız TAKİBİ AÇILMAMIŞ açık dosyaları izler (takip açılınca rücu
  * zamanaşımı kesilir); tarihi geçmişler ayrı kırmızı bölümde ASLA gizlenmez, tavan yok.
  * Korumalı: CRON_SECRET (Vercel Bearer header). Hata varsa HTTP 500 (panelde görünür).
  *
- * Manuel test:  GET /api/cron/haftalik-rapor?key=<CRON_SECRET>&to=<test@adres>  (to ops.)
+ * Manuel test:  GET /api/cron/haftalik-rapor?key=<CRON_SECRET>&to=<test@adres>  (to ops. —
+ * override alıcı TÜM tenant'ların birleşik mailini alır; &dry=1 göndermeden listeler)
  */
 import { prisma } from '@/lib/prisma'
-import { haftalikRaporHtml, type RaporEtkinlik, type RaporZamanasimi } from '@/lib/konsrucu/rapor-mail'
+import { haftalikRaporHtml, type RaporBolum, type RaporEtkinlik, type RaporZamanasimi } from '@/lib/konsrucu/rapor-mail'
 import { mailGonder } from '@/lib/konsrucu/mail'
-import { cronYetkisiz, cronTenantlar, konuTenantli, cronYanit } from '@/lib/konsrucu/cron-ortak'
+import { cronYetkisiz, cronTenantlar, cronYanit } from '@/lib/konsrucu/cron-ortak'
 import { dosyaAktif } from '@/lib/konsrucu/aktiflik'
 import { bugunIstBasi, kalanGun } from '@/lib/konsrucu/format'
 
@@ -42,6 +45,8 @@ async function handle(req: Request) {
   let hata = 0
   const detay: Record<string, unknown>[] = []
 
+  // 1) tenant başına rapor bölümü hazırla
+  const bolumler: { tenant: (typeof tenantlar)[number]; bolum: RaporBolum }[] = []
   for (const t of tenantlar) {
     if (!t.alicilar.length) { hata++; detay.push({ tenant: t.musteriAd, ok: false, err: 'Alıcı bulunamadı (aktif kullanıcı / RAPOR_ALICI yok)' }); continue }
 
@@ -88,28 +93,44 @@ async function handle(req: Request) {
     const zamanasimi = zaKayit.filter((d) => d.zamanasimi && dosyaAktif(d)).map(zaSatir)
     const zamanasimiGecti = zaGectiKayit.filter((d) => d.zamanasimi && dosyaAktif(d)).map(zaSatir)
 
-    const { konu, html, text } = haftalikRaporHtml({
-      aliciAd: t.aliciAd,
-      bugun: bas.toISOString(),
-      gunSayisi: 7,
-      etkinlikler,
-      zamanasimi,
-      zamanasimiGecti,
-      zamanasimiBosSayisi: zaBosSayisi,
-      panelUrl: `${BASE}/takvim`,
-    })
-    const konuT = tenantlar.length > 1 ? konuTenantli(konu, t.musteriAd) : konu
-
-    if (dry) {
-      detay.push({ tenant: t.musteriAd, dry: true, alicilar: t.alicilar, etkinlik: etkinlikler.length, zamanasimi: zamanasimi.length, zamanasimiGecti: zamanasimiGecti.length, zamanasimiBos: zaBosSayisi, konu: konuT })
-      continue
-    }
-    const r = await mailGonder({ to: t.alicilar, konu: konuT, html, text })
-    if (!r.ok) hata++
-    detay.push({ tenant: t.musteriAd, ok: r.ok, alicilar: t.alicilar, etkinlik: etkinlikler.length, zamanasimi: zamanasimi.length, zamanasimiGecti: zamanasimiGecti.length, zamanasimiBos: zaBosSayisi, err: r.error })
+    bolumler.push({ tenant: t, bolum: { musteriAd: t.musteriAd, etkinlikler, zamanasimi, zamanasimiGecti, zamanasimiBosSayisi: zaBosSayisi } })
   }
 
-  return cronYanit({ ok: hata === 0, dry, tenant: tenantlar.length, hata, detay }, 'haftalik-rapor')
+  // 2) alıcıları kişi bazında grupla — çok şirkete üye olan tüm bölümlerini tek mailde alır
+  const kisiler = new Map<string, { ad: string; bolumler: RaporBolum[]; tenantAdlar: string[] }>()
+  for (const { tenant, bolum } of bolumler) {
+    for (const eposta of tenant.alicilar) {
+      const mevcut = kisiler.get(eposta)
+      const ad = tenant.uyeler.find((u) => u.eposta === eposta)?.ad.split(/\s+/)[0] || tenant.aliciAd
+      if (mevcut) { mevcut.bolumler.push(bolum); mevcut.tenantAdlar.push(tenant.musteriAd) }
+      else kisiler.set(eposta, { ad, bolumler: [bolum], tenantAdlar: [tenant.musteriAd] })
+    }
+  }
+
+  // 3) kişi başına TEK mail gönder
+  for (const [eposta, k] of kisiler) {
+    const { konu, html, text } = haftalikRaporHtml({
+      aliciAd: k.ad,
+      bugun: bas.toISOString(),
+      gunSayisi: 7,
+      bolumler: k.bolumler,
+      panelUrl: `${BASE}/takvim`,
+    })
+    const ozet = {
+      alici: eposta,
+      tenantlar: k.tenantAdlar,
+      etkinlik: k.bolumler.reduce((n, b) => n + b.etkinlikler.length, 0),
+      zamanasimi: k.bolumler.reduce((n, b) => n + (b.zamanasimi?.length ?? 0), 0),
+      zamanasimiGecti: k.bolumler.reduce((n, b) => n + (b.zamanasimiGecti?.length ?? 0), 0),
+      zamanasimiBos: k.bolumler.reduce((n, b) => n + (b.zamanasimiBosSayisi ?? 0), 0),
+    }
+    if (dry) { detay.push({ ...ozet, dry: true, konu }); continue }
+    const r = await mailGonder({ to: eposta, konu, html, text })
+    if (!r.ok) hata++
+    detay.push({ ...ozet, ok: r.ok, err: r.error })
+  }
+
+  return cronYanit({ ok: hata === 0, dry, tenant: tenantlar.length, alici: kisiler.size, hata, detay }, 'haftalik-rapor')
 }
 
 export async function GET(req: Request) { return handle(req) }
