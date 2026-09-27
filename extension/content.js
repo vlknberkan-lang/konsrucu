@@ -33,6 +33,9 @@
  *    seçim yoksa ya da UYAP kodu keşifle teyit edilmemişse kopilot DURUR. "%......" artık gönderilmez.
  *    Gönderim akışı DEĞİŞMEDİ: özet ekranı → avukat "Gönder" → onay kutusu → tevzi.
  *  - Evrak Gönderme ve Ödeme sekmelerine, UYAP'a yazan başka hiçbir uca dokunulmaz.
+ *  - DAVA KEŞFİ (S28): avukatın hukuk dava dosyaları salt-okuma taranır; ilgili dosyalar (icra + arabuluculuk no),
+ *    tür, durum, ön inceleme/duruşma tarihleri /api/uyap/dava'ya gider. Programdaki "UYAP'ta davayı ara" (DAVA_KESIF
+ *    işi) ya da günde bir kez. Bağı avukat onay kartıyla kurar; dava no elle girilmez. Bayrak: ozellikler.hukuk.
  */
 (() => {
   "use strict";
@@ -838,6 +841,7 @@
         if (!hr.ok || !hr.data || !hr.data.ok) { if (gorunur) ekleSatir(`⚠ bir anahtar hedef veremedi: ${hr.error || hr.status || "?"}`); continue; }
         // v2.0: sunucu bayrağı (ozellikler.evrakIndir=false) evrak indirmeyi kapatır; alan yoksa eski davranış
         const evrakIndir = !(hr.data.ozellikler && hr.data.ozellikler.evrakIndir === false);
+        if (hr.data.ozellikler) _hukukAcik = !!hr.data.ozellikler.hukuk;
         for (const x of hr.data.hedefler || []) {
           if (!x.icraDosyaNo) continue;
           const esas = extractEsas(x.icraDosyaNo); const m = esas.match(/^(\d{4})\/(\d+)$/);
@@ -945,6 +949,165 @@
     const o = await st(["sonOtoSync"]);
     if (Date.now() - (o.sonOtoSync || 0) < 25 * 60000) return; // throttle
     await senkronCalistir(false);
+    try { await davaKesifGunluk(); } catch (e) {}
+  }
+
+  // ═══════════════ DAVA KEŞFİ (v2.0 · S28) — hukuk (dava) dosyaları, SALT-OKUMA ═══════════════
+  // Keşif (2026-09-27, canlı oturumda): hukuk yargiTuru=1; search_phrase_detayli birimId/esas İSTEMEDEN
+  // birimTuru2 (birim türü kodu) ile avukatın o türdeki TÜM dosyalarını döner, yanıt [liste, toplam].
+  // dosyaAyrintiBilgileri_brd: ilgiliDosyaListesiStr ("X İcra Dairesi 2026/…, Arabuluculuk Daire Başkanlığı
+  // 2026/…"), davaTurleriStr, dosyaDurumu, durusmaTarihiStr / onIncelemTarihiStr ("gg/aa/yyyy ss:dd").
+  // dosya_taraf_bilgileri_brd: [{adi, rol: "Davacı"|"Davalı", …}].
+  // Eklenti HAM gönderir; eşleştirme ve bağ önerisi sunucuda (/api/uyap/dava). Bağı avukat programdaki onay
+  // kartıyla kurar (dava no, arabuluculuk no elle girilmez). ozellikler.hukuk kapalıyken hiç çalışmaz.
+  // UYAP'a yazan hiçbir çağrı yoktur; Evrak Gönderme / Ödeme uçlarına dokunulmaz.
+  const HUKUK_BIRIMLERI = ["0920", "0902", "0912", "0904", "0925"]; // Asliye Hukuk, Asliye Ticaret, Tüketici, Sulh Hukuk, İcra Hukuk
+  const DAVA_SAYFA = 100, DAVA_SAYFA_ENCOK = 5, DAVA_PARTI = 25;
+  let _hukukAcik = false, _evrakIndirAcik = true; // sunucu bayrakları (is/sira ve hedefler yanıtlarından)
+
+  function uyapGunMetni(v) {
+    if (!v) return null;
+    if (typeof v === "object" && v.date && v.date.year) { const d = v.date, p = (n) => String(n).padStart(2, "0"); return `${p(d.day)}.${p(d.month)}.${d.year}`; }
+    return String(v).slice(0, 40);
+  }
+  function uyapGunSira(v) { return v && typeof v === "object" && v.date ? v.date.year * 10000 + v.date.month * 100 + v.date.day : 0; }
+
+  /** Avukatın açık (karara çıkmış / işlemden kaldırılmış dahil) hukuk dava dosyaları, en yeni önce. minYil → dosyaYil ≥ minYil. */
+  async function hukukDavalariListele(minYil) {
+    const out = new Map();
+    const yillar = [];
+    if (minYil) for (let y = new Date().getFullYear(); y >= minYil; y--) yillar.push(y); else yillar.push(null);
+    for (const kod of HUKUK_BIRIMLERI) {
+      for (const yil of yillar) {
+        for (let sayfa = 1; sayfa <= DAVA_SAYFA_ENCOK; sayfa++) {
+          const body = { dosyaDurumKod: 0, pageSize: DAVA_SAYFA, pageNumber: sayfa, birimTuru2: kod };
+          if (yil) body.dosyaYil = yil;
+          let j; try { j = await apiPost("/search_phrase_detayli.ajx", body); } catch (e) { break; }
+          const items = Array.isArray(j) ? (Array.isArray(j[0]) ? j[0] : j) : [];
+          for (const x of items) {
+            if (!x || !x.dosyaId || out.has(String(x.dosyaId))) continue;
+            if (x.dosyaTur && !/dava/i.test(String(x.dosyaTur))) continue; // talimat vb. dışarıda
+            out.set(String(x.dosyaId), { uyapDosyaId: String(x.dosyaId), dosyaNo: x.dosyaNo || "", birimAdi: x.birimAdi || "", acilis: uyapGunMetni(x.dosyaAcilisTarihi), durumMetni: x.dosyaDurum || "", _sira: uyapGunSira(x.dosyaAcilisTarihi) });
+          }
+          if (items.length < DAVA_SAYFA) break;
+          await uyu(200);
+        }
+        await uyu(150);
+      }
+    }
+    return Array.from(out.values()).sort((a, b) => b._sira - a._sira);
+  }
+
+  async function davaAyrintiHam(uyapDosyaId) {
+    const a = await apiPost("/dosyaAyrintiBilgileri_brd.ajx", { dosyaId: uyapDosyaId });
+    return {
+      davaTurleriStr: a.davaTurleriStr || null, ilgiliDosyaListesiStr: a.ilgiliDosyaListesiStr || null,
+      birlesenDosyaListStr: a.birlesenDosyaListStr || null, dosyaDurumu: a.dosyaDurumu || null,
+      durusmaTarihi: a.durusmaTarihiStr || null, onIncelemeTarihi: a.onIncelemTarihiStr || a.onIncelemeTarihiStr || null,
+      kesifTarihi: a.kesifTarihiStr || null,
+    };
+  }
+  // yalnız ad ve rol gider (TCKN / vekil gönderilmez — veri en aza)
+  async function davaTaraflariHam(uyapDosyaId) {
+    try { return (await taraflar(uyapDosyaId)).slice(0, 12).map((t) => ({ ad: t.ad, rol: t.rol })); } catch (e) { return []; }
+  }
+  /** Bağlı davanın evrakı → programdaki dosya (icra hattının aynısı; indirme ucu hukuk dosyasında da PDF döner — keşif 2026-09-27). */
+  async function davaEvrakIndir(b, dosyaNo, ilerleme) {
+    const rec = { uyapDosyaId: b.uyapDosyaId };
+    await evrakListe(b.uyapDosyaId, rec);
+    if (!rec.evrak || !rec.evrak.length) return { toplam: 0, yeni: 0 };
+    const yeni = await evrakYukle({ id: b.dosyaId, esasNo: "dava " + (dosyaNo || b.uyapDosyaId), token: b.token }, rec, ilerleme);
+    return { toplam: rec.evrak.length, yeni };
+  }
+  const davaGovde = (d) => ({ uyapDosyaId: d.uyapDosyaId, dosyaNo: d.dosyaNo, birimAdi: d.birimAdi, acilis: d.acilis, durumMetni: d.durumMetni, ayrinti: d.ayrinti || null, taraflar: d.taraflar || [] });
+
+  async function davaGonder(tokenlar, davalar) {
+    const sonuc = { yeniAday: 0, guncellenen: 0, sahipsiz: 0, hata: null, bagli: [] };
+    for (let i = 0; i < davalar.length; i += DAVA_PARTI) {
+      const parti = davalar.slice(i, i + DAVA_PARTI).map(davaGovde);
+      for (const token of tokenlar) {
+        const r = await sendBg({ type: "RUCU_DAVA", token, body: { davalar: parti } });
+        if (!r || !r.ok || !r.data || !r.data.ok) { sonuc.hata = (r && (r.error || r.status)) || "gönderilemedi"; continue; }
+        sonuc.yeniAday += r.data.yeniAday || 0; sonuc.guncellenen += r.data.guncellenen || 0; sonuc.sahipsiz += (r.data.sahipsiz || []).length;
+        for (const b of r.data.bagliDavalar || []) sonuc.bagli.push({ ...b, token });
+      }
+    }
+    return sonuc;
+  }
+
+  /** Günde bir kez: tüm açık davaların ayrıntısı (bağlı davaların durum/tarih tazelemesi + yeni bağ önerileri). */
+  async function davaKesifGunluk() {
+    if (!_hukukAcik || _calisiyor || _isMesgul) return;
+    const o = await st(["sonDavaKesif"]);
+    if (Date.now() - (o.sonDavaKesif || 0) < 20 * 3600000) return;
+    const tokenlar = await anahtarlar();
+    if (!tokenlar.length) return;
+    _calisiyor = true;
+    try {
+      const liste = await hukukDavalariListele(null);
+      if (!liste.length) return; // oturum düşük ya da dava yok → bir sonraki turda yeniden dener
+      _seritIlerleme = `dava taraması · ${liste.length}`; seritGuncelle();
+      const gidecek = [];
+      for (const d of liste) {
+        try { d.ayrinti = await davaAyrintiHam(d.uyapDosyaId); } catch (e) { continue; }
+        if (/icra/i.test(tr(d.ayrinti.ilgiliDosyaListesiStr || ""))) { await uyu(100); d.taraflar = await davaTaraflariHam(d.uyapDosyaId); }
+        gidecek.push(d);
+        await uyu(150);
+      }
+      const s = await davaGonder(tokenlar, gidecek);
+      if (_evrakIndirAcik) for (const b of s.bagli) { try { const d = gidecek.find((x) => x.uyapDosyaId === b.uyapDosyaId); await davaEvrakIndir(b, d && d.dosyaNo); } catch (e) {} }
+      await stSet({ sonDavaKesif: Date.now(), sonDavaRapor: { t: new Date().toISOString(), taranan: gidecek.length, ...s } });
+    } finally { _calisiyor = false; _seritIlerleme = null; seritGuncelle(); }
+  }
+
+  /** Program "UYAP'ta davayı ara" dedi: bu icra esasını ilgili dosyalarında taşıyan davayı bul (en yeni önce). */
+  async function davaKesifIsi(is, token, oz) {
+    const A = (adim, durum, mesaj, sayac) => isAdim(token, is.id, adim, durum, mesaj, sayac);
+    const x = is.hedef || {};
+    const esas = extractEsas(x.icraDosyaNo || "");
+    const m = esas.match(/^(\d{4})\/(\d+)$/);
+    if (!oz.hukuk) { await A("HUKUK_MAHKEMELERI", "HATA", "dava araması sunucuda kapalı"); return isBitir(token, is.id, "HATA", null, "hukuk bayrağı kapalı"); }
+    if (!m) { await A("HUKUK_MAHKEMELERI", "HATA", "icra esas no yok"); return isBitir(token, is.id, "HATA", null, "icra esas no yok ya da geçersiz"); }
+    buildUi();
+    const satir = ekleSatir(`⚖ Dava araması: ${esas}…`);
+    await A("HUKUK_MAHKEMELERI", "CALISIYOR");
+    const liste = await hukukDavalariListele(Number(m[1]));
+    if (!liste.length) {
+      const oturum = await oturumYokla();
+      await A("HUKUK_MAHKEMELERI", "HATA", oturum ? `${m[1]} ve sonrasında açılmış dava dosyası yok` : "UYAP oturumu kapalı");
+      satirYaz(satir, `⚠ Dava araması ${esc(esas)}: ${oturum ? "dava dosyası yok" : "UYAP oturumu"}`);
+      return isBitir(token, is.id, oturum ? "TAMAM" : "HATA", { eslesme: oturum ? "BULUNAMADI" : "OTURUM" }, oturum ? null : "UYAP oturumu kapalı");
+    }
+    await A("HUKUK_MAHKEMELERI", "TAMAM", `${liste.length} dava dosyası (${m[1]} ve sonrası)`);
+    const hedefRe = new RegExp(`(^|\\D)${m[1]}\\s*/\\s*${m[2]}(\\D|$)`);
+    const bulunan = [];
+    let i = 0;
+    for (const d of liste) {
+      i++;
+      try { d.ayrinti = await davaAyrintiHam(d.uyapDosyaId); } catch (e) { continue; }
+      if (hedefRe.test(d.ayrinti.ilgiliDosyaListesiStr || "")) { d.taraflar = await davaTaraflariHam(d.uyapDosyaId); bulunan.push(d); break; }
+      if (i % 10 === 0) { await A("DAVA_TARAMA", "CALISIYOR", null, { n: i, toplam: liste.length }); satirYaz(satir, `⚖ Dava araması ${esc(esas)}: ${i}/${liste.length}`); }
+      await uyu(120);
+    }
+    const bul = bulunan[0];
+    await A("DAVA_TARAMA", "TAMAM", bul ? `bulundu: ${bul.birimAdi} ${bul.dosyaNo}` : "bu icraya bağlı dava bulunamadı", { n: i, toplam: liste.length });
+    if (!bul) {
+      satirYaz(satir, `⚖ Dava araması ${esc(esas)}: bağlı dava yok (${i} dosya tarandı)`);
+      return isBitir(token, is.id, "TAMAM", { eslesme: "BULUNAMADI", eslesmeNot: `${i} dava dosyası tarandı` }, null);
+    }
+    await A("PROGRAMA_YAZIM", "CALISIYOR");
+    const s = await davaGonder([token], bulunan);
+    await A("PROGRAMA_YAZIM", s.hata ? "HATA" : "TAMAM", s.hata ? String(s.hata) : s.yeniAday ? "onay kartı açıldı" : s.guncellenen ? "bağlı dava tazelendi" : "öneri zaten var");
+    const bagli = s.bagli.find((b) => b.uyapDosyaId === bul.uyapDosyaId);
+    if (!bagli) await A("EVRAK_INDIRME", "ATLANDI", "dava henüz bağlanmadı: programda onaylayınca evrak iner");
+    else if (oz.evrakIndir === false) await A("EVRAK_INDIRME", "ATLANDI", "evrak indirme sunucuda kapalı");
+    else {
+      await A("EVRAK_INDIRME", "CALISIYOR");
+      const ev = await davaEvrakIndir(bagli, bul.dosyaNo, (i, n, ad) => A("EVRAK_INDIRME", "CALISIYOR", ad, { n: i, toplam: n }));
+      await A("EVRAK_INDIRME", "TAMAM", `${ev.yeni} yeni evrak (${ev.toplam} evrak)`, { n: ev.toplam, toplam: ev.toplam });
+    }
+    satirYaz(satir, `⚖ ${esc(esas)} → <b>${esc(bul.birimAdi)} ${esc(bul.dosyaNo)}</b> ${bagli ? "bağlı · evrak güncel" : "programa önerildi"}`);
+    return isBitir(token, is.id, s.hata ? "KISMI" : "TAMAM", { eslesme: "OK", eslesmeNot: `${bul.birimAdi} ${bul.dosyaNo}` }, s.hata ? String(s.hata) : null);
   }
 
   // ═══════════════ İŞ KUYRUĞU (v2.0 · S22) — öncelikli tek dosya senkronu + nabız ═══════════════
@@ -983,6 +1146,7 @@
         const r = await sendBg({ type: "RUCU_IS_SIRA", token, uyapOturum: !!oturum });
         if (!r || !r.ok || !r.data || !r.data.ok) continue;
         const oz = r.data.ozellikler || {};
+        _hukukAcik = !!oz.hukuk; _evrakIndirAcik = oz.evrakIndir !== false;
         if (!oz.isKuyrugu || !oturum) continue;
         const isler = Array.isArray(r.data.isler) ? r.data.isler : [];
         for (const x of isler) {
@@ -1005,6 +1169,7 @@
     try {
       if (is.tur === "ICRA") await tekDosyaSenkron(is, token, oz);
       else if (is.tur === "KOPILOT") await kopilotIsi(is, token);
+      else if (is.tur === "DAVA_KESIF") await davaKesifIsi(is, token, oz);
       else await isBitir(token, is.id, "HATA", null, "bu eklenti sürümü '" + is.tur + "' işini desteklemiyor");
     } catch (e) {
       try { await isBitir(token, is.id, "HATA", null, e.message || "hata"); } catch (e2) {}

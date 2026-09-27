@@ -87,6 +87,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "RUCU_KIMLIK") { programFetch("/api/uyap/kimlik", { method: "GET" }, msg.token).then(sendResponse); return true; }
   if (msg.type === "RUCU_HEDEFLER") { programFetch("/api/uyap/hedefler" + (msg.tumu ? "?tazeSaat=0" : ""), { method: "GET" }, msg.token).then(sendResponse); return true; }
   if (msg.type === "RUCU_SENKRON") { post("/api/uyap/senkron", msg.body, msg.token).then(sendResponse); return true; }
+  if (msg.type === "RUCU_DAVA") { post("/api/uyap/dava", msg.body, msg.token).then(sendResponse); return true; }
   if (msg.type === "RUCU_EVRAK") { post("/api/uyap/evrak", msg.body, msg.token).then(sendResponse); return true; }
   if (msg.type === "RUCU_EVRAK_MANIFEST") { programFetch("/api/uyap/evrak-manifest?icraDosyaNo=" + encodeURIComponent(msg.icraDosyaNo || ""), { method: "GET" }, msg.token).then(sendResponse); return true; }
   // Takip Aç Kopilotu: açılabilir dosya yükleri + tevzi sonucu geri yazımı

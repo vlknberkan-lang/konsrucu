@@ -13,6 +13,7 @@ import { MusteriBildirimleri } from './bildirimler'
 import { DavaKarti } from './dava-karti'
 import { DavaKayitFormu } from './dava-kayit-formu'
 import { ExcelDavaOnerisiKarti } from './excel-dava-oneri'
+import { UyapDavaAdayiKarti, UyapDavaAraKarti } from './uyap-dava-adayi'
 import { GenelDurumKutusu } from './genel-durum'
 import { IhtiyatiHacizKarti } from './ihtiyati-haciz'
 import { KapanisSebebiKarti } from './kapanis-sebebi'
@@ -33,6 +34,8 @@ export function DavaBolumu(v: DavaPaneliVeri) {
         <div className="text-[13.5px] font-semibold">{simdi ? `${simdi.oneri}${simdi.etiket ? ` (${simdi.etiket})` : ''}` : 'Bu durakta bekleyen iş yok.'}</div>
         {v.kurallar.length > 1 && <div className="mt-0.5 text-[11.5px] text-muted-foreground">Sonra: {v.kurallar.slice(1, 4).map((k) => k.oneri).join(' · ')}</div>}
       </div>
+      {v.uyapAdaylari.map((a) => <UyapDavaAdayiKarti key={a.id} aday={a} yetki={v.yetki} />)}
+      {v.davalar.length === 0 && v.uyapAdaylari.length === 0 && v.yetki.yazabilir && <UyapDavaAraKarti dosyaId={v.dosyaId} />}
       {v.excelOnerisi && <ExcelDavaOnerisiKarti dosyaId={v.dosyaId} oneri={v.excelOnerisi} yetki={v.yetki} />}
       {v.davalar.length === 0 && <OnKontrolKarti dosyaId={v.dosyaId} onKontrol={v.onKontrol} hazirlik={v.hazirlik} yetki={v.yetki} />}
       {v.davalar.map((d) => (
@@ -46,8 +49,8 @@ export function DavaBolumu(v: DavaPaneliVeri) {
       <MusteriBildirimleri dosyaId={v.dosyaId} bildirimler={v.bildirimler} yetki={v.yetki} />
       <KapanisSebebiKarti dosyaId={v.dosyaId} kapanis={v.kapanis} yetki={v.yetki} />
       {v.yetki.yazabilir && (
-        <Kart id="dava-kayit" kicker="Elle dava kaydı" baslik={v.davalar.length ? 'Başka bir dava ekle' : 'Dava açıldıysa buradan girin'} alt="Eklenti davayı bulamazsa mahkeme, esas no, açılış tarihi ve tarafları elle girin. Esas no tek başına İİK 67 süresini kapatmaz.">
-          {yeniForm || v.davalar.length === 0
+        <Kart id="dava-kayit" kicker="Elle dava kaydı" baslik={v.davalar.length ? 'Başka bir dava ekle' : 'Eklenti bulamazsa: elle dava kaydı'} alt="Eklenti davayı bulamazsa mahkeme, esas no, açılış tarihi ve tarafları elle girin. Esas no tek başına İİK 67 süresini kapatmaz.">
+          {yeniForm
             ? <DavaKayitFormu dosyaId={v.dosyaId} dava={v.hazirlik} borclular={v.borclular} arabuluculuklar={v.arabuluculuklar} onBitti={() => setYeniForm(false)} />
             : <IkincilDugme onClick={() => setYeniForm(true)}>Dava kaydı formunu aç</IkincilDugme>}
         </Kart>

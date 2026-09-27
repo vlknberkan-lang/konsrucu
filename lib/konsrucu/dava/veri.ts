@@ -23,6 +23,7 @@ import { davaOnKontrol, gecisleriOku, type OnKontrolMaddesi } from './on-kontrol
 import { genelDurum, panoSatiri, type PanoSatiri } from './pano'
 import { kapaliRadarda } from './kapali-radar'
 import { paraOzeti, tahsilatAdaylari, type TahsilatOlayi } from './tahsilat-onay'
+import { DAVA_ADAYI_ALAN } from '../senkron/ilgili-dosya'
 
 const n = (v: { toString(): string } | null | undefined) => (v == null ? null : Number(v.toString()))
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
@@ -71,6 +72,22 @@ export type DavaUI = {
   iik67: { sureId: string; kontrol: Iik67KapanisDurumu; onaylananSonGun: string | null }[]
 }
 
+export type DavaAdayiUI = {
+  id: string
+  dosyaNo: string | null
+  birimAdi: string | null
+  acilis: string | null
+  davaTuru: string | null
+  durumMetni: string | null
+  ilgiliDosyaHam: string | null
+  birlesenHam: string | null
+  onIncelemeTarihi: string | null
+  sonrakiDurusma: string | null
+  rolumuz: 'DAVACI' | 'DAVALI' | null
+  eslesme: { durum: string; zayif: boolean; adet: number; arabuluculukNo: string | null }
+  iik67: Iik67KapanisDurumu[]
+}
+
 export type OnKontrolUI = {
   kilitli: boolean
   kilitMesaji: string | null
@@ -90,6 +107,8 @@ export type DavaPaneliVeri = {
   borclular: { id: string; adUnvan: string }[]
   arabuluculuklar: { id: string; etiket: string }[]
   excelOnerisi: ExcelDavaOnerisi | null
+  /** S28: eklentinin UYAP'ta bulduğu, ilgili dosyalarıyla bu icraya bağlanan davalar (avukat onayı bekler) */
+  uyapAdaylari: DavaAdayiUI[]
   tahsilat: { adaylar: { id: string; tutar: number | null; gorulme: string | null }[]; talep: number | null; tahsil: number; kalan: number | null }
   genelDurum: ReturnType<typeof genelDurum>
   kapanis: { uyapDurum: string | null; kapanisSebebi: string | null; kapanisAt: string | null; radarda: boolean }
@@ -213,6 +232,23 @@ export async function davaPaneli(dosyaId: string, musteriId: string, kullanici: 
     if (!o.bos && !ayniEsas) excelOnerisi = o
   }
 
+  // S28: UYAP'ta bulunan dava önerileri + her biri için İİK 67 kapanış ön kontrolü (açılış ↔ onaylanan son gün)
+  const adaySatirlari = await prisma.alanDegeri.findMany({ where: { dosyaId, alan: DAVA_ADAYI_ALAN, durum: 'ONERI', silindiAt: null }, orderBy: { createdAt: 'desc' }, take: 5 })
+  const acikIik67 = sureler.filter((s) => s.tur === 'IIK67' && s.durum === 'ACIK')
+  const uyapAdaylari: DavaAdayiUI[] = adaySatirlari.map((r) => {
+    const v = (r.degerJson ?? {}) as Record<string, unknown>
+    const m = (k: string) => (typeof v[k] === 'string' ? (v[k] as string) : null)
+    const e = (v.eslesme ?? {}) as Record<string, unknown>
+    const acilis = m('acilis') ? new Date(m('acilis')!) : null
+    return {
+      id: r.id, dosyaNo: m('dosyaNo'), birimAdi: m('birimAdi'), acilis: m('acilis'), davaTuru: m('davaTurleriStr'), durumMetni: m('durumMetni'),
+      ilgiliDosyaHam: m('ilgiliDosyaHam'), birlesenHam: m('birlesenHam'), onIncelemeTarihi: m('onIncelemeTarihi'), sonrakiDurusma: m('sonrakiDurusma'),
+      rolumuz: v.rolumuz === 'DAVACI' || v.rolumuz === 'DAVALI' ? v.rolumuz : null,
+      eslesme: { durum: String(e.durum ?? 'TEK'), zayif: e.zayif === true, adet: Number(e.adet ?? 1), arabuluculukNo: typeof e.arabuluculukNo === 'string' ? e.arabuluculukNo : null },
+      iik67: acikIik67.map((s) => iik67KapanisKontrol({ acilisTarihi: acilis, onaylananSonGun: s.onaylananSonGun, onerilenIhtiyatli: s.onerilenIhtiyatli, sureDurumu: s.durum })),
+    }
+  })
+
   const tahsilOlaylari: TahsilatOlayi[] = olaylar.filter((o) => o.altTip === 'TAHSILAT_BORCLUDAN').map((o) => ({ id: o.id, tip: o.tip, altTip: o.altTip, teyit: o.teyit, tutar: n(o.tutar), tarih: o.tarih, createdAt: o.createdAt }))
   const para = paraOzeti({ talep: takipToplam, olaylar: tahsilOlaylari })
   const adaylar = tahsilatAdaylari(tahsilOlaylari)
@@ -264,6 +300,7 @@ export async function davaPaneli(dosyaId: string, musteriId: string, kullanici: 
     borclular,
     arabuluculuklar: arablar.map((a) => ({ id: a.id, etiket: [a.uyapDosyaNo ?? a.buroNo ?? a.basvuruNo ?? 'Arabuluculuk', a.sonuc ?? ''].filter(Boolean).join(' · ') })),
     excelOnerisi,
+    uyapAdaylari,
     tahsilat: { adaylar: adaylar.map((a) => ({ id: a.id, tutar: a.tutar, gorulme: iso(a.tarih ?? a.createdAt) })), talep: para.talep, tahsil: para.tahsil, kalan: para.kalan },
     genelDurum: genelDurum({
       icraEksen: dosya.icraEksen, arabEksen: dosya.arabEksen, davaEksen: dosya.davaEksen, talep: takipToplam, tahsil: para.tahsil,

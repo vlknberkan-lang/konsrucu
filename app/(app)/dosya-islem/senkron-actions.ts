@@ -249,6 +249,27 @@ export async function uyaptanCek(girdi: { dosyaId: string }): Promise<CekSonuc> 
   return { ok: true, isId: is.id, bilgi: is.yeni ? 'UYAP\'tan çekme sıraya alındı.' : 'Bu dosya için çekme zaten sürüyor.' }
 }
 
+/**
+ * S28 · "UYAP'ta davayı ara": eklentiye DAVA_KESIF işi açar. Eklenti avukatın açık hukuk dosyalarını tarar; bu
+ * icraya bağlı dava bulunursa dava bölümünde "Bu dava bizim, bağla" kartı çıkar. Dava no elle girilmez.
+ */
+export async function uyaptaDavaAra(girdi: { dosyaId: string }): Promise<CekSonuc> {
+  const p = z.object({ dosyaId: uuid }).safeParse(girdi)
+  if (!p.success) return { ok: false, error: ilkHata(p.error) }
+  const k = await kapsam(true)
+  if (k.hata !== null) return { ok: false, error: k.hata }
+  const dosya = await prisma.rucuDosyasi.findFirst({ where: { id: p.data.dosyaId, musteriId: k.musteriId }, select: { id: true, icraDosyaNo: true, icraDairesi: true } })
+  if (!dosya) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok.' }
+  const esas = esasNoCoz(dosya.icraDosyaNo)
+  if (!esas) return { ok: false, error: 'Önce icra esas no girin: dava, icra numarasıyla bulunur.' }
+  const oz = sunucuOzellikleri()
+  if (!oz.isKuyrugu || !oz.hukuk) return { ok: true, kuyrukKapali: true, bilgi: 'UYAP dava araması sunucuda kapalı; eklenti davaları günlük turda tarar.' }
+  const is = await isOlustur({ musteriId: k.musteriId, dosyaId: dosya.id, tur: 'DAVA_KESIF', hedef: { daire: dosya.icraDairesi, esas }, isteyenId: k.kullaniciId })
+  await prisma.aktivite.create({ data: { dosyaId: dosya.id, kullaniciId: k.kullaniciId, eylem: `UYAP'ta dava araması istendi: ${dosya.icraDairesi ?? ''} ${esas}`.trim(), detayJson: { isId: is.id } } })
+  yenile(dosya.id)
+  return { ok: true, isId: is.id, bilgi: is.yeni ? "UYAP'ta dava araması sıraya alındı." : 'Bu dosya için dava araması zaten sürüyor.' }
+}
+
 /** Canlı ilerleme paneli için son iş + bağlantı + takip talebi mutabakatı. Salt okur. */
 export async function senkronIsDurumu(girdi: { dosyaId: string }): Promise<SenkronIsDurumuSonuc> {
   const p = z.object({ dosyaId: uuid }).safeParse(girdi)

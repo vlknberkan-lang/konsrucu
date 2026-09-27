@@ -22,7 +22,10 @@ import {
   davaHazirlikGirdi, davaIslemGirdi, davaKayitGirdi, excelOneriGirdi, gerekceliTebligGirdi, ihtiyatiHacizGirdi, iik67KapatGirdi,
   kapanisGirdi, kararGirdi, kesinlesmeGirdi, onKontrolGecisGirdi, onKontrolSecimGirdi, tahsilatKararGirdi, teyitGirdi, type DavaKayitGirdi,
 } from '@/lib/konsrucu/dava/girdi'
-import { altKayit, altKayitDosyaDenetle, asamaAynasi, esasCoz, esasMetni, kayitIsaretiOku, kayitIsaretiYaz } from '@/lib/konsrucu/dava/kayit'
+import { altKayit, altKayitDosyaDenetle, asamaAynasi, esasCoz, esasMetni, kayitIsaretiOku, kayitIsaretiYaz, mahkemeCoz } from '@/lib/konsrucu/dava/kayit'
+import { DAVA_ADAYI_ALAN, davaTuruCoz } from '@/lib/konsrucu/senkron/ilgili-dosya'
+import { isOlustur } from '@/lib/konsrucu/senkron/is-kuyrugu'
+import { sunucuOzellikleri } from '@/lib/konsrucu/senkron/ozellikler'
 import { iik67KapanisKontrol, kapanisNotu } from '@/lib/konsrucu/dava/iik67-kapanis'
 import { ihtiyatiHacizDogrula } from '@/lib/konsrucu/dava/ihtiyati-haciz'
 import { excelDavaOnerisi, kaynaktanRayDava } from '@/lib/konsrucu/dava/excel-dava'
@@ -626,4 +629,120 @@ export async function kapanisSebebiKaydet(girdi: { dosyaId: string; sebep: strin
   ])
   yenile(dosya.id)
   return { ok: true }
+}
+
+// ─────────────────── UYAP'ta bulunan dava: bağ onayı (S28) ───────────────────
+
+type DavaAdayiDeger = {
+  uyapDosyaId?: string; dosyaNo?: string | null; birimAdi?: string | null; acilis?: string | null; durumMetni?: string | null
+  davaTurleriStr?: string | null; ilgiliDosyaHam?: string | null; birlesenHam?: string | null
+  onIncelemeTarihi?: string | null; sonrakiDurusma?: string | null; kesifTarihi?: string | null
+  rolumuz?: 'DAVACI' | 'DAVALI' | null; eslesme?: { arabuluculukNo?: string | null }
+}
+const isoTarih = (s: string | null | undefined) => { if (!s) return null; const d = new Date(s); return isNaN(d.getTime()) ? null : d }
+
+/**
+ * Eklentinin UYAP'ta bulduğu dava önerisi (AlanDegeri "davaAdayi"): "Bu dava bizim, bağla" → Dava kaydı UYAP
+ * değerleriyle açılır (varsa HAZIRLIK davası ya da aynı esaslı dava kullanılır), İİK 67 kaydı kanıtla "kapanmaya
+ * hazır"a işaretlenir, ilgili dosyalardaki arabuluculuk no arabuluculuk kaydına yazılır (yoksa kayıt açılır).
+ * "Bizim değil" → öneri reddedilir ve aynı UYAP dosyası bir daha önerilmez. Dava no ve arabuluculuk no elle girilmez.
+ */
+export async function davaAdayiKarar(girdi: { adayId: string; karar: 'BAGLA' | 'BIZIM_DEGIL' }): Promise<Sonuc<{ davaId?: string; iik67?: { hazir: number; sonra: number } }>> {
+  const b = await baglam()
+  if ('hata' in b) return { ok: false, error: b.hata }
+  if (!girdi?.adayId || (girdi.karar !== 'BAGLA' && girdi.karar !== 'BIZIM_DEGIL')) return { ok: false, error: 'Geçersiz girdi' }
+  const aday = await prisma.alanDegeri.findFirst({ where: { id: girdi.adayId, alan: DAVA_ADAYI_ALAN, durum: 'ONERI', silindiAt: null, dosya: { musteriId: b.musteriId } } })
+  if (!aday) return { ok: false, error: 'Öneri bulunamadı ya da zaten karara bağlanmış.' }
+  const v = (aday.degerJson ?? {}) as DavaAdayiDeger
+  if (girdi.karar === 'BIZIM_DEGIL') {
+    await prisma.$transaction([
+      prisma.alanDegeri.update({ where: { id: aday.id }, data: { durum: 'REDDEDILDI', onaylayanId: b.kullaniciId, onayAt: new Date() } }),
+      prisma.aktivite.create({ data: { dosyaId: aday.dosyaId, kullaniciId: b.kullaniciId, eylem: `UYAP dava önerisi reddedildi (bizim değil)${v.dosyaNo ? ` · ${v.dosyaNo}` : ''}`, detayJson: { adayId: aday.id } } }),
+    ])
+    yenile(aday.dosyaId)
+    return { ok: true }
+  }
+  if (!v.uyapDosyaId) return { ok: false, error: 'Önerinin UYAP dosya kimliği eksik.' }
+  const zatenBagli = await prisma.dava.findFirst({ where: { uyapDosyaId: v.uyapDosyaId, silindiAt: null, dosya: { musteriId: b.musteriId } }, select: { id: true, dosyaId: true } })
+  if (zatenBagli && zatenBagli.dosyaId !== aday.dosyaId) return { ok: false, error: 'Bu UYAP davası başka bir dosyaya bağlı.' }
+  const esas = esasCoz(v.dosyaNo)
+  const mahkeme = mahkemeCoz(v.birimAdi)
+  const acilis = isoTarih(v.acilis)
+  const tur = davaTuruCoz(v.davaTurleriStr)
+  const alanlar = {
+    ...(tur ? { tur } : {}),
+    rolumuz: v.rolumuz === 'DAVALI' ? 'DAVALI' : 'DAVACI',
+    ...(mahkeme && !mahkeme.ayristirilamadi ? { mahkemeTuru: mahkeme.tur, mahkemeYer: mahkeme.yer, mahkemeNo: mahkeme.no } : {}),
+    ...(esas ? { esasYil: esas.yil, esasSira: esas.sira } : {}),
+    ...(acilis ? { acilisTarihi: acilis } : {}),
+    uyapDosyaId: v.uyapDosyaId,
+    uyapDavaTuruMetni: v.davaTurleriStr ?? null,
+    uyapDurumMetni: v.durumMetni ?? null,
+    ilgiliDosyaHam: v.ilgiliDosyaHam ?? null,
+    birlesenHam: v.birlesenHam ?? null,
+    onIncelemeTarihi: isoTarih(v.onIncelemeTarihi),
+    sonrakiDurusma: isoTarih(v.sonrakiDurusma),
+    kesifTarihi: isoTarih(v.kesifTarihi),
+    durum: 'DERDEST',
+  }
+  try {
+    const sonuc = await prisma.$transaction(async (tx) => {
+      let dava = zatenBagli
+        ? await tx.dava.findUnique({ where: { id: zatenBagli.id } })
+        : await tx.dava.findFirst({ where: { dosyaId: aday.dosyaId, silindiAt: null, uyapDosyaId: null, OR: [{ durum: 'HAZIRLIK' }, ...(esas ? [{ esasYil: esas.yil, esasSira: esas.sira }] : [])] }, orderBy: { createdAt: 'desc' } })
+      const yeni = !dava
+      if (!dava) {
+        const bos = await tx.asama.findFirst({ where: { dosyaId: aday.dosyaId, tur: 'DAVA', dava: { is: null } }, orderBy: { createdAt: 'desc' }, select: { id: true } })
+        let asamaId = bos?.id
+        if (!asamaId) {
+          const max = await tx.asama.aggregate({ where: { dosyaId: aday.dosyaId }, _max: { sira: true } })
+          asamaId = (await tx.asama.create({ data: { dosyaId: aday.dosyaId, tur: 'DAVA', sira: (max._max.sira ?? 0) + 1, detayJson: { kaynakTuru: 'UYAP', teyit: 'TEYITLI', girenId: b.kullaniciId } } })).id
+        }
+        dava = await tx.dava.create({ data: { ...alanlar, asamaId, dosyaId: aday.dosyaId } })
+      } else {
+        dava = await tx.dava.update({ where: { id: dava.id }, data: alanlar })
+      }
+      await tx.asama.update({ where: { id: dava.asamaId }, data: asamaAynasi(dava) })
+      if (yeni && dava.rolumuz === 'DAVACI') {
+        await tx.davaTaraf.create({ data: altKayit(dava, { rol: 'DAVACI', borcluId: null, adHam: null, kaynakTuru: 'UYAP', teyit: 'TEYITLI', teyitEdenId: b.kullaniciId, teyitAt: new Date(), not: 'Müvekkil' }) })
+      }
+      // arabuluculuk no (ilgili dosyalardan): kayıt varsa boş no'ya yazılır, yoksa kayıt açılır
+      const arbNo = v.eslesme?.arabuluculukNo ?? null
+      let arbIslem: 'yazildi' | 'acildi' | null = null
+      if (arbNo) {
+        const arb = await tx.arabuluculuk.findFirst({ where: { dosyaId: aday.dosyaId, silindiAt: null }, orderBy: { createdAt: 'desc' }, select: { id: true, uyapDosyaNo: true } })
+        let arbId = arb?.id ?? null
+        if (arb && !arb.uyapDosyaNo) { await tx.arabuluculuk.update({ where: { id: arb.id }, data: { uyapDosyaNo: arbNo } }); arbIslem = 'yazildi' }
+        if (!arb) {
+          const max = await tx.asama.aggregate({ where: { dosyaId: aday.dosyaId }, _max: { sira: true } })
+          const as = await tx.asama.create({ data: { dosyaId: aday.dosyaId, tur: 'ARABULUCULUK', kimlikNo: arbNo, sira: (max._max.sira ?? 0) + 1, detayJson: { kaynakTuru: 'UYAP', teyit: 'TEYITLI', girenId: b.kullaniciId } } })
+          arbId = (await tx.arabuluculuk.create({ data: { asamaId: as.id, dosyaId: aday.dosyaId, uyapDosyaNo: arbNo } })).id
+          arbIslem = 'acildi'
+        }
+        if (arbId && !dava.arabuluculukId) dava = await tx.dava.update({ where: { id: dava.id }, data: { arabuluculukId: arbId } })
+      }
+      const iik = await iik67Isaretle(tx, aday.dosyaId, dava.acilisTarihi)
+      await tx.alanDegeri.update({ where: { id: aday.id }, data: { durum: 'ONAYLI', onaylayanId: b.kullaniciId, onayAt: new Date() } })
+      const esasYazi = esasMetni(dava.esasYil, dava.esasSira)
+      await tx.aktivite.create({
+        data: {
+          dosyaId: aday.dosyaId, kullaniciId: b.kullaniciId,
+          eylem: `UYAP'ta bulunan dava bağlandı${esasYazi ? ` · ${esasYazi}` : ''}${arbIslem === 'acildi' ? ' · arabuluculuk kaydı UYAP no ile açıldı' : arbIslem === 'yazildi' ? ' · arabuluculuk no yazıldı' : ''}`,
+          detayJson: { davaId: dava.id, adayId: aday.id, iik67: iik },
+        },
+      })
+      return { davaId: dava.id, iik }
+    })
+    await dosyaDurumIlerlet(aday.dosyaId, 'DAVA')
+    // bağlandı → eklenti aynı davayı yeniden bulur, artık "bağlı" olduğu için evrakını (tensip, cevap …) dosyaya indirir
+    const oz = sunucuOzellikleri()
+    if (oz.isKuyrugu && oz.hukuk) {
+      const d = await prisma.rucuDosyasi.findUnique({ where: { id: aday.dosyaId }, select: { icraDosyaNo: true, icraDairesi: true } })
+      if (d?.icraDosyaNo) await isOlustur({ musteriId: b.musteriId, dosyaId: aday.dosyaId, tur: 'DAVA_KESIF', hedef: { daire: d.icraDairesi, esas: d.icraDosyaNo }, isteyenId: b.kullaniciId })
+    }
+    yenile(aday.dosyaId)
+    return { ok: true, davaId: sonuc.davaId, iik67: sonuc.iik }
+  } catch (e) {
+    return { ok: false, error: `Bağlanamadı: ${(e as Error).message}` }
+  }
 }

@@ -57,8 +57,17 @@ export const KOPILOT_ADIMLARI: readonly AdimTanimi[] = [
   { adim: 'PANEL_ACILDI', etiket: 'Takip Aç paneli bu dosyayla açıldı' },
 ]
 
+/** Dava keşfi (S28): eklenti avukatın açık hukuk dosyalarını tarar, ilgili dosyalarla icraya bağlanan davayı bulur. */
+export const DAVA_KESIF_ADIMLARI: readonly AdimTanimi[] = [
+  { adim: 'ULASTI', etiket: 'İstek eklentiye ulaştı' },
+  { adim: 'HUKUK_MAHKEMELERI', etiket: 'Dava bulunan mahkemeler listelendi' },
+  { adim: 'DAVA_TARAMA', etiket: 'Davalar tarandı (ilgili dosyalar, taraflar, tarihler)' },
+  { adim: 'PROGRAMA_YAZIM', etiket: 'Bulunan dava programa önerildi' },
+  { adim: 'EVRAK_INDIRME', etiket: 'Dava evrakı indiriliyor (yalnız bağlanmış dava)' },
+]
+
 export function adimTanimlari(tur: string): readonly AdimTanimi[] {
-  return tur === 'KOPILOT' ? KOPILOT_ADIMLARI : ICRA_ADIMLARI
+  return tur === 'KOPILOT' ? KOPILOT_ADIMLARI : tur === 'DAVA_KESIF' ? DAVA_KESIF_ADIMLARI : ICRA_ADIMLARI
 }
 
 export type Adim = {
