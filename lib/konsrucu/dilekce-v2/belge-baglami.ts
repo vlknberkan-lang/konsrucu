@@ -8,6 +8,7 @@
  */
 import type { BelgeMetni } from './alinti'
 import type { KartTuru } from './tipler'
+import { sonucBolumunuCikar } from './turler/beyan'
 
 export type BaglamBelgesi = {
   id: string
@@ -72,10 +73,20 @@ export function belgeBaglamiKur(belgeler: readonly BaglamBelgesi[], tur: KartTur
   for (const b of adaylar) {
     if (kalan <= 500) { kisaltilan.push(b.ad); continue }
     const tam = sayfaliMetin(b.metin!)
-    const sinir = Math.min(hedef?.test(`${b.altTur ?? ''}`) ? HEDEF_BELGE_UST_SINIR : BELGE_UST_SINIR, kalan)
+    const hedefBelgeMi = !!hedef?.test(`${b.altTur ?? ''}`)
+    const sinir = Math.min(hedefBelgeMi ? HEDEF_BELGE_UST_SINIR : BELGE_UST_SINIR, kalan)
     let metin = tam
     if (tam.length > sinir) {
-      metin = `${tam.slice(0, sinir)}\n[… belgenin kalanı gönderilmedi]`
+      // Hedef belgede (bilirkişi raporu, ara karar) SONUÇ/KANAAT bölümü son sayfada olsa da kesilmez (06
+      // §5.7-4, B40): bölüm bulunur ve bütçeye sığarsa metnin ortası kısaltılır, SONUÇ bölümü tam eklenir.
+      const sonuc = hedefBelgeMi ? sonucBolumunuCikar(tam) : { bulunduMu: false as const, govde: '' }
+      const NOT_ISARETI = '\n[… belgenin ortası gönderilmedi; SONUÇ/KANAAT bölümü tam aşağıdadır …]\n'
+      if (sonuc.bulunduMu && sonuc.govde.length > 0 && sonuc.govde.length < sinir - NOT_ISARETI.length) {
+        const onSinir = Math.max(sinir - sonuc.govde.length - NOT_ISARETI.length, 0)
+        metin = `${tam.slice(0, onSinir)}${NOT_ISARETI}${sonuc.govde}`
+      } else {
+        metin = `${tam.slice(0, sinir)}\n[… belgenin kalanı gönderilmedi]`
+      }
       kisaltilan.push(b.ad)
     }
     kalan -= metin.length

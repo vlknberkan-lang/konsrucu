@@ -30,6 +30,7 @@ import { kaliteGirdisiOlustur } from '@/lib/konsrucu/dilekce-v2/kalite-veri'
 import { COMPOSER_MODEL, COMPOSER_PROMPT_SURUM, composerUretici } from '@/lib/konsrucu/dilekce-v2/model'
 import { aciklamaParagraflariniUret } from '@/lib/konsrucu/dilekce-v2/paragraf'
 import { blokIsle } from '@/lib/konsrucu/dilekce-v2/sablon-dil'
+import { cevaplanacakBaglam } from '@/lib/konsrucu/dilekce-v2/turler/cevaba-cevap'
 import { KART_TUR_ADI, KART_TURLERI, kartTuruMu, type KartTuru } from '@/lib/konsrucu/dilekce-v2/tipler'
 import { uslupIstemi, type UslupKuraliKaydi } from '@/lib/konsrucu/dilekce-v2/uslup'
 import { atifKapisi, type KutuphaneKaydi } from '@/lib/konsrucu/mevzuat/atif'
@@ -143,6 +144,8 @@ export async function dilekceV2TaslakUret(input: { dosyaId: string; tur: KartTur
         const uslupEki = uslupIstemi(uslupKayitlari as UslupKuraliKaydi[], tur)
         const r = await aciklamaParagraflariniUret({
           oturum, tur, uslupEki, yuvalar, olgular: kartIcerikVal.olgular.map((x) => ({ id: x.id, metin: x.metin })),
+          // S39 kabul 2: cevaba cevapta yapay zekâya yalnız "cevaplanacak" işaretli savunmalar gider.
+          cevaplanacakSavunmalar: tur === 'CEVABA_CEVAP' ? cevaplanacakBaglam(kartIcerikVal.savunmalar) : undefined,
         })
         if (r.cikti) { aiSonucu = r.cikti.paragraflar; modelUretici = composerUretici(true) }
         else uyarilarAi.push('Yapay zekâ geçerli bir paragraf listesi döndürmedi; AÇIKLAMALAR yer tutucu olarak bırakıldı.')
