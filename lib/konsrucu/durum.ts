@@ -39,6 +39,20 @@ export function ileriMi(mevcut: DosyaDurum, hedef: DosyaDurum): boolean {
 }
 
 /**
+ * Riski AZALTAN hedef durumlar (06 M2/M3, S05/S15 asimetrik kural): kesinleşme, infaz, tahsil ve kapanış
+ * "takip bitti / itiraz yok / süre kapandı" demektir. Bu yöne UYAP olayı kendiliğinden götüremez; yalnız
+ * avukat (elle ilerletme ya da onaylı onarım) götürür. Riski artıran geçişler (gerçek tebliğ, itiraz) serbesttir.
+ */
+export const RISKI_AZALTAN_DURUMLAR: ReadonlySet<DosyaDurum> = new Set<DosyaDurum>([
+  DosyaDurum.KESINLESTI, DosyaDurum.INFAZ, DosyaDurum.TAHSIL, DosyaDurum.KAPANDI,
+])
+
+/** hedef durum riski azaltan bir geçiş mi? (UYAP kaynaklı olay için asimetrik kip bunu reddeder) */
+export function riskiAzaltirMi(hedef: DosyaDurum): boolean {
+  return RISKI_AZALTAN_DURUMLAR.has(hedef)
+}
+
+/**
  * Dosya durumunu TEK KAPIDAN ilerlet. Varsayılan: yalnız ileri yön (geri çekme sessizce reddedilir).
  * zorla=true: kullanıcının bilinçli evre kararı — sıra kontrolü atlanır.
  * Dönüş: durum gerçekten değiştiyse true.

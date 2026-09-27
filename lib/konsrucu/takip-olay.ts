@@ -7,7 +7,26 @@ import { Prisma, DosyaDurum } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { borcaItirazMi, onemliOlayTespit } from '@/lib/konsrucu/onemli-olay'
 import { tebligGorevleriOlustur, tebligGorevleriKapat, gercekTebligMi, kesinlesmeMetniMi } from '@/lib/konsrucu/teblig-gorev'
-import { ileriMi } from '@/lib/konsrucu/durum'
+import { ileriMi, riskiAzaltirMi } from '@/lib/konsrucu/durum'
+import type { UyapOlayDurumKipi } from '@/lib/konsrucu/eksen/bayrak'
+
+/**
+ * S15 aday kolonları (06 §3.2 TakipOlayi): senkron route UYAP olayını eski yoldan kaydederken aynı satıra
+ * ADAY bilgisini de yazar. Verilmezse satır eskisi gibi (teyit = null, "eski, doğrulanmamış") yazılır.
+ */
+export type AdayKolonlari = {
+  altTip: string
+  teyit: 'ADAY'
+  kaynakTuru: string
+  kural: string
+  hukukiTarih: Date | null
+  sonuc?: string | null
+  tebligSekli?: string | null
+  muhatap?: string | null
+  borcluId?: string | null
+  kaynakBelgeId?: string | null
+  tekilAnahtar?: string | null
+}
 
 export const OLAY_TIPLERI = ['TEBLIG', 'ITIRAZ', 'KESINLESTI', 'TAHSILAT', 'HACIZ', 'KAPANDI', 'DURUM'] as const
 export type OlayTip = (typeof OLAY_TIPLERI)[number]
@@ -114,10 +133,18 @@ export function onemliOlayAdayiMi(o: OlayOzu): boolean {
 export function olayHedefDurum(
   o: OlayOzu,
   mevcut: DosyaDurum,
-  baglam: { gercekKesinlesmeVar?: boolean; asamaEvresi?: 'DAVA' | 'ARABULUCULUK' | null } = {},
+  baglam: { gercekKesinlesmeVar?: boolean; asamaEvresi?: 'DAVA' | 'ARABULUCULUK' | null; kip?: UyapOlayDurumKipi } = {},
 ): DosyaDurum | undefined {
   const hedef = OLAY_DURUM[o.tip]
   if (!hedef) return undefined
+  // UYAP_OLAY_DURUM (S05/S15; 06 M2/M3): yalnız UYAP kaynaklı olaya uygulanır — elle girilen olay avukat kararıdır.
+  //   kapali    → UYAP olayı eski durumu hiç değiştirmez;
+  //   asimetrik → UYAP'tan gelen kesinleşme ve kapanış (riski AZALTAN hedef) kaydedilir ama durumu değiştirmez.
+  // kip verilmezse (eski çağıranlar) Faz 1 davranışı sürer.
+  if (uyapKaynakliMi(o.hamJson)) {
+    if (baglam.kip === 'kapali') return undefined
+    if (baglam.kip === 'asimetrik' && riskiAzaltirMi(hedef)) return undefined
+  }
   if (o.tip === 'TEBLIG' && !tebligSayilirMi(o)) return undefined
   if (o.tip === 'ITIRAZ') {
     if (ITIRAZ_DOKUNULMAZ.has(mevcut)) return undefined
@@ -129,17 +156,24 @@ export function olayHedefDurum(
   return ileriMi(mevcut, hedef) ? hedef : undefined
 }
 
+/**
+ * Olayı kaydeder, eski durum ve görev kancalarını çalıştırır. Dönüş: açılan TakipOlayi kimliği (yazılmadıysa null).
+ * opts.kip: UYAP olaylarının eski duruma etkisi (senkron route UYAP_OLAY_DURUM bayrağını geçirir; verilmezse Faz 1).
+ * o.aday: S15 aday kolonları (verilirse aynı satıra yazılır).
+ */
 export async function takipOlayKaydet(
   dosyaId: string,
   kullaniciId: string | null,
-  o: { tip: string; tarih: Date | null; tutar: Prisma.Decimal | null; aciklama: string | null; hamJson?: Prisma.InputJsonValue },
-) {
+  o: { tip: string; tarih: Date | null; tutar: Prisma.Decimal | null; aciklama: string | null; hamJson?: Prisma.InputJsonValue; aday?: AdayKolonlari },
+  opts: { kip?: UyapOlayDurumKipi } = {},
+): Promise<string | null> {
   // Aşama türevi itiraz: dosya başına BİR KEZ; dosyada herhangi bir ITIRAZ olayı varsa hiç yazılmaz
   // (tarihi her turda değişebilir — sayfa 1'deki evrak kayar; route'un tip+tarih+açıklama tekrarı bunu eleyemez).
   if (asamaTureviItirazMi(o)) {
     const varOlan = await prisma.takipOlayi.findFirst({ where: { dosyaId, tip: 'ITIRAZ' }, select: { id: true } })
-    if (varOlan) return
+    if (varOlan) return null
   }
+  const uyapOlayi = uyapKaynakliMi(o.hamJson)
 
   // Durum kuralları olayHedefDurum'da. Olayın kendisi her koşulda kaydedilir.
   const hedefDurum = OLAY_DURUM[o.tip]
@@ -159,19 +193,19 @@ export async function takipOlayKaydet(
       baglam.asamaEvresi = asamalar.some((a) => a.tur === 'DAVA') ? 'DAVA' : asamalar.length ? 'ARABULUCULUK' : null
     }
   }
-  const yeniDurum = mevcut ? olayHedefDurum(o, mevcut.durum, baglam) : undefined
+  const yeniDurum = mevcut ? olayHedefDurum(o, mevcut.durum, { ...baglam, kip: opts.kip }) : undefined
   const ops: Prisma.PrismaPromise<unknown>[] = [
-    prisma.takipOlayi.create({ data: { dosyaId, tip: o.tip, tarih: o.tarih, tutar: o.tutar, aciklama: o.aciklama, hamJson: o.hamJson } }),
+    prisma.takipOlayi.create({ data: { dosyaId, tip: o.tip, tarih: o.tarih, tutar: o.tutar, aciklama: o.aciklama, hamJson: o.hamJson, ...(o.aday ?? {}) } }),
     prisma.aktivite.create({ data: { dosyaId, kullaniciId, eylem: `Takip olayı: ${OLAY_ETIKET[o.tip] ?? o.tip}${o.tutar != null ? ` · ${o.tutar} TL` : ''}` } }),
   ]
   if (yeniDurum) ops.unshift(prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { durum: yeniDurum } }))
   const res = await prisma.$transaction(ops)
+  const olayId = (res[yeniDurum ? 1 : 0] as { id?: string } | undefined)?.id ?? null
 
   // Borca itiraz → Önemli Olaylar kuyruğu (idempotent; tespit hatası olay kaydını bozmaz).
   // Aşama türevi itirazda başlık "itiraz tarihi bilinmiyor — UYAP'tan bakın" der; tetik tarihi ödeme emri
   // tebliği/takip açılışıdır (gerçek itirazdan ÖNCE → İİK 67 için güvenli taraf) ve olay dosya başına bir kez yazılır.
   if (onemliOlayAdayiMi(o)) {
-    const olayId = (res[yeniDurum ? 1 : 0] as { id?: string } | undefined)?.id ?? null
     try {
       await onemliOlayTespit({ dosyaId, tetikTarihi: o.tarih, kaynakOlayId: olayId, baslik: o.aciklama ?? 'Borca itiraz', kullaniciId })
     } catch {
@@ -183,15 +217,19 @@ export async function takipOlayKaydet(
   // İADE/bila tebliğ ve tebligat talebi süre başlatmaz; elle girilen tebliğ her zaman sayılır). ITIRAZ →
   // haciz görevine not (görev AÇIK kalır, m.78/2); ITIRAZ/KESINLESTI/KAPANDI → bayat görevleri kapat.
   // HACIZ görev kapatmaz (bkz. teblig-gorev). Kanca hatası olay kaydını bozmaz.
+  // Asimetrik/kapalı kipte UYAP'tan gelen KESİNLEŞTİ ve KAPANDI görev KAPATMAZ: kapanış riski azaltır (İİK 78
+  // görevi sessizce iptal olur) ve yalnız avukat kararıyla olur. Görev ÜRETİMİ (erken hatırlatma) her kipte sürer.
+  const gorevKapanisiDondu = uyapOlayi && (opts.kip === 'asimetrik' || opts.kip === 'kapali') && (o.tip === 'KESINLESTI' || o.tip === 'KAPANDI')
   try {
     if (o.tip === 'TEBLIG') {
       if (o.tarih && !Number.isNaN(o.tarih.getTime()) && tebligSayilirMi(o)) {
         await tebligGorevleriOlustur(dosyaId, o.tarih, kullaniciId)
       }
-    } else {
+    } else if (!gorevKapanisiDondu) {
       await tebligGorevleriKapat(dosyaId, o.tip, { aciklama: o.aciklama, tarih: o.tarih, kullaniciId })
     }
   } catch {
     /* görev üretimi/kapanışı başarısız olsa da takip olayı kaydı geçerli kalır */
   }
+  return olayId
 }
