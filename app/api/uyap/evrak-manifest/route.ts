@@ -13,24 +13,24 @@ export const dynamic = 'force-dynamic'
 
 const EVRAK_ONEK = 20 // /api/uyap/evrak ile AYNI değer olmalı (evrak kimliğinin stabil önek uzunluğu)
 
-export function OPTIONS() {
-  return preflight()
+export function OPTIONS(req: Request) {
+  return preflight(req)
 }
 
 export async function GET(req: Request) {
   const k = await uyapKimlik(req)
-  if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401)
+  if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401, req)
 
   const icraDosyaNo = String(new URL(req.url).searchParams.get('icraDosyaNo') ?? '').trim()
-  if (!icraDosyaNo) return corsJson({ ok: false, error: 'icraDosyaNo gerekli' }, 400)
+  if (!icraDosyaNo) return corsJson({ ok: false, error: 'icraDosyaNo gerekli' }, 400, req)
 
   const dosya = await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true } })
-  if (!dosya) return corsJson({ ok: false, error: 'dosya bulunamadı (icraDosyaNo)' }, 404)
+  if (!dosya) return corsJson({ ok: false, error: 'dosya bulunamadı (icraDosyaNo)' }, 404, req)
 
   // o dosyadaki tüm evrak önekleri (ilk 20) — eklenti bunlarla indirmeden eler
   const rows = await prisma.$queryRaw<{ k: string }[]>(
     Prisma.sql`SELECT DISTINCT LEFT("kaynakRef", ${Prisma.raw(String(EVRAK_ONEK))}) AS k
                FROM "Belge" WHERE "dosyaId" = ${dosya.id} AND "kaynakRef" IS NOT NULL`,
   )
-  return corsJson({ ok: true, onekler: rows.map((r) => r.k).filter(Boolean) })
+  return corsJson({ ok: true, onekler: rows.map((r) => r.k).filter(Boolean) }, 200, req)
 }

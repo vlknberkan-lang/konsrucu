@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "KonsLaw — UYAP Senkron",
-  "version": "1.9.0",
+  "version": "2.0.0",
   "description": "UYAP Avukat Portalındaki icra dosyalarını KonsLaw programına senkronlar: durum, finansal, evrak.",
   "permissions": ["storage", "alarms", "downloads"],
   "host_permissions": [
@@ -19,7 +19,7 @@
     },
     {
       "matches": ["*://avukat.uyap.gov.tr/*"],
-      "js": ["siniflandir.js", "content.js"],
+      "js": ["siniflandir.js", "saf.js", "content.js"],
       "run_at": "document_idle"
     }
   ],

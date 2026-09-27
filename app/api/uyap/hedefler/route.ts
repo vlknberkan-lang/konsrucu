@@ -1,7 +1,9 @@
 /**
  * KonsRücü — UYAP senkron · GET /api/uyap/hedefler
  * Eklentiye "şunları takip et" listesini verir: takibi açılmış (icraDosyaNo dolu) AKTİF dosyalar.
- * Tenant-kapsamlı (Bearer program oturumu). Eklenti bu listeyi çekip her icrayı UYAP'ta sorgular.
+ * Tenant-kapsamlı (Bearer: eski şirket anahtarı ya da kişisel eklenti anahtarı). Eklenti bu listeyi çekip her icrayı
+ * UYAP'ta sorgular. Avukatın onayladığı esas no (Excel önerisi ya da "Kaydet ve UYAP'tan çek") icraDosyaNo'ya
+ * yazıldığı anda dosya bu listeye girer (S21).
  *
  * ARTIMLI (incremental — eklenti her dosyayı tekrar tekrar çekmesin): yalnız SENKRON GEREKENLER döner.
  *  • hiç çekilmemiş (uyapSenkronAt = null) → daima dahil, en yüksek öncelik.
@@ -14,16 +16,17 @@ import { prisma } from '@/lib/prisma'
 import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
 import { KAPALI_DURUMLAR, uyapKapaliMi } from '@/lib/konsrucu/aktiflik'
 import { senkronKapsamiOku, senkronKapsamKosulu } from '@/lib/konsrucu/senkron-kapsam'
+import { sunucuOzellikleri } from '@/lib/konsrucu/senkron/ozellikler'
 
 export const dynamic = 'force-dynamic'
 
-export function OPTIONS() {
-  return preflight()
+export function OPTIONS(req: Request) {
+  return preflight(req)
 }
 
 export async function GET(req: Request) {
   const k = await uyapKimlik(req)
-  if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401)
+  if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401, req)
 
   const url = new URL(req.url)
   const tazeSaat = Math.max(0, Number(url.searchParams.get('tazeSaat') ?? 12) || 0)
@@ -82,5 +85,7 @@ export async function GET(req: Request) {
       uyapDurum: d.uyapDurum,
       sonSenkron: d.uyapSenkronAt ? d.uyapSenkronAt.toISOString() : null,
     })),
-  })
+    // 06 §4: sunucu bayrakları — eklenti 2.0 bunlara uyar (ör. evrakIndir=false → evrak indirmez). 1.9 yok sayar.
+    ozellikler: sunucuOzellikleri(),
+  }, 200, req)
 }

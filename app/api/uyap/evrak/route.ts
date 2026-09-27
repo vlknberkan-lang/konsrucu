@@ -32,29 +32,29 @@ export const maxDuration = 60
 const MAX_B64 = 4_400_000 // ~3.3 MB dosya (Vercel gövde sınırı altında kalsın)
 const EVRAK_ONEK = 20 // uyapEvrakId'nin stabil kimlik öneki (ilk şifre bloğu; 21+ = değişen oturum jetonu)
 
-export function OPTIONS() {
-  return preflight()
+export function OPTIONS(req: Request) {
+  return preflight(req)
 }
 
 export async function POST(req: Request) {
   const k = await uyapKimlik(req)
-  if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401)
+  if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401, req)
 
   let body: { icraDosyaNo?: string; dosyaId?: string; uyapEvrakId?: string; dosyaAdi?: string; tur?: string; contentBase64?: string; mime?: string }
-  try { body = await req.json() } catch { return corsJson({ ok: false, error: 'bad json' }, 400) }
+  try { body = await req.json() } catch { return corsJson({ ok: false, error: 'bad json' }, 400, req) }
 
   const icraDosyaNo = String(body?.icraDosyaNo ?? '').trim()
   const dosyaIdGirdi = String(body?.dosyaId ?? '').trim()
   const uyapEvrakId = String(body?.uyapEvrakId ?? '').replace(/"/g, '').trim() // UYAP id'leri tırnaklı gelebilir → temizle (kaynakRef + storage anahtarı)
   const dosyaAdi = String(body?.dosyaAdi ?? '').trim().slice(0, 255)
   const b64 = String(body?.contentBase64 ?? '')
-  if ((!icraDosyaNo && !dosyaIdGirdi) || !uyapEvrakId || !dosyaAdi) return corsJson({ ok: false, error: '(icraDosyaNo|dosyaId) + uyapEvrakId + dosyaAdi gerekli' }, 400)
+  if ((!icraDosyaNo && !dosyaIdGirdi) || !uyapEvrakId || !dosyaAdi) return corsJson({ ok: false, error: '(icraDosyaNo|dosyaId) + uyapEvrakId + dosyaAdi gerekli' }, 400, req)
 
   // dosyaId (hedefler'den gelen kesin kimlik) öncelikli; yoksa icraDosyaNo fallback (eski eklenti sürümleri).
   const dosya = dosyaIdGirdi
     ? await prisma.rucuDosyasi.findFirst({ where: { id: dosyaIdGirdi, musteriId: { in: k.izinli } }, select: { id: true, durum: true, uyapDurum: true } })
     : await prisma.rucuDosyasi.findFirst({ where: { icraDosyaNo, musteriId: { in: k.izinli } }, select: { id: true, durum: true, uyapDurum: true } })
-  if (!dosya) return corsJson({ ok: false, error: `dosya bulunamadı (${dosyaIdGirdi ? 'dosyaId' : 'icraDosyaNo'})` }, 404)
+  if (!dosya) return corsJson({ ok: false, error: `dosya bulunamadı (${dosyaIdGirdi ? 'dosyaId' : 'icraDosyaNo'})` }, 404, req)
   const aktif = dosyaAktif(dosya) // kapalı dosya: evrak SAKLANIR ama masraf AI çalışmaz (boşa maliyet)
 
   // DEDUP (pahalı işlemlerden ÖNCE) — UYAP aynı evrağı her indirişte byte-farklı üretir; gerçek kimlik
@@ -67,14 +67,14 @@ export async function POST(req: Request) {
                  AND LEFT("kaynakRef", ${Prisma.raw(String(EVRAK_ONEK))}) = ${evrakKimlik}
                LIMIT 1`,
   )
-  if (mevcut.length) return corsJson({ ok: true, atlandi: true, sebep: 'zaten var (UYAP evrak kimliği)' })
+  if (mevcut.length) return corsJson({ ok: true, atlandi: true, sebep: 'zaten var (UYAP evrak kimliği)' }, 200, req)
 
-  if (!b64) return corsJson({ ok: false, error: 'contentBase64 gerekli' }, 400)
-  if (b64.length > MAX_B64) return corsJson({ ok: false, atlandi: true, sebep: 'dosya çok büyük (elle ekleyin)' }, 413)
+  if (!b64) return corsJson({ ok: false, error: 'contentBase64 gerekli' }, 400, req)
+  if (b64.length > MAX_B64) return corsJson({ ok: false, atlandi: true, sebep: 'dosya çok büyük (elle ekleyin)' }, 413, req)
 
   let bytes: Buffer
-  try { bytes = Buffer.from(b64, 'base64') } catch { return corsJson({ ok: false, error: 'base64 çözülemedi' }, 400) }
-  if (!bytes.length) return corsJson({ ok: false, error: 'boş içerik' }, 400)
+  try { bytes = Buffer.from(b64, 'base64') } catch { return corsJson({ ok: false, error: 'base64 çözülemedi' }, 400, req) }
+  if (!bytes.length) return corsJson({ ok: false, error: 'boş içerik' }, 400, req)
 
   // İÇERİK MD5 — yalnız storage yolu + bilgi amaçlı (dedup ARTIK evrak kimliğine dayanıyor, içeriğe değil).
   const icerikHash = createHash('md5').update(bytes).digest('hex')
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient()
   const { error: upErr } = await admin.storage.from('evrak').upload(sp, bytes, { contentType: mime, upsert: false })
-  if (upErr && !/already exists/i.test(upErr.message)) return corsJson({ ok: false, error: `yükleme: ${upErr.message}` }, 500)
+  if (upErr && !/already exists/i.test(upErr.message)) return corsJson({ ok: false, error: `yükleme: ${upErr.message}` }, 500, req)
 
   const snf = siniflandir({ dosyaAdi: `${dosyaAdi} ${body?.tur ?? ''}`.trim(), metin: null, foto: false })
   const belge = await prisma.belge.create({
@@ -125,5 +125,5 @@ export async function POST(req: Request) {
   void belgedenMasrafCikar // import bilinçli tutuluyor (tara ucu ve olası geri dönüş için)
   void aktif
 
-  return corsJson({ ok: true, eklendi: true, kategori: snf.kategori, metin })
+  return corsJson({ ok: true, eklendi: true, kategori: snf.kategori, metin }, 200, req)
 }

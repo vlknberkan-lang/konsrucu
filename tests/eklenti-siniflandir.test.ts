@@ -51,7 +51,7 @@ describe('yükleme', () => {
   it('globalThis.KonsSiniflandir tanımlanır', () => {
     expect(S).toBeTruthy()
     expect(typeof S.siniflandir).toBe('function')
-    expect(S.surum).toBe('1.9.0')
+    expect(S.surum).toBe('2.0.0') // paket sürümüyle aynı tutulur (kurallar 1.9.0'dan beri değişmedi)
   })
 
   it('sunucu tip listesi lib/konsrucu/takip-olay OLAY_TIPLERI ile birebir aynı', () => {
@@ -646,8 +646,8 @@ describe('eklenti paketi', () => {
     expect(girdi!.js.indexOf('siniflandir.js')).toBeLessThan(girdi!.js.indexOf('content.js'))
   })
 
-  it('manifest sürümü sınıflandırıcı sürümüyle aynı (1.9.0)', () => {
-    expect(manifest.version).toBe('1.9.0')
+  it('manifest sürümü sınıflandırıcı sürümüyle aynı (2.0.0)', () => {
+    expect(manifest.version).toBe('2.0.0')
     expect(manifest.version).toBe(S.surum)
   })
 

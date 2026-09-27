@@ -329,7 +329,7 @@
   }
 
   kok.KonsSiniflandir = Object.freeze({
-    surum: "1.9.0",
+    surum: "2.0.0", // paket (manifest) sürümüyle aynı tutulur; sınıflandırma kuralları 1.9.0'dan beri değişmedi
     SUNUCU_TIPLERI: SUNUCU_TIPLERI.slice(),
     ETIKET: Object.assign({}, ETIKET),
     HACIZ_EK: Object.assign({}, HACIZ_EK),

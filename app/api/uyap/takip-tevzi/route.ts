@@ -7,6 +7,8 @@
  *
  * İdempotent: cikarimJson.tevzi doluysa ikinci yazım REDDEDİLİR (çift tevzi koruması —
  * takip-hedefler de tevzi'li dosyayı listeden düşürür). Tenant-kapsamlı (Bearer).
+ *
+ * S21: geçerli TakipTalebi aynı işlemde dondurulur (`dondurulduAt`); sonraki düzeltme yeni sürüm açar.
  */
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
@@ -14,8 +16,8 @@ import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
 
 export const dynamic = 'force-dynamic'
 
-export function OPTIONS() {
-  return preflight()
+export function OPTIONS(req: Request) {
+  return preflight(req)
 }
 
 /** UYAP "07/07/2026 00:09:39" (GG/AA/YYYY) → Date; bozuksa null. */
@@ -28,26 +30,26 @@ function uyapTarih(s: unknown): Date | null {
 
 export async function POST(req: Request) {
   const k = await uyapKimlik(req)
-  if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401)
+  if (!k) return corsJson({ ok: false, error: 'unauthorized' }, 401, req)
 
   let body: {
     dosyaId?: string
     tevzi?: { birimAdi?: string; birimID?: string; dosyaAcilisTarihi?: string; takibeEsasTutar?: number; uyapDosyaId?: string; harcToplam?: number }
   }
-  try { body = await req.json() } catch { return corsJson({ ok: false, error: 'bad json' }, 400) }
+  try { body = await req.json() } catch { return corsJson({ ok: false, error: 'bad json' }, 400, req) }
 
   const dosyaId = String(body?.dosyaId ?? '').trim()
   const t = body?.tevzi
-  if (!dosyaId || !t || !t.birimAdi) return corsJson({ ok: false, error: 'dosyaId ve tevzi.birimAdi gerekli' }, 400)
+  if (!dosyaId || !t || !t.birimAdi) return corsJson({ ok: false, error: 'dosyaId ve tevzi.birimAdi gerekli' }, 400, req)
 
   const dosya = await prisma.rucuDosyasi.findFirst({
     where: { id: dosyaId, musteriId: { in: k.izinli } },
     select: { id: true, icraDairesi: true, cikarimJson: true, hukukDosyaNo: true },
   })
-  if (!dosya) return corsJson({ ok: false, error: 'dosya bulunamadı' }, 404)
+  if (!dosya) return corsJson({ ok: false, error: 'dosya bulunamadı' }, 404, req)
 
   const cj = (dosya.cikarimJson ?? {}) as Record<string, unknown>
-  if (cj.tevzi) return corsJson({ ok: false, error: 'bu dosya zaten tevzi edilmiş', tevzi: cj.tevzi }, 409)
+  if (cj.tevzi) return corsJson({ ok: false, error: 'bu dosya zaten tevzi edilmiş', tevzi: cj.tevzi }, 409, req)
 
   const tevziKaydi = {
     birimAdi: String(t.birimAdi).slice(0, 160),
@@ -61,14 +63,21 @@ export async function POST(req: Request) {
   }
 
   const acilis = uyapTarih(t.dosyaAcilisTarihi)
-  await prisma.rucuDosyasi.update({
-    where: { id: dosya.id },
-    data: {
-      cikarimJson: { ...cj, tevzi: tevziKaydi } as Prisma.InputJsonValue,
-      icraDairesi: dosya.icraDairesi ?? tevziKaydi.birimAdi, // senkronun (daire+esas) kimliği için daire hazır
-      takipTarihi: acilis ?? undefined,
-    },
-  })
+  // S21: geçerli takip talebi tevzide DONDURULUR (değişmez kayıt; düzeltme = yeni sürüm). Aynı işlemde.
+  const [, dondurulan] = await prisma.$transaction([
+    prisma.rucuDosyasi.update({
+      where: { id: dosya.id },
+      data: {
+        cikarimJson: { ...cj, tevzi: tevziKaydi } as Prisma.InputJsonValue,
+        icraDairesi: dosya.icraDairesi ?? tevziKaydi.birimAdi, // senkronun (daire+esas) kimliği için daire hazır
+        takipTarihi: acilis ?? undefined,
+      },
+    }),
+    prisma.takipTalebi.updateMany({
+      where: { dosyaId: dosya.id, gecerli: true, silindiAt: null, dondurulduAt: null },
+      data: { dondurulduAt: new Date(), takipTarihi: acilis ?? undefined },
+    }),
+  ])
 
   const tutarStr = tevziKaydi.takibeEsasTutar != null ? `takibe esas ${tevziKaydi.takibeEsasTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL` : ''
   const harcStr = tevziKaydi.harcToplam != null ? `harç ~${tevziKaydi.harcToplam.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL` : ''
@@ -76,12 +85,17 @@ export async function POST(req: Request) {
     data: {
       dosyaId: dosya.id,
       tip: 'ISLEM',
-      metin: [`UYAP tevzi tamamlandı (eklenti kopilotu): ${tevziKaydi.birimAdi}`, tutarStr, harcStr, 'Sırada: harç ödemesi (UYAP, manuel) → esas no gelince "Takip Açıldı" ile eşleştir.'].filter(Boolean).join(' · '),
+      metin: [`UYAP tevzi tamamlandı (eklenti kopilotu): ${tevziKaydi.birimAdi}`, tutarStr, harcStr, `Sırada: harç ödemesi (UYAP, manuel) → esas no gelince dosyada "Kaydet ve UYAP'tan çek" ile girin.`].filter(Boolean).join(' · '),
     },
   })
   await prisma.aktivite.create({
-    data: { dosyaId: dosya.id, eylem: `UYAP tevzi (eklenti kopilotu): ${tevziKaydi.birimAdi}`, detayJson: tevziKaydi as Prisma.InputJsonValue },
+    data: {
+      dosyaId: dosya.id,
+      kullaniciId: k.userId, // kişisel anahtarla gelen tevzi kişinin adıyla (S14); eski anahtarda null
+      eylem: `UYAP tevzi (eklenti kopilotu): ${tevziKaydi.birimAdi}${dondurulan.count ? ' · takip talebi donduruldu' : ''}`,
+      detayJson: tevziKaydi as Prisma.InputJsonValue,
+    },
   })
 
-  return corsJson({ ok: true, tevzi: tevziKaydi })
+  return corsJson({ ok: true, tevzi: tevziKaydi }, 200, req)
 }

@@ -23,6 +23,16 @@
  * TAKİP AÇ KOPİLOTU'nun tevzisidir (/icra_takip_tevzi_islemleri.ajx) — o da yalnız avukatın özet
  * ekranını görüp "Gönder"e basması ve confirm onayıyla tetiklenir. Uçlar keşif kaydıyla kanıtlı
  * (2026-07-06); gövde önce /icra_harc_hesaplama_islemleri.ajx ile KURU PROVA edilir.
+ *
+ * v2.0.0 (S14, S21, S22):
+ *  - Kişiye bağlı eklenti anahtarı ("kr2_…"); eski şirket anahtarı eski uçlarda çalışmaya devam eder.
+ *  - İŞ KUYRUĞU: programda "Kaydet ve UYAP'tan çek"e basılınca açılan öncelikli iş 10 sn'lik yoklamayla
+ *    alınır, tek dosya senkronu adım adım programa yazılır (canlı ilerleme). Yoklama nabız da taşır
+ *    ("UYAP bağlı mı?" ölçülür). Toplu 30 dk'lık tur sürerken gelen iş, o anki dosyadan sonra araya girer.
+ *  - KOPİLOT FAİZİ: faiz türü/oranı/başlangıcı programdaki takip talebinden gelir (saf.js · tevziGovdesi);
+ *    seçim yoksa ya da UYAP kodu keşifle teyit edilmemişse kopilot DURUR. "%......" artık gönderilmez.
+ *    Gönderim akışı DEĞİŞMEDİ: özet ekranı → avukat "Gönder" → onay kutusu → tevzi.
+ *  - Evrak Gönderme ve Ödeme sekmelerine, UYAP'a yazan başka hiçbir uca dokunulmaz.
  */
 (() => {
   "use strict";
@@ -32,6 +42,9 @@
   // Olay sınıflandırıcı (saf) — extension/siniflandir.js, manifest'te bu dosyadan ÖNCE yüklenir (v1.9.0).
   // Yüklenmemişse (manifest hatası) olay ÜRETİLMEZ — yanlış tiple yazmaktansa hiç yazmamak; 🧪 Tanı gösterir.
   const SNF = globalThis.KonsSiniflandir || null;
+  // Saf yardımcılar (faiz seçimi, tevzi gövdesi, anahtar) — extension/saf.js, content.js'ten ÖNCE yüklenir (v2.0.0).
+  // Yüklenmemişse kopilot DURUR (faizsiz gövde gönderilmez) ve iş kuyruğu yeni anahtarı tanıyamaz.
+  const SAF = globalThis.KonsSaf || null;
 
   // ═══════════════ yardımcılar ═══════════════
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -79,6 +92,8 @@
   // Varsayılan tempo hızlı; UYAP 429/5xx dönerse tur boyunca 3x yavaşlar (nazik geri çekilme).
   let _gaz = 1;
   const uyu = (ms) => sleep(Math.round(ms * _gaz));
+  // UYAP oturum sinyali (nabız için): son UYAP yanıtı JSON ise açık, JSON değilse (giriş sayfası) kapalı.
+  let _oturumAcik = null, _oturumKontrolAt = 0;
   async function apiPost(path, body) {
     const resp = await fetch(path, {
       method: "POST", credentials: "include",
@@ -90,7 +105,8 @@
       throw new Error(path.replace(/^\//, "").replace(".ajx", "") + " HTTP " + resp.status);
     }
     const txt = await resp.text();
-    try { return JSON.parse(txt); } catch (e) { throw new Error("yanıt JSON değil (oturum düşmüş olabilir): " + txt.slice(0, 60)); }
+    try { const j = JSON.parse(txt); _oturumAcik = true; _oturumKontrolAt = Date.now(); return j; }
+    catch (e) { _oturumAcik = false; _oturumKontrolAt = Date.now(); throw new Error("yanıt JSON değil (oturum düşmüş olabilir): " + txt.slice(0, 60)); }
   }
 
   // İcra daireleri listesi (yargiTuru=2 İcra, yargiBirimi=1101 İcra Dairesi; açık+kapalı birleşik) — 10 dk önbellek
@@ -110,9 +126,10 @@
       const id = m.birimId || m.id || m.birim_id; const ad = m.birimAdi || m.birimAd || m.ad || "";
       if (id && !seen.has(String(id))) seen.set(String(id), { birimId: String(id), birimAdi: String(ad) });
     }
-    _birimler = Array.from(seen.values());
-    _birimlerAt = Date.now();
-    return _birimler;
+    const liste = Array.from(seen.values());
+    // v2.0: boş liste ÖNBELLEĞE ALINMAZ (oturum düşükken alınan boş liste, yeniden girişten sonra 10 dk kalmasın)
+    if (liste.length) { _birimler = liste; _birimlerAt = Date.now(); }
+    return liste;
   }
 
   // Daire adı → birimId. Sıra: tam eşleşme → "genel" eki toleranslı → içerme → şehir + "N. icra" numarası.
@@ -761,7 +778,8 @@
   const PDF_ENDPOINTS = ["/main/icra/modules/evrak/view_document_brd.uyap", "/main/icra/modules/evrak/download_document_brd.uyap"];
   let _pdfEp = null;
 
-  async function evrakYukle(h, rec) {
+  // ilerleme (v2.0, isteğe bağlı): (sıra, toplam, evrak türü) — iş kuyruğunda "Evrak indiriliyor 7/18: …" satırı.
+  async function evrakYukle(h, rec, ilerleme) {
     if (!rec.uyapDosyaId || !Array.isArray(rec.evrak) || !rec.evrak.length) return 0;
     const o = await st(["gonderilenEvrak"]);
     const gond = o.gonderilenEvrak || {};
@@ -772,12 +790,14 @@
     } catch (e) {}
     const did = String(rec.uyapDosyaId).replace(/"/g, "").trim();
     let n = 0;
-    for (const ev of rec.evrak) {
+    for (let ei = 0; ei < rec.evrak.length; ei++) {
+      const ev = rec.evrak[ei];
       if (!ev.evrakId) continue;
       const eid = String(ev.evrakId).replace(/"/g, "").trim();
       const kimlik = eid.slice(0, 20);
       const key = h.esasNo + ":" + kimlik;
       if (gond[key] || sunucuOnek.has(kimlik)) { gond[key] = true; continue; }
+      if (typeof ilerleme === "function") { try { await ilerleme(ei + 1, rec.evrak.length, String(ev.tur || ev.aciklama || "evrak").slice(0, 80)); } catch (e) {} }
       let res = null;
       const eps = _pdfEp ? [_pdfEp].concat(PDF_ENDPOINTS.filter((e) => e !== _pdfEp)) : PDF_ENDPOINTS.slice();
       for (const ep of eps) {
@@ -805,20 +825,23 @@
   let _calisiyor = false;
   async function senkronCalistir(gorunur) {
     if (_calisiyor) { if (gorunur) flash("Zaten çalışıyor…"); return; }
+    if (_isMesgul) { if (gorunur) flash("Öncelikli bir dosya çekiliyor — bitince yeniden deneyin."); return; }
     _calisiyor = true;
     try {
       const tokenlar = await anahtarlar();
-      if (!tokenlar.length) { if (gorunur) flash("Senkron anahtarı yok — ⚙ Ayar'dan gir."); return; }
+      if (!tokenlar.length) { if (gorunur) flash("Eklenti anahtarı yok — ⚙ Ayar'dan gir."); return; }
 
       // tüm tenant'ların hedeflerini topla (her hedef kendi token'ını taşır)
       const hedefler = [];
       for (const token of tokenlar) {
         const hr = await sendBg({ type: "RUCU_HEDEFLER", token });
         if (!hr.ok || !hr.data || !hr.data.ok) { if (gorunur) ekleSatir(`⚠ bir anahtar hedef veremedi: ${hr.error || hr.status || "?"}`); continue; }
+        // v2.0: sunucu bayrağı (ozellikler.evrakIndir=false) evrak indirmeyi kapatır; alan yoksa eski davranış
+        const evrakIndir = !(hr.data.ozellikler && hr.data.ozellikler.evrakIndir === false);
         for (const x of hr.data.hedefler || []) {
           if (!x.icraDosyaNo) continue;
           const esas = extractEsas(x.icraDosyaNo); const m = esas.match(/^(\d{4})\/(\d+)$/);
-          if (m) hedefler.push({ id: x.id, esasNo: esas, yil: m[1], sira: m[2], daire: tr(x.daire || ""), unvanKok: unvanAnahtar(x.alacakliUnvan || ""), token });
+          if (m) hedefler.push({ id: x.id, esasNo: esas, yil: m[1], sira: m[2], daire: tr(x.daire || ""), unvanKok: unvanAnahtar(x.alacakliUnvan || ""), token, evrakIndir });
         }
       }
       if (!hedefler.length) { if (gorunur) flash("Senkron bekleyen dosya yok — her şey taze. 🎉"); _seritIlerleme = null; seritGuncelle(); return; }
@@ -884,7 +907,7 @@
           if (degisti) { await uyu(150); await safahat(f.dosyaId, rec); }
           const sr = await sendBg({ type: "RUCU_SENKRON", token: h.token, body: senkronGovde(h, rec, sonuc) });
           let evN = 0;
-          if (degisti && rec.evrak && rec.evrak.length) evN = await evrakYukle(h, rec);
+          if (degisti && rec.evrak && rec.evrak.length && h.evrakIndir !== false) evN = await evrakYukle(h, rec);
           if (sr.ok && sr.data && sr.data.ok) {
             ok++;
             kimlikCache[cKey] = { dosyaId: f.dosyaId, birimAdi: rec.birim, ozet, t: Date.now() };
@@ -900,6 +923,14 @@
           satirYaz(satir, `❌ <b>${esc(h.esasNo)}</b>: ${esc(e.message || "hata")}`);
         }
         await uyu(500); // UYAP'a nazik (429/5xx görülürse otomatik 3x yavaşlar)
+        // v2.0: tur sürerken öncelikli iş geldiyse o anki dosyadan SONRA araya girer (tur kaldığı yerden sürer)
+        if (_isBekliyor) {
+          _isBekliyor = false;
+          await stSet({ dosyaKimlik: kimlikCache }); // öncelikli iş aynı önbelleği okuyup yazar
+          try { await isTuru({ topluArasi: true }); } catch (e) {}
+          const co2 = await st(["dosyaKimlik"]);
+          Object.assign(kimlikCache, co2.dosyaKimlik || {});
+        }
       }
       await stSet({ dosyaKimlik: kimlikCache, sonOtoSync: Date.now(), sonRapor: { t: new Date().toISOString(), ok, sorunlu, toplam: hedefler.length } });
       if (gorunur) flash(`Bitti: ${ok} senkron, ${sorunlu} sorunlu (sorunlular da programa raporlandı).`);
@@ -907,11 +938,163 @@
   }
 
   async function otoSenkron() {
+    // v2.0: öncelikli iş varsa önce o; 25 dakikalık kısıt yalnız toplu tura uygulanır
+    try { await isTuru(); } catch (e) {}
     const tokenlar = await anahtarlar();
     if (!tokenlar.length) return;
     const o = await st(["sonOtoSync"]);
     if (Date.now() - (o.sonOtoSync || 0) < 25 * 60000) return; // throttle
     await senkronCalistir(false);
+  }
+
+  // ═══════════════ İŞ KUYRUĞU (v2.0 · S22) — öncelikli tek dosya senkronu + nabız ═══════════════
+  // Program "Kaydet ve UYAP'tan çek" dediğinde SenkronIs(BEKLIYOR) açılır. Eklenti 10 sn'de bir
+  // /api/uyap/is/sira'yı sorar (nabız: sürüm, cihaz, UYAP oturumu açık mı); iş varsa /al ile ATOMİK
+  // üstlenir (iki sekme aynı işi alamaz), her adımı /adim ile yazar, sonunda /bitir. Yalnız YENİ
+  // (kişiye bağlı) anahtarla çalışır; eski şirket anahtarı bu uçlara giremez. Sunucu bayrağı
+  // ozellikler.isKuyrugu=false ise iş alınmaz (nabız sürer). UYAP'a YAZAN hiçbir çağrı yoktur.
+  const IS_YOKLAMA_MS = 10000;
+  let _isMesgul = false, _isBekliyor = false, _isTurSuruyor = false, _sonIsYoklama = 0;
+
+  async function yeniAnahtarlar() {
+    const r = await sendBg({ type: "RUCU_TOKENLAR" });
+    const liste = (r && r.tokenlar) || [];
+    return liste.filter((t) => (SAF ? SAF.yeniAnahtarMi(t) : /^kr2_/.test(String(t))));
+  }
+
+  /** UYAP oturumu açık mı? Son UYAP yanıtından; 5 dk'dan eskiyse hafif kontrol (daire listesi, önbellekli). */
+  async function oturumYokla() {
+    if (_oturumAcik != null && Date.now() - _oturumKontrolAt < 5 * 60000) return _oturumAcik;
+    try { const b = await birimlerYukle(); _oturumAcik = b.length > 0; } catch (e) { _oturumAcik = false; }
+    _oturumKontrolAt = Date.now();
+    return _oturumAcik;
+  }
+
+  async function isTuru(opts) {
+    const topluArasi = !!(opts && opts.topluArasi);
+    if (_isTurSuruyor || _isMesgul) return;
+    if (!topluArasi && Date.now() - _sonIsYoklama < IS_YOKLAMA_MS - 2000) return; // aralık + alarm çakışmasın
+    _isTurSuruyor = true; _sonIsYoklama = Date.now();
+    try {
+      const tokenlar = await yeniAnahtarlar();
+      if (!tokenlar.length) return;
+      const oturum = await oturumYokla();
+      for (const token of tokenlar) {
+        const r = await sendBg({ type: "RUCU_IS_SIRA", token, uyapOturum: !!oturum });
+        if (!r || !r.ok || !r.data || !r.data.ok) continue;
+        const oz = r.data.ozellikler || {};
+        if (!oz.isKuyrugu || !oturum) continue;
+        const isler = Array.isArray(r.data.isler) ? r.data.isler : [];
+        for (const x of isler) {
+          if (_calisiyor && !topluArasi) { _isBekliyor = true; return; } // toplu tur: o anki dosyadan sonra
+          await isCalistir(x, token, oz);
+        }
+      }
+    } finally { _isTurSuruyor = false; }
+  }
+
+  const isAdim = (token, id, adim, durum, mesaj, sayac) =>
+    sendBg({ type: "RUCU_IS_ADIM", token, id, adim: { adim, durum, sayac: sayac || null, mesaj: mesaj || null } });
+  const isBitir = (token, id, durum, ozet, hata) => sendBg({ type: "RUCU_IS_BITIR", token, id, durum, ozet: ozet || null, hata: hata || null });
+
+  async function isCalistir(x, token, oz) {
+    const al = await sendBg({ type: "RUCU_IS_AL", token, id: x.id });
+    if (!al || !al.ok || !al.data || !al.data.ok || !al.data.is) return; // başka sekme aldı (409) ya da iptal edildi
+    const is = al.data.is;
+    _isMesgul = true;
+    try {
+      if (is.tur === "ICRA") await tekDosyaSenkron(is, token, oz);
+      else if (is.tur === "KOPILOT") await kopilotIsi(is, token);
+      else await isBitir(token, is.id, "HATA", null, "bu eklenti sürümü '" + is.tur + "' işini desteklemiyor");
+    } catch (e) {
+      try { await isBitir(token, is.id, "HATA", null, e.message || "hata"); } catch (e2) {}
+    } finally { _isMesgul = false; }
+  }
+
+  /** Tek dosyalık icra boru hattı — toplu turla AYNI fonksiyonlar (eşleştirme kemeri dahil), adım adım raporlu. */
+  async function tekDosyaSenkron(is, token, oz) {
+    const x = is.hedef || {};
+    const A = (adim, durum, mesaj, sayac) => isAdim(token, is.id, adim, durum, mesaj, sayac);
+    const esas = extractEsas(x.icraDosyaNo || "");
+    const m = esas.match(/^(\d{4})\/(\d+)$/);
+    buildUi();
+    const satir = ekleSatir(`⚡ Öncelikli: ${esas || "esas no?"} — ${x.daire || "daire?"}…`);
+    if (!m) {
+      await A("ESLESTIRME", "HATA", "icra esas no yok ya da geçersiz");
+      satirYaz(satir, `⚠ Öncelikli iş: esas no yok`);
+      return isBitir(token, is.id, "HATA", { eslesme: "HATA" }, "icra esas no yok ya da geçersiz");
+    }
+    const h = { id: x.id, esasNo: esas, yil: m[1], sira: m[2], daire: tr(x.daire || ""), unvanKok: unvanAnahtar(x.alacakliUnvan || ""), token };
+    _seritIlerleme = `öncelikli · ${h.esasNo}`; seritGuncelle();
+    try {
+      await A("ESLESTIRME", "CALISIYOR");
+      const birimler = await birimlerYukle();
+      if (!birimler.length) {
+        await A("ESLESTIRME", "HATA", "UYAP daire listesi alınamadı — oturum düşmüş olabilir");
+        satirYaz(satir, `⚠ <b>${esc(h.esasNo)}</b>: UYAP oturumu`);
+        return isBitir(token, is.id, "HATA", { eslesme: "OTURUM" }, "UYAP oturumu kapalı");
+      }
+      const sonuc = await hedefEslestir(h, birimler);
+      if (sonuc.eslesme !== "OK") {
+        // bulunamayan / aleyhe (TARAF_UYUSMAZ) dosya da raporlanır; TARAF_UYUSMAZ'da hiçbir şey yazılmaz (mevcut kemer)
+        await sendBg({ type: "RUCU_SENKRON", token, body: senkronGovde(h, null, sonuc) });
+        await A("ESLESTIRME", "HATA", sonuc.eslesme + (sonuc.not ? " — " + sonuc.not : ""));
+        satirYaz(satir, `⚠ <b>${esc(h.esasNo)}</b>: ${esc(sonuc.eslesme)} — ${esc(sonuc.not || "")}`);
+        return isBitir(token, is.id, "HATA", { eslesme: sonuc.eslesme, eslesmeNot: sonuc.not || null }, sonuc.eslesme);
+      }
+      const f = sonuc.secilen;
+      await A("ESLESTIRME", "TAMAM", `${f.birimAdi || h.daire} ${h.esasNo}${sonuc.not ? " · " + sonuc.not : ""}`);
+      const rec = { uyapDosyaId: f.dosyaId, durum: f.durum || "", durumKod: f.durumKod, birim: f.birimAdi || h.daire, acilis: f.acilis || "" };
+      await A("AYRINTI", "CALISIYOR");
+      await uyu(150); await ayrinti(f.dosyaId, rec);
+      await A("AYRINTI", rec._ayrintiHata ? "HATA" : "TAMAM", rec.durum ? `"${rec.durum}"` : null);
+      await A("HESAP", "CALISIYOR");
+      if (rec.toplamAlacak == null || rec.tahsilat == null) { await uyu(150); await hesap(f.dosyaId, rec); }
+      await A("HESAP", "TAMAM", [rec.asilAlacak != null ? "asıl " + fmtTL(rec.asilAlacak) : "", rec.islemisFaiz != null ? "faiz " + fmtTL(rec.islemisFaiz) : "", rec.tahsilat != null ? "tahsilat " + fmtTL(rec.tahsilat) : ""].filter(Boolean).join(" · ") || null);
+      await A("EVRAK_LISTESI", "CALISIYOR");
+      await uyu(150); await evrakListe(f.dosyaId, rec);
+      const evrakN = rec.evrak ? rec.evrak.length : 0;
+      await A("EVRAK_LISTESI", "TAMAM", `${evrakN} evrak`, { n: evrakN, toplam: evrakN });
+      rec.durumTahmin = durumTahmin(rec.durumKod, rec.durum);
+      await A("SAFAHAT", "CALISIYOR");
+      await uyu(150); await safahat(f.dosyaId, rec);
+      await A("SAFAHAT", rec.safahat && rec.safahat.length ? "TAMAM" : "ATLANDI", rec.safahat && rec.safahat.length ? `${rec.safahat.length} kayıt` : "safahat alınamadı");
+      const sr = await sendBg({ type: "RUCU_SENKRON", token, body: senkronGovde(h, rec, sonuc) });
+      const yazildi = !!(sr && sr.ok && sr.data && sr.data.ok);
+      await A("PROGRAMA_YAZIM", yazildi ? "TAMAM" : "HATA", yazildi ? (sr.data.yeniOlay ? `${sr.data.yeniOlay} yeni gelişme` : "durum ve hesap yazıldı") : "program yazımı reddetti");
+      let yeni = 0;
+      if (oz && oz.evrakIndir === false) await A("EVRAK_INDIRME", "ATLANDI", "evrak indirme sunucuda kapalı");
+      else if (!evrakN) await A("EVRAK_INDIRME", "ATLANDI", "evrak yok");
+      else {
+        await A("EVRAK_INDIRME", "CALISIYOR", null, { n: 0, toplam: evrakN });
+        yeni = await evrakYukle(h, rec, (i, n, ad) => A("EVRAK_INDIRME", "CALISIYOR", ad, { n: i, toplam: n }));
+        await A("EVRAK_INDIRME", "TAMAM", `${yeni} yeni evrak`, { n: evrakN, toplam: evrakN });
+      }
+      // kimlik önbelleği: toplu tur bu dosyada aramayı ve taraf doğrulamasını atlasın (ilk eşleşme burada yapıldı)
+      const co = await st(["dosyaKimlik"]);
+      const kc = co.dosyaKimlik || {};
+      const ozet = [rec.durum, rec.toplamAlacak, rec.tahsilat, rec.bakiye, evrakN, rec.sonEvrakTarihi].join("|");
+      kc[h.esasNo + "|" + norm(h.daire || "")] = { dosyaId: f.dosyaId, birimAdi: rec.birim, ozet, t: Date.now() };
+      await stSet({ dosyaKimlik: kc });
+      satirYaz(satir, `${yazildi ? "✅" : "⚠"} Öncelikli <b>${esc(h.esasNo)}</b> (${esc(rec.birim)}): ${esc(rec.durumTahmin)} · ${evrakN} evrak${yeni ? ` · 📤 ${yeni} yeni` : ""}`);
+      return isBitir(token, is.id, yazildi ? "TAMAM" : "KISMI",
+        { evrakSayisi: evrakN, yeniEvrak: yeni, eslesme: "OK", durumMetni: rec.durum || null, uyapAsilAlacak: rec.asilAlacak != null ? rec.asilAlacak : null },
+        yazildi ? null : "program yazımı reddetti");
+    } finally { _seritIlerleme = null; seritGuncelle(); }
+  }
+
+  /** Kopilot işi: programdaki "UYAP'ta takibi aç" → Takip Aç paneli o dosyayla açılır. UYAP'a hiçbir şey yazmaz. */
+  async function kopilotIsi(is, token) {
+    if (_takipMesgul) {
+      await isAdim(token, is.id, "PANEL_ACILDI", "HATA", "kopilot başka bir dosyayı hazırlıyor");
+      return isBitir(token, is.id, "HATA", null, "kopilot başka bir dosyayla meşgul");
+    }
+    await isAdim(token, is.id, "PANEL_ACILDI", "CALISIYOR");
+    buildUi(); if (panel) panel.classList.add("open");
+    await takipAcListe({ oneCikan: is.dosyaId });
+    const bulundu = _takipHedefler.some((k) => k.h && k.h.id === is.dosyaId);
+    await isAdim(token, is.id, "PANEL_ACILDI", bulundu ? "TAMAM" : "HATA", bulundu ? null : "dosya kopilot listesinde yok (engel var ya da tevzi edilmiş)");
+    return isBitir(token, is.id, bulundu ? "TAMAM" : "HATA", null, bulundu ? null : "dosya kopilot listesinde değil");
   }
 
   // ═══════════════ TAKİP AÇ KOPİLOTU (Faz 2) — payload'ı kur, harçla doğrula, AVUKAT gönderir ═══════════════
@@ -927,12 +1110,14 @@
   const ggaayyyy = (iso) => { const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; };
   let _takipMesgul = false;
   let _takipHedefler = []; // [{ h, token, si }]
+  let _takipOneCikan = null; // v2.0: programdan "UYAP'ta takibi aç" ile gelen dosya (listede en üstte, işaretli)
 
-  async function takipAcListe() {
+  async function takipAcListe(opts) {
     if (_takipMesgul) return;
+    _takipOneCikan = opts && typeof opts === "object" && typeof opts.oneCikan === "string" ? opts.oneCikan : null;
     durumYaz("Takip açılabilecek dosyalar programdan çekiliyor…");
     const tokenlar = await anahtarlar();
-    if (!tokenlar.length) { durumYaz("Senkron anahtarı yok — ⚙ Ayar."); return; }
+    if (!tokenlar.length) { durumYaz("Eklenti anahtarı yok — ⚙ Ayar."); return; }
     _takipHedefler = [];
     for (let si = 0; si < tokenlar.length; si++) {
       const r = await sendBg({ type: "RUCU_TAKIP_HEDEFLER", token: tokenlar[si] });
@@ -943,6 +1128,7 @@
         return;
       }
     }
+    if (_takipOneCikan) _takipHedefler.sort((a, b) => (b.h.id === _takipOneCikan ? 1 : 0) - (a.h.id === _takipOneCikan ? 1 : 0));
     takipListeCiz();
   }
 
@@ -955,7 +1141,9 @@
         ? `<span style="color:#b91c1c;font-size:11px">⛔ ${esc(h.engeller.join(" · "))}</span>`
         : `<button class="rucu-btn" data-takip="${i}" style="background:#166534;padding:4px 10px;font-size:12px">Hazırla</button>`;
       const uyari = (h.uyarilar || []).length ? `<div style="color:#b45309;font-size:11px;margin-top:2px">⚠ ${esc(h.uyarilar.join(" · "))}</div>` : "";
-      return `<div style="padding:7px 0;border-bottom:1px solid #f2f4f7">
+      const oneCikan = _takipOneCikan && h.id === _takipOneCikan;
+      return `<div style="padding:7px 0;border-bottom:1px solid #f2f4f7${oneCikan ? ";background:#ecfdf5;border-radius:8px;padding-left:6px;padding-right:6px" : ""}">
+        ${oneCikan ? `<div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:2px">Programdan açıldı — kontrol edip "Hazırla"ya basın</div>` : ""}
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <b>${esc(h.hukukDosyaNo || h.id.slice(0, 8))}</b>
           <span class="rucu-mut">${esc(borclu)}</span>
@@ -979,6 +1167,10 @@
     _takipMesgul = true;
     const log = (m) => durumYaz(`<b>⚖ ${esc(h.hukukDosyaNo || "")}</b> hazırlanıyor…<br>${m}`);
     try {
+      // 0 · v2.0 FAİZ ÖN KONTROLÜ (UYAP'a tek istek gitmeden): seçim yoksa ya da UYAP kodu keşifle teyit
+      // edilmemişse kopilot DURUR — "Adi Kanuni Faiz" varsayılanı ve "%......" artık gönderilmez (B26).
+      const faizOn = SAF ? SAF.faizOnKontrol(h) : { ok: false, hata: "saf.js yüklenmemiş — eklentiyi yeniden kurun (kopilot faizsiz gövde göndermez)" };
+      if (!faizOn.ok) throw new Error(faizOn.hata);
       // 1 · adliye çöz (il plaka kodu → adliye listesi → ada göre eşle)
       log("1/6 · adliye çözülüyor…");
       const adliyeler = await apiPost("/icraTakipAdliyeler.ajx", { ilKodu: h.adliye.ilKodu });
@@ -1074,63 +1266,13 @@
         isVekilIban: true,
       };
 
-      // 5 · payload — keşif kaydındaki tevzi gövdesiyle birebir aynı yapı
+      // 5 · payload — keşif kaydındaki tevzi gövdesiyle birebir aynı yapı (saf.js · tevziGovdesi).
+      // v2.0: faizBilgileri ve dosyaAciklama_48_4 programdaki takip talebi seçiminden gelir; eşlenemezse DUR.
       log("5/6 · payload kuruluyor…");
       const tarafList = [...borcluTaraflar, alacakliTaraf];
-      const tumTarafIdx = tarafList.map((_, ix) => ix);
-      const kalemler = [{
-        selectedTarafHashKeyList: tumTarafIdx, selectedTarafList: tumTarafIdx.join(","),
-        temelBilgileri: {
-          alacakTutariTL: h.alacak.anapara, alacakTutari: h.alacak.anapara,
-          selectedParaBirimi: "PRBRMTL", selectedParaBirimiAciklama: "TL-Türk Lirası", selectedParaBirimiKod: "TL-Türk Lirası",
-          KDV: false, aciklama: "Asıl Alacak",
-          selectedAlacakKalemKodu: { alacakKalemKodAciklama: "Diğer Asıl Alacağı", alacakKalemKod: 3 },
-        },
-        faizBilgileri: {
-          selectedFaizTuru: { tktId: "FAIZT00002", kod: "00002", aciklama: "Adi Kanuni Faiz", kodTuru: "FAIZT" },
-          faizOraniKurus: 0, selectedFaizSureTipi: "2", selectedFaizSureTipiAdi: "Yıllık",
-        },
-        id: 0,
-      }];
-      if (h.alacak.islemisFaiz > 0) kalemler.push({
-        selectedTarafHashKeyList: tumTarafIdx, selectedTarafList: tumTarafIdx.join(","),
-        temelBilgileri: {
-          alacakTutariTL: h.alacak.islemisFaiz, alacakTutari: h.alacak.islemisFaiz,
-          selectedParaBirimi: "PRBRMTL", selectedParaBirimiAciklama: "TL-Türk Lirası", selectedParaBirimiKod: "TL-Türk Lirası",
-          KDV: false, aciklama: "İşlemiş Faiz",
-          selectedAlacakKalemKodu: { alacakKalemKodAciklama: "Diğer Faiz Alacağı", alacakKalemKod: 6 },
-        },
-        faizBilgileri: {},
-        id: 1,
-      });
-      const idb = {
-        selectedIl: { il: h.adliye.ilKodu, ad: h.adliye.il, ilceler: [], kodAciklamaCiksin: false, bolgeId: 0, buyuksehir: false, takbisIlKodu: 0 },
-        kotaKullanimSekliText: "Avukat", kotaKullanimSekli: 0,
-        selectedAdliye: adliye, adliyeBirimId: adliye.adliyeBirimID, adliyeIsmi: adliye.adliyeIsmi,
-        selectedTakipTuru: { name: "İlamsız Takip", value: 1 }, takipTuru: 1, takipTuruText: "İlamsız Takip",
-        selectedTakipSekli: { name: sekilAd, value: 0 }, takipSekli: 0, takipSekliText: sekilAd,
-        selectedTakipYolu: { name: yolAd, value: 0 }, takipYolu: 0, takipYoluText: yolAd,
-        dosyaTevziTipiBanka: false, dosyaTevziTipiGayrimenkul: false,
-        dosyaAciklama_48_4: "Alacağın tahsili tarihine kadar %...... faizi masraf ve vekalet ücreti ile tahsili,kısmi ödemelerde BK.100 e göre yapılmasını talep ederim.",
-        dosyaAciklama_48_9: "Haciz Yolu",
-        ipotekRehinAciklama: "",
-        selectedTakipMahiyeti: mahiyet.value, mahiyetId: mahiyet.value, mahiyetText: mahiyet.name,
-        selectedDosyaKriterleri: [{ kod: "bk", mahiyetAdi: "B.K. 100.Madde", zorunlu: true, degistirilemez: true }],
-        dosyaKriterList: "bk", dosyaKriterTextList: "B.K. 100.Madde",
-        showHacizTahliyeValue: false, hacizOnayValue: false, tahliyeOnayValue: false,
-      };
-      const ilamsiz = [{
-        ilamsizTipi: "diger", alacakNo: "", alacakTarihi: ggaayyyy(h.alacak.faizBaslangic),
-        meblagi: h.alacak.anapara, meblagTuruAciklama: "TL-Türk Lirası", meblagTuru: "PRBRMTL",
-        aciklama: h.aciklama, id: rid(), alacakKalemleri: kalemler,
-      }];
-      const govde = {
-        IcraDosyaBilgileri: JSON.stringify(idb),
-        TarafList: JSON.stringify(tarafList),
-        IlamsizList: JSON.stringify(ilamsiz),
-        IlamliList: "[]",
-        TahsilatList: "[]",
-      };
+      const tg = SAF.tevziGovdesi(h, { adliye, sekilAd, yolAd, mahiyet, tarafList, rid });
+      if (!tg.ok) throw new Error(tg.hata);
+      const govde = tg.govde;
 
       // 6 · KURU PROVA: harç hesabı — sunucu payload'ı sindiremezse burada patlar, hiçbir şey oluşmaz
       log("6/6 · harç hesabı (kuru prova)…");
@@ -1140,7 +1282,7 @@
       const harcKalemleri = harc[0];
       const harcToplam = Number(harc[1]) || harcKalemleri.reduce((t, x) => t + (Number(x.hesapMiktar) || 0), 0);
 
-      takipOzetCiz({ h, token, govde, adliye, tarafList, harcKalemleri, harcToplam, uyarilar });
+      takipOzetCiz({ h, token, govde, adliye, tarafList, harcKalemleri, harcToplam, uyarilar, faizKodu: tg.faizKodu, talepMetni: tg.talepMetni });
     } catch (e) {
       durumYaz(`❌ <b>${esc(h.hukukDosyaNo || "")}</b> hazırlanamadı: ${esc(e.message)}<br><button class="rucu-btn sec" id="rucu-takip-geri" style="margin-top:6px">← Listeye dön</button>`);
       const g = durumEl.querySelector("#rucu-takip-geri");
@@ -1159,7 +1301,9 @@
       <b>⚖ ÖZET — ${esc(h.hukukDosyaNo || "")} · son kontrol sende</b>
       <div style="margin-top:6px">${taraflar2}</div>
       <div style="margin-top:4px">Adliye: <b>${esc(adliye.adliyeIsmi)}</b> (daireyi tevzi atar) · Takip: Örnek 7 İlamsız / Genel Haciz</div>
-      <div>Anapara <b>${fmtTL(h.alacak.anapara)}</b> + İşlemiş Faiz <b>${fmtTL(h.alacak.islemisFaiz)}</b> = <b>${fmtTL(h.alacak.toplam)}</b> · alacak tarihi ${esc(ggaayyyy(h.alacak.faizBaslangic))} · Adi Kanuni Faiz</div>
+      <div>Anapara <b>${fmtTL(h.alacak.anapara)}</b> + İşlemiş Faiz <b>${fmtTL(h.alacak.islemisFaiz)}</b> = <b>${fmtTL(h.alacak.toplam)}</b> · alacak tarihi ${esc(ggaayyyy(h.alacak.faizBaslangic))}</div>
+      <div>Faiz türü (UYAP): <b>${esc((ctx2.faizKodu && ctx2.faizKodu.aciklama) || "?")}</b> · programdaki seçim: ${esc(((SAF && SAF.FAIZ_TURU_ETIKET[h.faiz && h.faiz.faizTuru]) || (h.faiz && h.faiz.faizTuru) || "?") + " · " + ((h.faiz && h.faiz.faizOraniMetni) || "?"))}</div>
+      <div class="rucu-mut" style="margin-top:2px">Talep: ${esc(ctx2.talepMetni || "")}</div>
       <div class="rucu-mut" style="margin-top:4px;max-height:70px;overflow:auto;border:1px solid #eef1f4;border-radius:6px;padding:4px 7px">${esc(h.aciklama).replace(/\n/g, "<br>")}</div>
       ${uyariHtml}
       <div style="margin-top:6px"><b>Harç dökümü (ödeme MANUEL — tevziden sonra UYAP'tan öde):</b>${harcSatir}<div>Toplam: <b>${fmtTL(harcToplam)}</b></div></div>
@@ -1247,9 +1391,14 @@
   async function seritGuncelle() {
     if (!serit) return;
     if (_seritIlerleme) { serit.className = "s-run"; seritTxt.innerHTML = `KonsLaw · senkron çalışıyor — ${esc(_seritIlerleme)}`; return; }
-    const o = await st(["senkronToken", "senkronTokenlar", "sonOtoSync", "sonRapor"]);
+    const o = await st(["senkronToken", "senkronTokenlar", "sonOtoSync", "sonRapor", "anahtarBilgi"]);
     const anahtarSayisi = (Array.isArray(o.senkronTokenlar) && o.senkronTokenlar.length) ? o.senkronTokenlar.length : (o.senkronToken ? 1 : 0);
-    if (!anahtarSayisi) { serit.className = "s-err"; seritTxt.innerHTML = `KonsLaw <b>bağlı değil</b> — senkron anahtarı girilmedi · tıkla → ⚙ Ayar`; return; }
+    if (!anahtarSayisi) { serit.className = "s-err"; seritTxt.innerHTML = `KonsLaw <b>bağlı değil</b> — eklenti anahtarı girilmedi · tıkla → ⚙ Ayar`; return; }
+    // v2.0: iptal edilmiş / süresi dolan / dolmak üzere olan anahtar uyarısı (bilgi /api/uyap/kimlik'ten)
+    const bilgiler = Object.values(o.anahtarBilgi || {});
+    if (bilgiler.some((b) => b && b.gecersiz)) { serit.className = "s-err"; seritTxt.innerHTML = `KonsLaw: bir anahtar <b>geçersiz</b> (iptal edilmiş ya da süresi dolmuş) · programda yeni anahtar üretip ⚙ Ayar'a girin`; return; }
+    const dolacak = bilgiler.filter((b) => b && b.tur === "YENI" && b.kalanGun != null && b.kalanGun <= 14);
+    if (dolacak.length) { serit.className = "s-run"; seritTxt.innerHTML = `KonsLaw: kişisel anahtarın süresi <b>${Math.max(0, Math.min(...dolacak.map((b) => b.kalanGun)))} gün</b> içinde doluyor · programda Ayarlar > Eklenti anahtarları'ndan yenileyin`; return; }
     const son = o.sonOtoSync || 0;
     const r = o.sonRapor;
     const dkOnce = son ? Math.round((Date.now() - son) / 60000) : null;
@@ -1286,6 +1435,7 @@
           <button class="rucu-btn" id="rucu-aralik" style="background:#b45309">📅 Aralık Çek</button>
           <button class="rucu-btn" id="rucu-kesif" style="background:#6d28d9">🎬 Keşif Kaydı</button>
           <button class="rucu-btn sec" id="rucu-cfg">⚙ Ayar</button>
+          <button class="rucu-btn sec" id="rucu-anahtar">🔑 Anahtar yenile</button>
           <button class="rucu-btn sec" id="rucu-diag">🧪 Tanı</button>
         </div>
         <div id="rucu-durum" class="rucu-mut">▶ hedefleri (icra dairesi + esas no) kimliğiyle sorgular; bulamadığını da programa <b>raporlar</b>. 30 dk'da bir otomatik.<br>⚖ <b>Takip Aç</b>: Takibe Hazır + avukat onaylı dosyanın UYAP tevzi payload'ını kurar, harç hesabıyla doğrular, ÖZETİ gösterir — <b>gönderim senin onayınla</b>; harç ödemesi manuel.<br>💰 <b>Ödeme İşlemlerim</b>'i listelediğin an kalemler OTOMATİK programa yazılır (💰 = önizlemeli manuel); 📅 = öğrenilen şablonla tarih aralığı.<br>🎬 <b>Keşif Kaydı</b>: yeni bir akışı bir kez elle yürüt, tüm trafik JSON olarak insin.</div>
@@ -1300,6 +1450,7 @@
     panel.querySelector("#rucu-aralik").addEventListener("click", masrafAralikCek);
     panel.querySelector("#rucu-kesif").addEventListener("click", kesifToggle);
     panel.querySelector("#rucu-cfg").addEventListener("click", ayarSor);
+    panel.querySelector("#rucu-anahtar").addEventListener("click", anahtarYenile);
     panel.querySelector("#rucu-diag").addEventListener("click", tani);
     kesifButonTazele();
   }
@@ -1317,14 +1468,53 @@
     if (base == null) return;
     const eskiListe = Array.isArray(cur.senkronTokenlar) && cur.senkronTokenlar.length ? cur.senkronTokenlar : (cur.senkronToken ? [cur.senkronToken] : []);
     const girdi = window.prompt(
-      "Senkron anahtarları — HER ŞİRKET İÇİN BİR TANE, virgülle ayır (Ray'inki + Zurich'inki).\nHer şirketin anahtarı kendi Şirket Bilgileri ekranından üretilir:",
+      "Eklenti anahtarları — HER ŞİRKET İÇİN BİR TANE, virgülle ayır (Ray'inki + Zurich'inki).\n" +
+      "Kişisel anahtarınızı programda Ayarlar > Eklenti anahtarları'ndan üretin (kr2_ ile başlar). " +
+      "Eski şirket anahtarı çalışmaya devam eder; aynı şirket için kişisel anahtar girince eskisi kullanılmaz.",
       eskiListe.join(", ")
     );
     if (girdi == null) return;
     const liste = girdi.split(",").map((x) => x.trim()).filter(Boolean);
     await stSet({ programBase: base.trim().replace(/\/+$/, ""), senkronTokenlar: liste, senkronToken: liste[0] || "" });
-    flash(`Ayar kaydedildi — ${liste.length} şirket anahtarı tanımlı.`);
+    const bilgi = await anahtarBilgiTazele(true);
+    const ozet = liste.map((t) => {
+      const b = bilgi[t];
+      if (!b) return "? (doğrulanamadı)";
+      if (b.gecersiz) return "❌ geçersiz (iptal edilmiş ya da süresi dolmuş)";
+      return `${b.musteriAd || "şirket"} · ${b.tur === "YENI" ? "kişisel anahtar" + (b.kalanGun != null ? ` (${b.kalanGun} gün geçerli)` : "") : "eski şirket anahtarı"}`;
+    });
+    flash(`Ayar kaydedildi — ${ozet.join(" · ")}`);
     seritGuncelle();
+  }
+
+  /** "Anahtar yenile": programın anahtar ekranını açar, sonra yeni anahtarı sorar (eski satır aynı şirket için düşer). */
+  async function anahtarYenile() {
+    const cur = await st(["programBase"]);
+    const base = String(cur.programBase || "https://konslaw.app").replace(/\/+$/, "");
+    try { window.open(base + "/ayarlar", "_blank", "noopener"); } catch (e) {}
+    await ayarSor();
+  }
+
+  /**
+   * Anahtarların kimliğini programdan öğrenir (/api/uyap/kimlik): hangi şirket, eski mi kişisel mi, kaç gün kaldı.
+   * Background, aynı şirket için kişisel anahtar varsa eski şirket anahtarını kullanmaz ("ona geçilsin").
+   */
+  async function anahtarBilgiTazele(hepsi) {
+    const o = await st(["senkronTokenlar", "senkronToken", "anahtarBilgi"]);
+    const liste = Array.isArray(o.senkronTokenlar) && o.senkronTokenlar.length ? o.senkronTokenlar : (o.senkronToken ? [o.senkronToken] : []);
+    const bilgi = Object.assign({}, o.anahtarBilgi || {});
+    for (const t of Object.keys(bilgi)) if (liste.indexOf(t) < 0) delete bilgi[t];
+    for (const t of liste) {
+      if (!hepsi && bilgi[t] && Date.now() - (bilgi[t].t || 0) < 6 * 3600000) continue;
+      const r = await sendBg({ type: "RUCU_KIMLIK", token: t });
+      if (r && r.ok && r.data && r.data.ok) {
+        bilgi[t] = { musteriId: r.data.musteriId, musteriAd: r.data.musteriAd || null, tur: r.data.tur, sonKullanma: r.data.sonKullanma || null, kalanGun: r.data.kalanGun != null ? r.data.kalanGun : null, t: Date.now() };
+      } else if (r && r.status === 401) {
+        bilgi[t] = { gecersiz: true, t: Date.now() };
+      }
+    }
+    await stSet({ anahtarBilgi: bilgi });
+    return bilgi;
   }
 
   async function tani() {
@@ -1333,14 +1523,26 @@
     parca.push(SNF
       ? `Olay sınıflandırıcı: ✓ (siniflandir.js ${esc(SNF.surum || "")})`
       : "Olay sınıflandırıcı: ❌ siniflandir.js yüklenmemiş — senkron olay ÜRETMİYOR (manifest content_scripts sırasını kontrol et)");
-    try { const b = await birimlerYukle(); parca.push(`UYAP daire listesi: <b>${b.length}</b> birim (oturum ✓)`); }
+    parca.push(SAF
+      ? `Saf yardımcılar: ✓ (saf.js ${esc(SAF.surum || "")}) — kopilot faizi programdaki seçimden`
+      : "Saf yardımcılar: ❌ saf.js yüklenmemiş — kopilot DURUR, iş kuyruğu kişisel anahtarı tanımaz");
+    try { const b = await birimlerYukle(); parca.push(b.length ? `UYAP daire listesi: <b>${b.length}</b> birim (oturum ✓)` : "UYAP daire listesi: ❌ boş — oturum düşmüş olabilir"); }
     catch (e) { parca.push(`UYAP daire listesi: ❌ ${esc(e.message)} — oturum düşmüş olabilir`); }
     const tokenlar = await anahtarlar();
     if (!tokenlar.length) parca.push("Program anahtarı: ❌ tanımsız — ⚙ Ayar");
+    const bilgi = await anahtarBilgiTazele(true);
     for (let i = 0; i < tokenlar.length; i++) {
+      const b = bilgi[tokenlar[i]] || {};
+      const ad = b.musteriAd ? esc(b.musteriAd) : `Şirket ${i + 1}`;
+      const tur = b.tur === "YENI" ? `kişisel anahtar${b.kalanGun != null ? `, ${b.kalanGun} gün` : ""}` : "eski şirket anahtarı";
       const hr = await sendBg({ type: "RUCU_HEDEFLER", token: tokenlar[i] });
-      if (hr.ok && hr.data && hr.data.ok) parca.push(`Şirket ${i + 1} ✓ — senkron bekleyen: <b>${(hr.data.hedefler || []).length}</b> / aktif ${hr.data.aktifToplam ?? "?"}`);
-      else parca.push(`Şirket ${i + 1}: ❌ ${esc(String(hr.error || (hr.data && hr.data.error) || hr.status))} (anahtar geçersiz olabilir)`);
+      if (hr.ok && hr.data && hr.data.ok) parca.push(`${ad} ✓ (${tur}) — senkron bekleyen: <b>${(hr.data.hedefler || []).length}</b> / aktif ${hr.data.aktifToplam ?? "?"}`);
+      else parca.push(`${ad}: ❌ ${esc(String(hr.error || (hr.data && hr.data.error) || hr.status))} (anahtar geçersiz olabilir)`);
+      if (b.tur === "YENI") {
+        const ir = await sendBg({ type: "RUCU_IS_SIRA", token: tokenlar[i], uyapOturum: !!_oturumAcik });
+        if (ir.ok && ir.data && ir.data.ok) parca.push(`&nbsp;&nbsp;İş kuyruğu: ${ir.data.ozellikler && ir.data.ozellikler.isKuyrugu ? "açık" : "sunucuda kapalı"} · bekleyen <b>${ir.data.bekleyen ?? 0}</b> iş`);
+        else parca.push(`&nbsp;&nbsp;İş kuyruğu: ❌ ${esc(String((ir.data && ir.data.error) || ir.error || ir.status))}`);
+      }
     }
     const o = await st(["sonRapor"]);
     if (o.sonRapor) parca.push(`Son koşu: ${esc(o.sonRapor.t)} → ${o.sonRapor.ok} senkron, ${o.sonRapor.sorunlu} sorunlu / ${o.sonRapor.toplam}`);
@@ -1352,12 +1554,16 @@
     if (!msg) return;
     if (msg.type === "RUCU_TOGGLE") togglePanel();
     else if (msg.type === "RUCU_AUTO_SYNC") otoSenkron();
+    else if (msg.type === "RUCU_IS_YOKLA") isTuru().catch(() => {});
   });
   // sayfa yüklenince (yapılandırılmışsa, 25 dk throttle) otomatik senkron
   st(["senkronToken", "senkronTokenlar", "sonOtoSync"]).then((o) => {
     const var_ = (Array.isArray(o.senkronTokenlar) && o.senkronTokenlar.length) || o.senkronToken;
     if (var_ && Date.now() - (o.sonOtoSync || 0) > 25 * 60000) setTimeout(otoSenkron, 20000);
+    // v2.0: anahtar kimlikleri (şirket, tür, süre) 6 saatte bir tazelenir; iş kuyruğu 10 sn'de bir yoklanır
+    if (var_) setTimeout(() => { anahtarBilgiTazele(false).then(seritGuncelle).catch(() => {}); }, 3000);
   });
+  setInterval(() => { isTuru().catch(() => {}); }, IS_YOKLAMA_MS);
   // keşif sürerken sayfa yenilendiyse / sihirbaz yeni sekme açtıysa: kayda kaldığı yerden devam
   // (önceki sekmenin kayıtları storage yedeğinde — durdurunca hepsi birleşip iner)
   st(["kesifAktif"]).then((o) => {
@@ -1375,6 +1581,10 @@
   // Test kancası (tests/eklenti-siniflandir.test.ts): yalnız vitest'in vm bağlamı __KONS_TEST__ tanımlar.
   // Tarayıcıda tanımlı değildir; UYAP sayfası (MAIN world) eklentinin isolated world global'ine yazamaz.
   if (globalThis.__KONS_TEST__ && typeof globalThis.__KONS_TEST__ === "object") {
-    globalThis.__KONS_TEST__.icerik = { olaylarTuret, senkronGovde, siniflandiriciVar: !!SNF };
+    globalThis.__KONS_TEST__.icerik = {
+      olaylarTuret, senkronGovde, siniflandiriciVar: !!SNF,
+      // v2.0 (tests/eklenti-is-kuyrugu.test.ts): iş kuyruğu turu ve durum bayrakları
+      safVar: !!SAF, isTuru, durum: () => ({ isMesgul: _isMesgul, isBekliyor: _isBekliyor, oturumAcik: _oturumAcik }),
+    };
   }
 })();
