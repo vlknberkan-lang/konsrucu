@@ -8,8 +8,8 @@ import { Download, Puzzle, ShieldCheck, Info, FolderOpen, Settings2, MousePointe
 import { Kopyala } from '@/components/akilli-giris/kopyala'
 
 const STORE_URL = process.env.NEXT_PUBLIC_EKLENTI_STORE_URL || null
-const ZIP = '/uyap-eklenti-v1.8.0.zip'
-const SURUM = '1.8.0'
+const ZIP = '/uyap-eklenti-v1.9.0.zip'
+const SURUM = '1.9.0'
 
 function Adim({ n, baslik, children, icon: Icon }: { n: number; baslik: string; children: React.ReactNode; icon: React.ElementType }) {
   return (

@@ -1,0 +1,16 @@
+# Vercel CLI yüklemesinden hariç: gizli anahtarlar, yerel betikler (kişisel veri içerebilir), medya ve paketler.
+# Üretim değişkenleri Vercel proje ayarlarındadır; yerel .env dosyaları yüklenmez.
+.env
+.env.*
+scripts/
+/*.zip
+/*.rar
+/*.mp4
+/*.png
+/c:tmpzurich-verify.js
+.agents/
+AGENTS.md
+ds-bundle/
+.design-sync/
+.ds-sync/
+tsconfig.tsbuildinfo
