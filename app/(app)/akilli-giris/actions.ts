@@ -23,6 +23,7 @@ import { dosyadanEmsal } from '@/lib/konsrucu/emsal-ara'
 import { sayiTR } from '@/lib/konsrucu/sayi'
 import { ileriMi, dosyaDurumIlerlet } from '@/lib/konsrucu/durum'
 import { silebilir, SILME_YETKISI_YOK } from '@/lib/konsrucu/db'
+import { ELLE_YUKLEME_METIN_SINIRI, metniSinirla } from '@/lib/konsrucu/evrak-metin/ortak'
 
 type DosyaPayload = {
   hasarNo?: string
@@ -402,7 +403,7 @@ const nulSuz = (s: string | null | undefined): string | null => {
   return out
 }
 
-type EklenecekBelge = { dosyaAdi: string; kategori: string; guven?: number; extractedText: string | null; genislik?: number; yukseklik?: number; kamera?: string; exifTarih?: string; storagePath?: string }
+type EklenecekBelge = { dosyaAdi: string; kategori: string; guven?: number; extractedText: string | null; genislik?: number; yukseklik?: number; kamera?: string; exifTarih?: string; storagePath?: string; metinKesildi?: boolean }
 
 /** Mevcut dosyaya manuel belge ekle (tarayıcıda çıkarılmış metin + meta ile). */
 export async function belgeEkle(dosyaId: string, belgeler: EklenecekBelge[]): Promise<{ ok: boolean; error?: string; eklenen?: number }> {
@@ -411,6 +412,14 @@ export async function belgeEkle(dosyaId: string, belgeler: EklenecekBelge[]): Pr
   const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true, durum: true } })
   if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya bu dosyada yetkiniz yok' }
 
+  // S16 (B40): sınırı aşan metin SESSİZCE kesilmez — kesildiği metnin içinde yazar (tarayıcı da aynı sınırı uygular).
+  let kesilen = 0
+  const metinHazirla = (b: EklenecekBelge): string | null => {
+    if (!b.extractedText) return null
+    const k = metniSinirla(nulSuz(b.extractedText) ?? '', ELLE_YUKLEME_METIN_SINIRI)
+    if (k.kesildi || b.metinKesildi === true) kesilen++
+    return k.metin || null
+  }
   const ops: Prisma.PrismaPromise<unknown>[] = [
     prisma.belge.createMany({
       data: belgeler.map((b) => ({
@@ -419,14 +428,14 @@ export async function belgeEkle(dosyaId: string, belgeler: EklenecekBelge[]): Pr
         confidence: b.guven ?? null,
         dosyaAdi: (nulSuz(b.dosyaAdi) ?? '').slice(0, 255),
         storagePath: nulSuz(b.storagePath) ?? '', // 'evrak' bucket'taki yol (bayt yüklendiyse)
-        extractedText: b.extractedText ? (nulSuz(b.extractedText) ?? '').slice(0, 100000) || null : null,
+        extractedText: metinHazirla(b),
         genislik: b.genislik ?? null,
         yukseklik: b.yukseklik ?? null,
         kamera: nulSuz(b.kamera),
         exifTarih: b.exifTarih ? new Date(b.exifTarih) : null,
       })),
     }),
-    prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `${belgeler.length} belge eklendi (yerel çıkarım)` } }),
+    prisma.aktivite.create({ data: { dosyaId, kullaniciId: dbUser.id, eylem: `${belgeler.length} belge eklendi (yerel çıkarım)${kesilen ? ` · ${kesilen} belgenin metni boyut sınırında kesildi` : ''}` } }),
   ]
   if (dosya.durum === DosyaDurum.HAVUZDA) {
     ops.unshift(prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { durum: DosyaDurum.INCELENIYOR } }))

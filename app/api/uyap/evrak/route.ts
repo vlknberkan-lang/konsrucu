@@ -1,6 +1,8 @@
 /**
  * KonsRücü — UYAP senkron · POST /api/uyap/evrak
  * Eklenti, UYAP'ta indirdiği YENİ evrak PDF'ini buraya yükler → Supabase 'evrak' bucket → Belge.
+ * S16: evrakın metni (PDF metin katmanı / UDF / EYP-zip) çıkarılıp Belge.extractedText'e yazılır; taranmış
+ * evrakta yalnız "OCR gerekli" işareti (Aktivite satırı + yanıttaki `metin` özeti). Hata yüklemeyi bozmaz.
  *
  * Dedup: UYAP EVRAK KİMLİĞİ = uyapEvrakId'nin İLK 20 karakteri. UYAP aynı evrağı her indirişte
  * byte-FARKLI PDF üretir (içerik MD5 her seferinde değişir → güvenilmez) VE evrakId'nin sonuna değişen
@@ -20,8 +22,12 @@ import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
 import { belgeBorcaItirazMi, belgeItirazTarihiCikar, onemliOlayTespit } from '@/lib/konsrucu/onemli-olay'
 import { belgedenMasrafCikar } from '@/lib/konsrucu/masraf-cikar'
 import { dosyaAktif } from '@/lib/konsrucu/aktiflik'
+import { belgeMetniniYaz, type MetinOzeti } from '@/lib/konsrucu/evrak-metin/sunucu'
 
 export const dynamic = 'force-dynamic'
+// S16: istek içinde metin çıkarma (METIN_BUTCE_MS ≈ 8 sn) + 3,3 MB yükleme + DB — varsayılan fonksiyon süresine
+// (planına göre 10–15 sn) sıkışmasın; kesilirse belge satırı metinsiz kalır ve Aktivite satırı yazılmaz.
+export const maxDuration = 60
 
 const MAX_B64 = 4_400_000 // ~3.3 MB dosya (Vercel gövde sınırı altında kalsın)
 const EVRAK_ONEK = 20 // uyapEvrakId'nin stabil kimlik öneki (ilk şifre bloğu; 21+ = değişen oturum jetonu)
@@ -87,7 +93,19 @@ export async function POST(req: Request) {
     data: { dosyaId: dosya.id, kategori: snf.kategori as never, confidence: snf.guven, dosyaAdi, storagePath: sp, kaynakRef: uyapEvrakId, icerikHash, belgeTarihi },
     select: { id: true },
   })
-  await prisma.aktivite.create({ data: { dosyaId: dosya.id, kullaniciId: k.userId, eylem: `UYAP'tan evrak indi: ${dosyaAdi}` } })
+
+  // EVRAK METNİ (S16 · metin hattı v1): PDF metin katmanı / UDF / EYP-zip / DOCX / TXT → Belge.extractedText.
+  // Biçim bayt imzasından anlaşılır (eklenti UDF'yi .pdf adıyla gönderebiliyor). Belge satırı YUKARIDA oluştu:
+  // çıkarma ya da yazma hatası yüklemeyi ASLA bozmaz (belgeMetniniYaz fırlatmaz; yine de ikinci kez sarılı).
+  // Taranmış evrak: metin yazılmaz, yalnız "OCR gerekli" işareti (Aktivite + yanıt); OCR S17'de.
+  let metin: MetinOzeti | null = null
+  try {
+    metin = await belgeMetniniYaz(belge.id, bytes, dosyaAdi)
+  } catch {
+    metin = null
+  }
+
+  await prisma.aktivite.create({ data: { dosyaId: dosya.id, kullaniciId: k.userId, eylem: `UYAP'tan evrak indi: ${dosyaAdi}${metin?.not ? ` · ${metin.not}` : ''}` } })
 
   // Borca itiraz dilekçesi indiyse → Önemli Olaylar kuyruğu. İtiraz TARİHİ belge ADINDAN okunur
   // (UYAP belgesi ad sonunda tarih taşır: "Borca İtiraz Talebi 2026-06-12.pdf"); go-live süzgeci buna göre
@@ -107,5 +125,5 @@ export async function POST(req: Request) {
   void belgedenMasrafCikar // import bilinçli tutuluyor (tara ucu ve olası geri dönüş için)
   void aktif
 
-  return corsJson({ ok: true, eklendi: true, kategori: snf.kategori })
+  return corsJson({ ok: true, eklendi: true, kategori: snf.kategori, metin })
 }
