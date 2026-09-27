@@ -7,7 +7,8 @@
  * `RucuDosyasi`'na yazar (bkz. app/(app)/akilli-giris/iceri-aktar/actions.ts).
  *
  * Kurallar (CLAUDE.md):
- *  - Para `1.234.567,89` → number; çok-değerli hücre ("A + B") TOPLANIR; aşırı/bozuk → null.
+ *  - Para `1.234.567,89` (TR) ve `1,234,567.89` (ABD) → number; biçim DEĞER bazında tespit edilir
+ *    (bkz. tekPara). Çok-değerli hücre ("A + B") TOPLANIR; aşırı/bozuk → null.
  *  - Tarih `gg/aa/yyyy` → Date; geçersiz tarih (ör. 36/03/2025) → null (satırı ATMA, patlatma).
  *  - Oran `% 100` text korunur.
  *  - Başlık satırı esnek bulunur; kolonlar sıraya değil, başlık ADINA göre eşlenir.
@@ -188,45 +189,112 @@ function sinirla(n: number): number | null {
   return Math.round(n * 100) / 100
 }
 
-/** Tek bir TR para tokeni → number | null. */
-function tekPara(s: string): number | null {
-  let t = s.replace(/\s/g, '')
-  if (!t) return null
-  const virgul = t.includes(',')
-  const nokta = t.includes('.')
-  if (virgul) {
-    // TR biçim: virgül ondalık, nokta binlik
-    t = t.replace(/\./g, '').replace(',', '.')
-  } else if (nokta) {
-    // Yalnız nokta: binlik grubu (1.234.567) mu, ondalık (1234.56) mı?
-    if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '')
-    // aksi halde nokta = ondalık; olduğu gibi bırak
-  }
-  if (!/^-?\d+(\.\d+)?$/.test(t)) return null
-  return sinirla(Number(t))
+/**
+ * `t` binlik ayraçla doğru gruplanmış bir tam sayı mı? İlk grup 1–3 hane ve 0 ile başlamaz,
+ * sonraki her grup TAM 3 hane. ("1.234.567" ✓ · "12.34.567" ✗ · "0.123" ✗)
+ */
+function binlikGrupluMu(t: string, ayrac: '.' | ','): boolean {
+  const a = ayrac === '.' ? '\\.' : ','
+  return new RegExp(`^[1-9]\\d{0,2}(${a}\\d{3})+$`).test(t)
 }
 
 /**
- * TR para hücresi → number | null.
- *  - "1.234.567,89" → 1234567.89
- *  - "1.250,00 + 2.000,00" → 3250  (çok-değerli hücre TOPLANIR)
- *  - bozuk/aşırı → null
+ * Tek bir para tokeni (para birimi eki temizlenmiş) → number | null.
+ *
+ * Biçim DEĞER BAZINDA tespit edilir: aynı Hugo dökümünde TR ("493.210,00") ve ABD ("493,210.00")
+ * biçimi birlikte görüldü; eski kod virgül gördüğü her değeri TR sayıp ABD değerini 1000'e bölüyordu
+ * ("493,210.00" → 493,21 — docs/04 K6). Kurallar, sırayla:
+ *
+ *  1. Nokta VE virgül birlikte → EN SAĞDAKİ ayraç ondalık, diğeri binlik.
+ *     Ondalık ayraç yalnız bir kez geçer, binlik gruplar 3 hanedir, ondalık kısım 1–2 hanedir (kuruş);
+ *     değilse → null. 3+ ondalık hane yuvarlanıp kabul EDİLMEZ: "1.234,567" / "1,234.5678" belirsizdir
+ *     (tek ayraçlı "1234,567" de null döner — aynı belirsizlik aynı sonucu versin).
+ *       "493.210,00" → 493210 · "493,210.00" → 493210 · "1,234.56.78" → null · "1.234,567" → null
+ *  2. Tek tür ayraç BİRDEN ÇOK kez → binlik ("1.234.567", "1,234,567"); gruplar bozuksa → null.
+ *  3. Tek tür ayraç TEK kez (belirsiz durum):
+ *     a. Ayraçtan sonra TAM 3 hane → BİNLİK kabul edilir: "1.234" → 1234 · "1,234" → 1234.
+ *        Gerekçe: TL'de kuruş 2 hanedir; 3 ondalıklı bir tutar para olarak anlamsızdır. Bu okuma
+ *        TR ve ABD yerelinde AYNI sonucu verir, yani kaynağın yereli bilinmeden de güvenlidir.
+ *        Gruplama geçersizse ("0,125", "1234,567") tahmin yürütülmez → null.
+ *     b. Ayraçtan sonra 1–2 ya da 4+ hane → ONDALIK: "71,54" → 71.54 · "1234.5" → 1234.5 ·
+ *        "1234.5678" → 1234.57 (4+ hane bir binlik grubu olamaz; 2 haneye yuvarlanır).
+ *  4. Ayraç yok → düz tam sayı ("493210").
+ *
+ * Boşluklar (NBSP ve ince boşluk dahil) binlik ayracı sayılıp atılır: "1 234 567,89" → 1234567.89.
+ * Baştaki "-" korunur; üstel gösterim ("1e15") ve diğer karakterler → null.
+ */
+function tekPara(s: string): number | null {
+  let t = s.replace(/\s/g, '')
+  if (!t) return null
+  const negatif = t.startsWith('-')
+  if (negatif) t = t.slice(1)
+  if (!/^\d[\d.,]*$/.test(t) || !/\d$/.test(t)) return null
+
+  const sonNokta = t.lastIndexOf('.')
+  const sonVirgul = t.lastIndexOf(',')
+  let tam: string
+  let ondalik = '0'
+
+  if (sonNokta >= 0 && sonVirgul >= 0) {
+    // Kural 1: en sağdaki ayraç ondalık
+    const ondalikAyrac = sonNokta > sonVirgul ? '.' : ','
+    const binlikAyrac = ondalikAyrac === '.' ? ',' : '.'
+    const i = t.lastIndexOf(ondalikAyrac)
+    const tamKisim = t.slice(0, i)
+    ondalik = t.slice(i + 1)
+    if (tamKisim.includes(ondalikAyrac)) return null // ondalık ayraç iki kez: "1,234.567,89"
+    if (!binlikGrupluMu(tamKisim, binlikAyrac)) return null
+    if (!/^\d{1,2}$/.test(ondalik)) return null // kuruş 1–2 hane; "1.234,567" tahmin edilmez
+    tam = tamKisim.split(binlikAyrac).join('')
+  } else if (sonNokta >= 0 || sonVirgul >= 0) {
+    const ayrac = sonNokta >= 0 ? '.' : ','
+    const parcalar = t.split(ayrac)
+    if (parcalar.length > 2 || parcalar[1].length === 3) {
+      // Kural 2 ve 3a: binlik
+      if (!binlikGrupluMu(t, ayrac)) return null
+      tam = parcalar.join('')
+    } else {
+      // Kural 3b: ondalık
+      tam = parcalar[0]
+      ondalik = parcalar[1]
+    }
+  } else {
+    tam = t // Kural 4
+  }
+
+  if (!/^\d+$/.test(tam) || !/^\d+$/.test(ondalik)) return null
+  const n = Number(`${tam}.${ondalik}`)
+  return sinirla(negatif ? -n : n)
+}
+
+/** Para birimi ekleri (yalnız TL; YTL 2009'da 1:1 TL'ye dönüştü). Yabancı para (USD/EUR/$/€) atılmaz → null. */
+const TL_EKI = /₺|ytl|try|tl|tutar/gi
+
+/**
+ * Para hücresi → number | null. TR ve ABD biçimini değer bazında ayırt eder (bkz. tekPara).
+ *  - Excel'in SAYI olarak sakladığı hücre (raw: true → number) olduğu gibi alınır; hücre
+ *    biçimi ("#,##0.00", ABD/TR yereli) değeri etkilemez.
+ *  - "1.234.567,89" / "1,234,567.89" → 1234567.89
+ *  - "493.210,00 TRY" · "₺1.250,50" · "1.250,50TL" → ek temizlenir
+ *  - "1.250,00 + 2.000,00" → 3250  (çok-değerli hücre TOPLANIR; parçalar ayrı ayrı çözülür,
+ *    yani "1,000.00 + 2.000,00" gibi karışık biçim de doğru toplanır)
+ *  - bozuk/aşırı/yabancı para birimi → null (tahmin yürütülmez; ham değer kaynak.ham'da kalır)
  */
 export function paraTR(ham: unknown): number | null {
   if (ham == null) return null
   if (typeof ham === 'number') return Number.isFinite(ham) ? sinirla(ham) : null
   let s = String(ham).trim()
   if (!s) return null
-  s = s.replace(/₺|tl|try|tutar/gi, ' ').trim()
+  s = s.replace(TL_EKI, ' ').trim()
   if (!s) return null
 
   if (s.includes('+')) {
-    const parcalar = s.split('+').map((p) => p.trim()).filter(Boolean)
+    const parcalar = s.split('+').map((p) => p.trim())
     if (parcalar.length > 1) {
       let toplam = 0
       for (const p of parcalar) {
         const v = tekPara(p)
-        if (v == null) return null // bir parça bozuksa hücre güvenilmez
+        if (v == null) return null // bir parça bozuk/boşsa ("1.000 +") hücre güvenilmez
         toplam += v
       }
       return sinirla(toplam)
