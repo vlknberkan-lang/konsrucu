@@ -17,7 +17,7 @@ import type { EksenSonuc } from './turet'
 import {
   ALT_TIP_ETIKET, ARAB_ETIKET, DAVA_ETIKET, EKSEN_KAYNAK_ETIKET, ICRA_ETIKET, ITIRAZ_KAPSAM_ANAHTAR, ITIRAZ_KAPSAM_ETIKET,
   SURE_BASLATAN_ALT_TIPLER, TEBLIG_SEKLI_ETIKET, altTipMi, kuralAyir,
-  type AltTip, type IcraEksen, type ItirazKapsam, type TebligSekli,
+  type AltTip, type IcraEksen, type ItirazKapsam, type ItirazTipi, type TebligSekli,
 } from './sabitler'
 
 export type Rol = 'risk' | 'onay' | 'tamam' | 'bilgi' | 'gerekmedi'
@@ -97,6 +97,8 @@ export type BorcluBlokVM = {
   alacakliyaTebligEksik: boolean
   /** İyimser kilit: BorcluTakip.updatedAt (ISO) */
   surum: string | null
+  /** TB-07 formu için: itiraz onaylıysa mevcut kapsam (yoksa null; form "Kapsamı gir" / "Düzelt" önceki değerleri gösterir). */
+  itiraz: { tipi: ItirazTipi | null; kapsam: ItirazKapsam | null; tutar: number | null; kaseTarihi: string | null } | null
 }
 
 export type EksenRozetVM = { eksen: 'İCRA' | 'ARB' | 'DAVA'; deger: string; etiket: string; kaynak: string; teyit: string; rol: Rol; notlar: string[] }
@@ -293,6 +295,12 @@ export function borcluBloku(b: PanelBorclu, p: { olaylar: PanelOlay[]; eksen: Ek
   }
 
   const be = p.eksen?.borclular.find((x) => x.borcluId === b.id)
+  const itiraz = bt?.itirazVar === true ? {
+    tipi: bt.itirazTipi === 'TAM' || bt.itirazTipi === 'KISMI' ? (bt.itirazTipi as ItirazTipi) : null,
+    kapsam: bt.itirazKapsamJson && typeof bt.itirazKapsamJson === 'object' ? (bt.itirazKapsamJson as ItirazKapsam) : null,
+    tutar: bt.itirazEdilenTutar,
+    kaseTarihi: isoGun(bt.itirazVerilisTarihi),
+  } : null
   return {
     borcluId: b.id, ad: b.adUnvan, turEtiket: b.tur ? TUR_ETIKET[b.tur] ?? null : null,
     eksen: be ? { deger: be.deger, etiket: ICRA_ETIKET[be.deger], teyit: be.teyit === 'TEYITLI' ? 'onaylı' : EKSEN_KAYNAK_ETIKET[be.kaynak], rol: eksenRol(be.deger, be.teyit) } : null,
@@ -305,6 +313,7 @@ export function borcluBloku(b: PanelBorclu, p: { olaylar: PanelOlay[]; eksen: Ek
     }, p.bugun),
     alacakliyaTebligEksik,
     surum: bt ? bt.updatedAt.toISOString() : null,
+    itiraz,
   }
 }
 

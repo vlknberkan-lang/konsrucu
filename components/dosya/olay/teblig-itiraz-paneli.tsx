@@ -53,7 +53,7 @@ export function TebligItirazPaneli({
           </p>
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
-            {panel.borclular.map((b) => <BorcluBloku key={b.borcluId} dosyaId={panel.dosyaId} blok={b} tarihGirebilir={tarihGirebilir} />)}
+            {panel.borclular.map((b) => <BorcluBloku key={b.borcluId} dosyaId={panel.dosyaId} blok={b} tarihGirebilir={tarihGirebilir} yetkili={yetkili} />)}
           </div>
         )}
         <GelismeListesi dosyaId={panel.dosyaId} bekleyen={panel.bekleyen} islenen={panel.islenen} borclular={borclular} yetkili={yetkili} okuyabilir={okuyabilir} />

@@ -133,6 +133,21 @@ describe('borçlu bloğu ve Şimdi ipucu', () => {
     const k = borcluBloku(borclu('b1', 'X', { itirazVar: true, itirazTipi: 'KISMI', itirazEdilenTutar: 1234.56, itirazKapsamJson: { faiz: true } }), { olaylar: [], eksen: null, bugun: BUGUN })
     expect(k.satirlar.find((s) => s.etiket === 'İtiraz')!.metin).toMatch(/^kısmi \(faiz\) · itiraz edilen 1\.234,56 TL/)
   })
+  it('TB-07 formu için VM: itiraz onaylı ama kapsam yoksa itiraz.tipi null; girilmişse önceki değerler taşınır', () => {
+    const bos = borcluBloku(borclu('b1', 'X', { itirazVar: true }), { olaylar: [], eksen: null, bugun: BUGUN })
+    expect(bos.itiraz).toMatchObject({ tipi: null, kapsam: null, tutar: null, kaseTarihi: null })
+    const dolu = borcluBloku(
+      borclu('b1', 'X', { itirazVar: true, itirazTipi: 'KISMI', itirazEdilenTutar: 1234.56, itirazKapsamJson: { faiz: true }, itirazVerilisTarihi: G('2026-06-23') }),
+      { olaylar: [], eksen: null, bugun: BUGUN },
+    )
+    expect(dolu.itiraz).toMatchObject({ tipi: 'KISMI', kapsam: { faiz: true }, tutar: 1234.56, kaseTarihi: '2026-06-23' })
+  })
+  it('itiraz onaylı değilse (itirazVar false/null) VM.itiraz null döner (form gizli görünüm)', () => {
+    const yok = borcluBloku(borclu('b1', 'X', { itirazVar: false }), { olaylar: [], eksen: null, bugun: BUGUN })
+    expect(yok.itiraz).toBeNull()
+    const b = borcluBloku(B1, { olaylar: [], eksen: null, bugun: BUGUN })
+    expect(b.itiraz).toBeNull()
+  })
   it('süre başlatan aday varken ipucu TB-01; yalnız diğer adaylar varsa TB-02; hiçbir şey yoksa null', () => {
     const b = borcluBloku(B1, { olaylar: [], eksen: null, bugun: BUGUN })
     const teblig = gelismeKarti(olay('TEBLIG_SONUCU', { sonuc: 'TEBLIG', borcluId: 'b1' }), ctx)
