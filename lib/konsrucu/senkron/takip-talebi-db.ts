@@ -53,8 +53,10 @@ export async function takipTalebiYaz(tx: Tx, dosyaId: string, alanlar: TakipTale
     ...(alanlar.onaylayanId !== undefined ? { onaylayanId: alanlar.onaylayanId } : {}),
   }
   if (islem === 'GUNCELLE' && mevcut) {
-    const r = await tx.takipTalebi.update({ where: { id: mevcut.id }, data: veri, select: { id: true, surum: true } })
-    return { ...r, islem }
+    // yarış koruması: okuma ile yazım arasında kesinleşmiş (dondurulmuş) talep ezilmez
+    const n = await tx.takipTalebi.updateMany({ where: { id: mevcut.id, dondurulduAt: null }, data: veri })
+    if (n.count !== 1) throw new Error('Takip talebi bu arada kesinleşti; sayfayı yenileyip yeniden deneyin.')
+    return { id: mevcut.id, surum: mevcut.surum, islem }
   }
   const max = await tx.takipTalebi.aggregate({ where: { dosyaId }, _max: { surum: true } })
   const surum = (max._max.surum ?? 0) + 1

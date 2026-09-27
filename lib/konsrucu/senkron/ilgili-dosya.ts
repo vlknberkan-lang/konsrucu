@@ -134,7 +134,10 @@ export function uyapTarih(v: unknown): Date | null {
     const [, g, a, y, sa, dk] = tr
     // Türkiye saati (UTC+3, yaz saati yok) → UTC
     const d = new Date(Date.UTC(Number(y), Number(a) - 1, Number(g), sa ? Number(sa) - 3 : 9, dk ? Number(dk) : 0))
-    return isNaN(d.getTime()) || Number(a) > 12 || Number(g) > 31 ? null : d
+    if (isNaN(d.getTime()) || Number(a) < 1 || Number(a) > 12 || Number(g) < 1) return null
+    // "31.04" gibi takvimde olmayan gün ileri kaymasın (gidiş-dönüş)
+    const gun = new Date(Date.UTC(Number(y), Number(a) - 1, Number(g)))
+    return gun.getUTCDate() === Number(g) && gun.getUTCMonth() === Number(a) - 1 ? d : null
   }
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) { const d = new Date(s); return isNaN(d.getTime()) ? null : d }
   return null

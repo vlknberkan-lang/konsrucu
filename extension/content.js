@@ -1085,10 +1085,14 @@
     for (const d of liste) {
       i++;
       try { d.ayrinti = await davaAyrintiHam(d.uyapDosyaId); } catch (e) { continue; }
-      if (hedefRe.test(d.ayrinti.ilgiliDosyaListesiStr || "")) { d.taraflar = await davaTaraflariHam(d.uyapDosyaId); bulunan.push(d); break; }
+      // esas no başka dairede de olabilir: ilk eşleşmede durulmaz (en çok 5 aday); daire + esas denetimini sunucu yapar
+      if (hedefRe.test(d.ayrinti.ilgiliDosyaListesiStr || "")) { d.taraflar = await davaTaraflariHam(d.uyapDosyaId); bulunan.push(d); if (bulunan.length >= 5) break; }
       if (i % 10 === 0) { await A("DAVA_TARAMA", "CALISIYOR", null, { n: i, toplam: liste.length }); satirYaz(satir, `⚖ Dava araması ${esc(esas)}: ${i}/${liste.length}`); }
       await uyu(120);
     }
+    // hedef daire metinde geçen aday öne alınır (ekrandaki özet için); hepsi sunucuya gider
+    const daireN = tr(x.daire || "").replace(/genel/g, "").replace(/s+/g, " ").trim().split(" ").slice(0, 2).join(" ");
+    bulunan.sort((a, b) => Number(tr(b.ayrinti.ilgiliDosyaListesiStr || "").includes(daireN)) - Number(tr(a.ayrinti.ilgiliDosyaListesiStr || "").includes(daireN)));
     const bul = bulunan[0];
     await A("DAVA_TARAMA", "TAMAM", bul ? `bulundu: ${bul.birimAdi} ${bul.dosyaNo}` : "bu icraya bağlı dava bulunamadı", { n: i, toplam: liste.length });
     if (!bul) {
@@ -1098,7 +1102,7 @@
     await A("PROGRAMA_YAZIM", "CALISIYOR");
     const s = await davaGonder([token], bulunan);
     await A("PROGRAMA_YAZIM", s.hata ? "HATA" : "TAMAM", s.hata ? String(s.hata) : s.yeniAday ? "onay kartı açıldı" : s.guncellenen ? "bağlı dava tazelendi" : "öneri zaten var");
-    const bagli = s.bagli.find((b) => b.uyapDosyaId === bul.uyapDosyaId);
+    const bagli = s.bagli.find((b) => bulunan.some((d) => d.uyapDosyaId === b.uyapDosyaId));
     if (!bagli) await A("EVRAK_INDIRME", "ATLANDI", "dava henüz bağlanmadı: programda onaylayınca evrak iner");
     else if (oz.evrakIndir === false) await A("EVRAK_INDIRME", "ATLANDI", "evrak indirme sunucuda kapalı");
     else {

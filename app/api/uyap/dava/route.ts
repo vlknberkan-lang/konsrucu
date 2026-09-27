@@ -16,7 +16,8 @@ import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
-import { esasCoz } from '@/lib/konsrucu/dava/kayit'
+import { esasCoz, mahkemeCoz } from '@/lib/konsrucu/dava/kayit'
+import { trNorm } from '@/lib/konsrucu/senkron/ilgili-dosya'
 import { DAVA_ADAYI_ALAN as ADAY_ALAN, davaBagOnerisi, ilgiliDosyaCoz, rolumuzCoz, uyapTarih } from '@/lib/konsrucu/senkron/ilgili-dosya'
 
 export const dynamic = 'force-dynamic'
@@ -113,7 +114,11 @@ export async function POST(req: Request) {
     // 3) Aynı dosyada aynı esasla elle/Excel'den girilmiş dava varsa: öneri değil, UYAP kimliği o davaya bağlanır
     const esas = esasCoz(d.dosyaNo)
     if (bag.durum === 'TEK' && esas) {
-      const elle = await prisma.dava.findFirst({ where: { dosyaId: bag.dosyaIdler[0], esasYil: esas.yil, esasSira: esas.sira, uyapDosyaId: null, silindiAt: null }, select: { id: true } })
+      // esas no tek başına kimlik değil: elle girilmiş mahkeme (tür / yer / no) UYAP birim adıyla çelişmemeli
+      const m = mahkemeCoz(d.birimAdi)
+      const adaylarElle = await prisma.dava.findMany({ where: { dosyaId: bag.dosyaIdler[0], esasYil: esas.yil, esasSira: esas.sira, uyapDosyaId: null, silindiAt: null }, select: { id: true, mahkemeTuru: true, mahkemeYer: true, mahkemeNo: true } })
+      const uyumlu = adaylarElle.filter((x) => !!m && !m.ayristirilamadi && (!x.mahkemeTuru || x.mahkemeTuru === m.tur) && (!x.mahkemeYer || trNorm(x.mahkemeYer) === trNorm(m.yer)) && (!x.mahkemeNo || x.mahkemeNo === m.no))
+      const elle = uyumlu.length === 1 ? uyumlu[0] : null
       if (elle) {
         await prisma.dava.update({
           where: { id: elle.id },

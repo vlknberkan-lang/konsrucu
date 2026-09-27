@@ -68,6 +68,7 @@ describe('rolumuzCoz / davaTuruCoz / uyapTarih', () => {
     expect(uyapTarih('22.10.2026')?.toISOString().slice(0, 10)).toBe('2026-10-22')
     expect(uyapTarih('22/10/2026 10:30')?.toISOString()).toBe('2026-10-22T07:30:00.000Z')
     expect(uyapTarih('45.10.2026')).toBeNull()
+    expect(uyapTarih('31.04.2026')).toBeNull()
     expect(uyapTarih('14/10/2026 10:50')?.toISOString()).toBe('2026-10-14T07:50:00.000Z')
     expect(uyapTarih(null)).toBeNull()
   })
