@@ -313,16 +313,21 @@ export async function dilekceV2AtifOnayla(input: z.input<typeof atifOnayGirdi>):
   }
   const yeniListe = [...mevcut.filter((x) => x.anahtar !== p.data.anahtar), yeniKayit]
 
+  // iyimser kilit: okunan atifJson hâlâ aynıysa yazılır (art arda iki onayda ilki kaybolmasın)
+  const kilit = surum.atifJson == null ? { equals: Prisma.AnyNull } : { equals: surum.atifJson as Prisma.InputJsonValue }
   try {
-    await prisma.$transaction([
-      prisma.dilekceSurum.update({ where: { id: surum.id }, data: { atifJson: jsonVeri(yeniListe) } }),
-      prisma.aktivite.create({
+    const yazildi = await prisma.$transaction(async (tx) => {
+      const n = await tx.dilekceSurum.updateMany({ where: { id: surum.id, atifJson: kilit }, data: { atifJson: jsonVeri(yeniListe) } })
+      if (n.count !== 1) return false
+      await tx.aktivite.create({
         data: {
           dosyaId: surum.dosyaId, kullaniciId: o.kullaniciId, eylem: `Atıf onaylandı (elle): ${p.data.anahtar}`,
           detayJson: { surumId: surum.id, anahtar: p.data.anahtar, resmiUrl: yeniKayit.resmiUrl, gerekce: yeniKayit.gerekce },
         },
-      }),
-    ])
+      })
+      return true
+    })
+    if (!yazildi) return { ok: false, error: 'Bu sürümde aynı anda başka bir atıf onaylandı; sayfayı yenileyip tekrar deneyin.' }
     yenile(surum.dosyaId)
     return { ok: true }
   } catch {
