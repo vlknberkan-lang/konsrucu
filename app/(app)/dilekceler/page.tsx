@@ -5,6 +5,9 @@ import { prisma } from '@/lib/prisma'
 import { dilekceSureleriniHazirla } from '@/lib/konsrucu/dilekce-sureler'
 import type { MasaDetay, MasaDosya } from '@/lib/konsrucu/dilekce-masa-types'
 import { DilekceMasasi } from '@/components/dilekceler/dilekce-masasi'
+import { dilekceV2Acik } from '@/lib/konsrucu/dilekce-v2/bayrak'
+import { dilekceV2Ozeti } from '@/lib/konsrucu/dilekce-v2/kart-veri'
+import { DilekceV2Giris } from '@/components/dilekce-v2/dilekce-v2-giris'
 
 export const metadata = { title: 'Dilekçe masası · KonsLaw' }
 export const dynamic = 'force-dynamic'
@@ -76,5 +79,10 @@ export default async function DilekcelerPage({ searchParams }: { searchParams: {
       sureler: dilekceSureleriniHazirla({ etkinlikler: d.etkinlikler, gorevler: d.takipGorevleri, onemliOlaylar: d.onemliOlaylar, uyapSenkronAt: d.uyapSenkronAt, uyapEslesme: d.uyapEslesme }),
     }
   }
-  return <DilekceMasasi dosyalar={dosyalar} secili={secili} toplam={toplam} arama={q} />
+  // S35: DILEKCE_V2 açıkken seçili dosyanın üstünde dosya kartı girişi; kapalıyken eski masa aynen (değişmez).
+  const v2 = secili && dilekceV2Acik(dbUser.rol) ? await dilekceV2Ozeti(prisma, aktif.id, secili.id) : null
+  return <>
+    {secili && v2 && <div className="mx-auto max-w-[1600px] px-4 pt-6 lg:px-7"><DilekceV2Giris dosyaId={secili.id} kartlar={v2} /></div>}
+    <DilekceMasasi dosyalar={dosyalar} secili={secili} toplam={toplam} arama={q} />
+  </>
 }
