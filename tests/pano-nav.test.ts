@@ -48,6 +48,6 @@ describe('etkin menü öğesi ve dosya bağlantısı', () => {
     expect(aktifNav('/panelx')).toBeNull()
   })
   it('dosya ekranı adresi tek yerden', () => {
-    expect(dosyaHref('abc')).toBe('/akilli-giris/abc')
+    expect(dosyaHref('abc')).toBe('/dosya/abc')
   })
 })

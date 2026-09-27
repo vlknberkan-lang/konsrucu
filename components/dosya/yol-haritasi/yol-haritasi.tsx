@@ -29,9 +29,13 @@ export interface DosyaYolHaritasiProps {
   eskiGorunumHref?: string
   /** Prova bandı gösterilsin mi (varsayılan: evet). */
   provaGoster?: boolean
+  /** Verilirse her durak satırı bir bağlantı olur (Dosya Yol Haritası: `?durak=N`). */
+  durakHref?: (no: number) => string
+  /** Görsel olarak belirgin gösterilecek durak no'su (seçili durak). */
+  seciliDurak?: number
 }
 
-export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHrefSablonu, eskiGorunumHref, provaGoster = true }: DosyaYolHaritasiProps) {
+export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHrefSablonu, eskiGorunumHref, provaGoster = true, durakHref, seciliDurak }: DosyaYolHaritasiProps) {
   const s = gorunum.sonuc
   const prova = gorunum.prova?.tarih ?? null
   return (
@@ -51,7 +55,7 @@ export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHr
         belgeHrefSablonu={belgeHrefSablonu}
       />
       <SonraListesi sonra={s.sonra} sonraKatlanan={s.sonraKatlanan} ertelenenler={s.ertelenenler} bilgi={s.bilgi} />
-      <DurakListesi duraklar={gorunum.duraklar} />
+      <DurakListesi duraklar={gorunum.duraklar} durakHref={durakHref} secili={seciliDurak} />
     </div>
   )
 }

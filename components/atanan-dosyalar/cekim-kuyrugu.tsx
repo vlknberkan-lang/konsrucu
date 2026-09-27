@@ -13,6 +13,7 @@ import { Download, Loader2, ChevronDown, AlertTriangle } from 'lucide-react'
 import { cekildiTopluIsaretle } from '@/app/(app)/atanan-dosyalar/actions'
 import { tarihTR, kalanGun } from '@/lib/konsrucu/format'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
+import { dosyaHref } from '@/lib/konsrucu/nav'
 
 export type KuyrukDosya = { id: string; hukukDosyaNo: string; sigortaliUnvan: string | null; zamanasimi: string | null }
 
@@ -87,7 +88,7 @@ export function CekimKuyrugu({ dosyalar, toplamBekleyen }: { dosyalar: KuyrukDos
                 >
                   <input type="checkbox" checked={s} onChange={() => toggle(d.id)} className="h-4 w-4 shrink-0 accent-kr" aria-label={`${d.hukukDosyaNo} seç`} />
                   <Link
-                    href={`/akilli-giris/${d.id}`}
+                    href={dosyaHref(d.id)}
                     onClick={(e) => e.stopPropagation()}
                     className="font-mono shrink-0 font-bold text-foreground transition hover:text-kr hover:underline"
                   >

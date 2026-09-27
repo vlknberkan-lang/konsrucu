@@ -10,6 +10,7 @@ import { Prisma, DosyaDurum } from '@prisma/client'
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { money } from '@/lib/konsrucu/map'
+import { dosyaHref } from '@/lib/konsrucu/nav'
 import { durumAsama, ASAMA_META, ASAMA_DURUMLAR, ASAMA_SIRA, type AsamaKey } from '@/lib/konsrucu/asama'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { FiltreBar } from '@/components/atanan-dosyalar/filtre-bar'
@@ -236,7 +237,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
                       {/* dosya no'lar — monospace; hukuk no = detay linki */}
                       <div className="min-w-0">
                         <Link
-                          href={`/akilli-giris/${r.id}`}
+                          href={dosyaHref(r.id)}
                           className="font-mono block truncate rounded text-[12.5px] font-bold text-foreground transition hover:text-kr hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50 motion-reduce:transition-none"
                         >
                           {r.hukukDosyaNo}
@@ -284,7 +285,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
                       <div className="flex items-center justify-end gap-1">
                         <CekildiButton dosyaId={r.id} cekildi={r.hugodanCekildi} compact />
                         <Link
-                          href={`/akilli-giris/${r.id}`}
+                          href={dosyaHref(r.id)}
                           aria-label={`${r.hukukDosyaNo} dosyasının detayını aç`}
                           className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-surface-muted hover:text-kr focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50"
                         >

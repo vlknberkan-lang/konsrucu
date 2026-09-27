@@ -67,9 +67,9 @@ export function aktifNav(pathname: string, items: NavItem[] = RAIL_NAV): NavItem
   return en
 }
 
-/** Dosya ekranının adresi — tek yer. Yol Haritası (/dosya/[id]) bağlandığında yalnız burası değişir. */
+/** Dosya ekranının adresi — tek yer. Yol Haritası (/dosya/[id]) bağlandı; eski ekrana "Ayrıntılı görünüm (eski)"tan gidilir. */
 export function dosyaHref(id: string): string {
-  return `/akilli-giris/${id}`
+  return `/dosya/${id}`
 }
 
 export type Durum = 'isleniyor' | 'gozden' | 'idariBekl' | 'takibeHazir' | 'gonderildi'

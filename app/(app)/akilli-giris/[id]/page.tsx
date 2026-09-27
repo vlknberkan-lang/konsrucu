@@ -429,6 +429,8 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
         <Link href="/atanan-dosyalar" className="inline-flex items-center gap-1 font-semibold text-muted-foreground transition hover:text-foreground"><ChevronLeft className="h-[15px] w-[15px]" /> Atanan Dosyalar</Link>
         <span className="text-border">/</span>
         <span className="font-mono font-semibold text-foreground">{dosya.hukukDosyaNo ?? dosya.hasarDosyaNo ?? dosya.id.slice(0, 8)}</span>
+        <span className="text-border">/</span>
+        <Link href={`/dosya/${dosya.id}`} className="font-semibold text-kr transition hover:text-kr-ink hover:underline">Yol haritası görünümü</Link>
       </div>
 
       {/* künye başlık */}
