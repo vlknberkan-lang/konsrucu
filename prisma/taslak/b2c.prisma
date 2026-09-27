@@ -1,0 +1,521 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// TASLAK · Dalga B2 (SQL 010–012) ve Dalga C (SQL 013–015) şeması — prisma/schema.prisma'ya HENÜZ EKLENMEDİ
+// ─────────────────────────────────────────────────────────────────────────────
+// Kaynak: rucu-hukuk-asistani/docs/06-ana-senaryo-tasarimi.md §3.1–3.6 (veri modeli), 2(f)–(j), §7;
+//         07-uygulama-plani.md S26–S40 "Şema" satırları; 04 §4.1–4.2 (alan tablosu, Ray Excel);
+//         05 (UYAP dava alanları); bilgi-bankasi/dilekce/veri-gereksinimi.md.
+// Canlıya giden yol: prisma/sql/b2c/NNN_*.sql (yalnız ekleme, BEGIN/COMMIT, tekrar çalıştırılabilir).
+//
+// ÖNKOŞUL: B1 taslağı (prisma/taslak/b1.prisma, SQL 001–009). Bu dosya mevcut şema + B1 üzerine birleşir:
+//   - `model Sure'ye eklenecek` ve `model Belge'ye eklenecek` bölgeleri B1'in `Sure` modeline ve `Belge.davaId`
+//     kolonuna ilişki ekler (B1 README'sinin "B2'ye bırakılan bağlar" maddesi). Sure'yi ve Belge.davaId'yi B1 tanımlar;
+//     bu dosya onları YENİDEN TANIMLAMAZ.
+//   - Veritabanında 010 ve 011, B1'in 009 (Sure) ve 004 (Belge.davaId) dosyaları uygulanmadan çalışmaz (FK).
+//
+// Nasıl okunur (b1.prisma ile aynı düzen; aynı birleştirici ikisini de işler):
+//   1) "// model X'(y)e eklenecek" başlıklı bölgeler: satırlar mevcut (ya da B1'in eklediği) `model X { … }` gövdesine
+//      aynen yapıştırılır ("… eklerinin sonu" satırına kadar). Her satırın ya da grubun başında SQL dosyası (010…015)
+//      ve dilim (S26…S36) yazar; dilim birleşirken yalnız kendi satırlarını taşır (SQL canlıya uygulanmadan
+//      schema.prisma'ya alan girmez — kolon yoksa sorgu kırılır).
+//   2) Bölge dışındaki `model` blokları yeni tablolardır; schema.prisma'nın sonuna eklenir. Her bloğun önündeki
+//      "// ── 01N · SNN" başlığı hangi dosyaya ait olduğunu söyler.
+//
+// İlkeler (06 §3.1; B1 ile aynı):
+//   - Yeni tür/durum alanları String (enum'a değer eklenmez → ayrı ADD VALUE dosyası YOK). Geçerli değerler
+//     lib/sabitler/*.ts'de; yalnız KAPALI listelerde ayrıca SQL CHECK var (hangileri: sql/b2c/README.md §2).
+//   - Kapsam (M7): dosyaya bağlı her tabloda dosyaId + `dosya` ilişkisi; alt kayıtlar (DavaTaraf, DavaIslem,
+//     IhtiyatiHaciz, DilekceSurum) üst kaydın kimliğine ek olarak dosyaId taşır. Kiracı tabloları (MevzuatKaynak,
+//     DilekceSablon, UslupKurali) musteriId taşır. Alt kaydın dosyaId'si üstününkiyle aynı olmalı — yazma yardımcısı denetler.
+//   - Silme sınıfları: HUKUKİ kayıt (onDelete: Restrict + silindiAt): Arabuluculuk, OnayKaydi, YolSecimi, Dava,
+//     DavaTaraf, DavaIslem, IhtiyatiHaciz, DosyaKarti, DilekceSurum. Kiracı kütüphaneleri (MevzuatKaynak,
+//     DilekceSablon, UslupKurali) → Musteri Cascade (MentorKural deseni); silinmez, pasife alınır.
+//   - FK yalnız (a) 06'da @relation yazan bağlarda ve (b) B1'in B2'ye bıraktığı üç bağda (Sure.davaId,
+//     Sure.arabuluculukId, Belge.davaId). Kanıt/işaretçi alanları (…BelgeId, borcluId, kartId, sablonId, davaId
+//     bağlam kolonları) ve kişi alanları (…Id: onaylayan, kaydeden…) düz String — FK değil (B1 deseni).
+//   - "TASLAK EKİ" = 06 §3.2–3.3'te olmayan ek. Hepsi boş bırakılabilir ya da varsayılanlı; gerekçeleri
+//     sql/b2c/README.md §2'de. Dilim ajanı istemezse birleştirmeden önce çıkarılır.
+//   - uuid üretimi uygulamada (@default(uuid())); SQL'de DEFAULT yok.
+
+// ═════════════════════════════════════════════════════════════════════════════
+// model Musteri'ye eklenecek
+// ═════════════════════════════════════════════════════════════════════════════
+  mevzuatKaynaklari MevzuatKaynak[] // 013 · S33 — sanal ters ilişki (kolon yok)
+  dilekceSablonlari DilekceSablon[] // 015 · S36 — sanal
+  uslupKurallari    UslupKurali[] // 015 · S36 — sanal
+// ── Musteri eklerinin sonu ──
+
+// ═════════════════════════════════════════════════════════════════════════════
+// model RucuDosyasi'na eklenecek
+// ═════════════════════════════════════════════════════════════════════════════
+  // 010 · S26 — sanal ters ilişkiler (kolon yok)
+  arabuluculuklar  Arabuluculuk[]
+  onayKayitlari    OnayKaydi[]
+  yolSecimleri     YolSecimi[]
+
+  // 011 · S27 — sanal ters ilişkiler (kolon yok)
+  davalar          Dava[]
+  davaTaraflari    DavaTaraf[]
+  davaIslemleri    DavaIslem[]
+  ihtiyatiHacizler IhtiyatiHaciz[]
+
+  // 012 · S31 — kapanış (B25). Yalnız avukat yazar; BILINMIYOR ya da boşsa UYAP'ta "kapalı" dosya radarda kalır (SN-06).
+  kapanisSebebi     String? // TAHSIL | HARICEN_TAHSIL | SULH | FERAGAT | ISLEMDEN_KALDIRMA | ACIZ | BILINMIYOR
+  //                           (liste büyüyebilir: yol seçimi "takibi bırak", yetkisizlik … → CHECK yok, lib/sabitler)
+  kapanisAt         DateTime?
+  kapanisKaydedenId String? // TASLAK EKİ: Kullanici.id (FK değil) — yolOnaylayanId (B1) deseni
+
+  // 014 · S35 — sanal (kolon yok)
+  dosyaKartlari    DosyaKarti[]
+
+  // 015 · S36 — sanal (kolon yok)
+  dilekceSurumleri DilekceSurum[]
+// ── RucuDosyasi eklerinin sonu ──
+
+// ═════════════════════════════════════════════════════════════════════════════
+// model Asama'ya eklenecek
+// ═════════════════════════════════════════════════════════════════════════════
+  arabuluculuk Arabuluculuk? // 010 · S26 — sanal: Asama(ARABULUCULUK)'un 1:1 uzantısı
+  dava         Dava? // 011 · S27 — sanal: Asama(DAVA)'nın 1:1 uzantısı
+// ── Asama eklerinin sonu ──
+
+// ═════════════════════════════════════════════════════════════════════════════
+// model Sure'ye eklenecek   (Sure = B1 modeli, 009 · S24; kolonları B1'de var — burada yalnız ilişki)
+// ═════════════════════════════════════════════════════════════════════════════
+  arabuluculuk Arabuluculuk? @relation(fields: [arabuluculukId], references: [id], onDelete: Restrict) // 010 · S26 — FK (B1'den devralınan bağ)
+  dava         Dava? @relation(fields: [davaId], references: [id], onDelete: Restrict) // 011 · S27 — FK (B1'den devralınan bağ)
+// ── Sure eklerinin sonu ──
+
+// ═════════════════════════════════════════════════════════════════════════════
+// model Belge'ye eklenecek   (Belge.davaId kolonu B1'de, 004 · S16 — burada yalnız ilişki)
+// ═════════════════════════════════════════════════════════════════════════════
+  dava Dava? @relation(fields: [davaId], references: [id], onDelete: SetNull) // 011 · S27 — FK; dava kaydı gitse de evrak kalır
+// ── Belge eklerinin sonu ──
+
+// ═════════════════════════════════════════════════════════════════════════════
+// model Masraf'a eklenecek
+// ═════════════════════════════════════════════════════════════════════════════
+  davaId String? // 011 · S27 — hangi davanın masrafı (harç, gider avansı); Dava.id, FK değil (06 §3.2)
+// ── Masraf eklerinin sonu ──
+
+// ═════════════════════════════════════════════════════════════════════════════
+// model Etkinlik'e eklenecek
+// ═════════════════════════════════════════════════════════════════════════════
+  // 011 · S27 — duruşma / ön inceleme / keşif kaynağı (Ray Excel #26, UYAP ayrıntısı). Etkinlik → Asama(DAVA) → Dava.
+  kaynak        String? // ELLE | UYAP | EXCEL ; null = eski satır (elle girilmiş sayılır)
+  kaynakBelgeId String? // Belge.id (FK değil)
+  teyit         String? // ADAY | TEYITLI | REDDEDILDI ; UYAP/EXCEL'den gelen ADAY başlar (CHECK var; REDDEDILDI TASLAK EKİ)
+// ── Etkinlik eklerinin sonu ──
+
+// ═════════════════════════════════════════════════════════════════════════════
+// model UretilenCikti'ya eklenecek
+// ═════════════════════════════════════════════════════════════════════════════
+  // 015 · S36 — dilekçe v2 (B27): tip DILEKCE kalır; alt tür, dava bağı ve düzenleme izi
+  tur          String? // DAVA | DELIL | CEVABA_CEVAP | BEYAN | TALEP ; eski satırlar null = BILINMIYOR
+  davaId       String? // Dava.id (FK değil)
+  updatedAt    DateTime @default(now()) @updatedAt // mevcut satırlar uygulama anını alır
+  duzenleyenId String?
+  modelSurum   String?
+  surumler     DilekceSurum[] // sanal
+// ── UretilenCikti eklerinin sonu ──
+
+// ═════════════════════════════════════════════════════════════════════════════
+// model AiKullanim'a eklenecek
+// ═════════════════════════════════════════════════════════════════════════════
+  // 015 · S36 — TASLAK EKİ (B53): prompt önbelleği kullanımı kayda yazılır (07 S36 "cache_read_input_tokens kaydı")
+  onbellekOkunanToken  Int? // cache_read_input_tokens
+  onbellekYazilanToken Int? // cache_creation_input_tokens
+// ── AiKullanim eklerinin sonu ──
+
+// ─────────────────────────────────────────────────────────────────────────────
+// YENİ MODELLER (schema.prisma'nın sonuna)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── 010 · S26 — Arabuluculuk, müvekkil onayı, yol seçimi ────────────────────
+
+// Asama(ARABULUCULUK)'un 1:1 uzantısı; asıl kaynak budur, Asama.kimlikNo/birim/baslangic/bitis buradan aynalanır (06 §3.6).
+// HUKUKİ KAYIT: Restrict + silindiAt. dosyaId, Asama.dosyaId ile aynı olmak zorunda (M7; yazma yardımcısı denetler).
+// Not: Asama → RucuDosyasi Cascade'dir; buradaki Restrict yüzünden uzantısı olan aşama (ve dosyası) fiziksel silinemez.
+model Arabuluculuk {
+  id                String      @id @default(uuid())
+  asamaId           String      @unique // Asama(ARABULUCULUK) 1:1
+  asama             Asama       @relation(fields: [asamaId], references: [id], onDelete: Restrict)
+  dosyaId           String
+  dosya             RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Restrict)
+  tur               String? // DAVA_SARTI | IHTIYARI | BELIRSIZ — varsayılan YOK, avukat seçer (açık karar 3) (CHECK var)
+  turGerekce        String?     @db.Text
+  basvuruTarihi     DateTime?
+  basvuruNo         String?
+  buroNo            String?
+  uyapDosyaNo       String?
+  arabulucu         String? // (M) ekranda maskeli
+  surecBaslangic    DateTime?
+  sonTutanakTarihi  DateTime? // "bugün" varsayılmaz, ileri tarih reddedilir (B02) — uygulama denetler
+  sonuc             String? // ANLASMA | ANLASAMAMA | ULASILAMAMA | KATILMAMA | KISMEN (CHECK var)
+  katilmayanTaraf   String?
+  kismenJson        Json? // kısmen anlaşmada anlaşılan/anlaşılmayan kalemler — dava yalnız anlaşılmayanla sınırlı
+  konuMetni         String?     @db.Text // TASLAK EKİ (veri-gereksinimi C5): son tutanaktaki uyuşmazlık konusu aynen
+  sonTutanakBelgeId String? // Belge.id (FK değil)
+  onaylayanId       String?
+  onayAt            DateTime?
+  silindiAt         DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  sureler           Sure[] // sanal: Sure.arabuluculukId (B1 kolonu, FK bu dosyada)
+
+  @@index([dosyaId]) // TASLAK EKİ (06'da yok): M7 kapsam sorgusu ve dosya ekranı
+}
+
+// Müvekkil onayı (B16): dava açma, arabuluculuk, avans, sulh/iskonto, kanun yolu, takibi bırakma, kapatma.
+// Dosyaya bağlı, çünkü dava açılmadan istenir. HUKUKİ KAYIT: Restrict + silindiAt.
+model OnayKaydi {
+  id             String      @id @default(uuid())
+  dosyaId        String
+  dosya          RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Restrict)
+  tur            String // DAVA_ACMA | ARABULUCULUK | AVANS | SULH_ISKONTO | KANUN_YOLU | TAKIBI_BIRAKMA | KAPATMA
+  //                       (B16'da ıslah ve feragat da var → liste büyüyebilir, CHECK yok)
+  istenmeAt      DateTime? // onay talebi taslağı müvekkile gönderildi (elle, avukat onayıyla)
+  alinmaAt       DateTime?
+  sonuc          String      @default("BEKLIYOR") // BEKLIYOR | ONAY | RET (CHECK var)
+  onaylayanUnvan String? // müvekkil tarafında onayı veren unvan
+  belgeId        String? // onay yazısı / e-postası (Belge.id, FK değil)
+  tutar          Decimal?    @db.Decimal(14, 2) // onay sınırı (sulh/iskonto, avans) — "Telefon hazır" özeti
+  istisnaGerekce String?     @db.Text // süre koruma istisnasıyla açıldıysa (açık karar 4)
+  yolSecimiId    String? // TASLAK EKİ: onay hangi yol seçimi için istendi (YolSecimi.id, FK değil) — AR-02
+  davaId         String? // TASLAK EKİ: KANUN_YOLU ve dava içi onaylarda hangi dava (Dava.id, FK değil; Dava 011'de)
+  kaydedenId     String?
+  silindiAt      DateTime?
+  createdAt      DateTime    @default(now())
+
+  @@index([dosyaId, tur])
+}
+
+// TASLAK EKİ (06 §3.3'te yok): avukatın yol kararı. AR-01 "yol seçilmedi", AR-02 "yol seçildi, onay yok" ve SN-02
+// "karar sonrası yol seçilmedi" kurallarının kalıcı kaynağı (07 S26 kabul 1). Müvekkil onayı ayrı: OnayKaydi.yolSecimiId.
+// HUKUKİ KAYIT: Restrict + silindiAt. Karar değişirse eskisi ESKIDI, yenisi GECERLI (aynı işlemde).
+// KARAR_SONRASI'nda birden çok GECERLI satır olabilir (ör. TAKIBE_DEVAM ve ISTINAF birlikte, 06 2(j)).
+model YolSecimi {
+  id          String      @id @default(uuid())
+  dosyaId     String
+  dosya       RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Restrict)
+  asama       String // ITIRAZ_SONRASI | KARAR_SONRASI (CHECK var)
+  secim       String // ITIRAZ_SONRASI: ARABULUCULUK_IIK67 | IIK68_KALDIRMA | GENEL_ALACAK | TAKIBI_BIRAK
+  //                    KARAR_SONRASI: TAKIBE_DEVAM | ISTINAF | TEMYIZ | KANUN_YOLU_YOK | TAKIBI_DARALT
+  //                    (liste büyüyebilir → CHECK yok, lib/sabitler)
+  davaId      String? // KARAR_SONRASI'nda kararı veren dava (Dava.id, FK değil)
+  gerekce     String?     @db.Text
+  ekonomiJson Json? // yol seçimi kartının elle satırları: {harc, avans, hacizSonucu, malvarligi} (B29 ertelendi)
+  durum       String      @default("GECERLI") // GECERLI | ESKIDI (CHECK var)
+  secenId     String? // Kullanici.id (FK değil)
+  secimAt     DateTime    @default(now())
+  silindiAt   DateTime?
+  createdAt   DateTime    @default(now())
+
+  @@index([dosyaId, asama, durum])
+}
+
+// ── 011 · S27 — Dava, taraflar, işlemler, ihtiyati haciz ────────────────────
+
+// Asama(DAVA)'nın 1:1 uzantısı (plan 02, Akşam 6); asıl kaynak budur. HUKUKİ KAYIT: Restrict + silindiAt.
+// Ray Excel #20 (mahkeme), #21 (esas), #23 (ustDosyaNoHam), #25 (açılış), #26 (sonrakiDurusma + Etkinlik) buraya.
+// Dava ön kontrolünde (06 2(g)) mahkeme/usul seçimi bu satıra yazıldığı için satır HAZIRLIK'ta açılır.
+model Dava {
+  id                    String          @id @default(uuid())
+  asamaId               String          @unique // Asama(DAVA) 1:1
+  asama                 Asama           @relation(fields: [asamaId], references: [id], onDelete: Restrict)
+  dosyaId               String // Asama.dosyaId ile aynı (M7)
+  dosya                 RucuDosyasi     @relation(fields: [dosyaId], references: [id], onDelete: Restrict)
+  tur                   String? // ITIRAZIN_IPTALI | ALACAK | MENFI_TESPIT | IDARI | DIGER
+  rolumuz               String          @default("DAVACI") // DAVACI | DAVALI (CHECK var) — DAVALI = karşı taraf davası (DA-07)
+  mahkemeTuru           String? // ASLIYE_HUKUK | ASLIYE_TICARET | TUKETICI | SULH_HUKUK | ICRA_HUKUK | BAM | YARGITAY
+  mahkemeYer            String?
+  mahkemeNo             String?
+  esasYil               Int?
+  esasSira              Int?
+  usul                  String? // BASIT | YAZILI — avukat seçer, varsayılan YOK (CHECK var)
+  davaDegeri            Decimal?        @db.Decimal(14, 2)
+  davaDegeriKaynak      String? // ITIRAZ_EDILEN | TAKIP_TALEBI | ELLE
+  acilisTarihi          DateTime? // İİK 67 kanıtla kapanış kontrolüne girer (DA-06)
+  arabuluculukId        String? // Arabuluculuk.id (FK değil, 06 §3.3)
+  uyapDosyaId           String?
+  uyapDavaTuruMetni     String? // davaTurleriStr aynen (05)
+  uyapDurumMetni        String? // dosyaDurumu aynen
+  ilgiliDosyaHam        String?         @db.Text // ilgiliDosyaListesiStr aynen — icra ve arabuluculuk bağının kaynağı
+  birlesenHam           String?         @db.Text // birlesenDosyaListStr aynen
+  ustDosyaNoHam         String? // Ray Excel #23 aynen; anlamı açık karar 12
+  onIncelemeTarihi      DateTime?
+  sonrakiDurusma        DateTime?
+  kesifTarihi           DateTime? // TASLAK EKİ (05: UYAP ayrıntısında "Keşif Tarihi"; EtkinlikTur'da KESIF yok)
+  evre                  String? // TENSIP_BEKLENIYOR | DILEKCELER | ON_INCELEME | TAHKIKAT | KARAR_BEKLENIYOR
+  derece                Int             @default(1) // 1 ilk derece · 2 istinaf · 3 temyiz (CHECK var)
+  ustDavaId             String? // kanun yolu bağı, öneri olarak kurulur (Dava.id, FK değil)
+  durum                 String          @default("DERDEST") // HAZIRLIK | DERDEST | ISLEMDEN_KALDIRILDI | KARAR | KANUN_YOLU
+  //                                                            | KESINLESTI (davaEksen dili; büyüyebilir → CHECK yok)
+  onKontrolJson         Json? // TASLAK EKİ: ön kontrol maddeleri; yazılı gerekçeyle geçilen uyarılar
+  //                             [{kod, durum, gerekce, gecenId, at}] (07 S27 kabul 3–4: "kayda geçiyor")
+  // karar kartı (S31) — öneri AlanDegeri'nde; bu kolonlara yalnız avukat onayıyla yazılır
+  kararTarihi           DateTime?
+  kararNo               String?
+  hukum                 String? // KABUL | KISMEN_KABUL | RET | DIGER (CHECK var)
+  kabulAsil             Decimal?        @db.Decimal(14, 2)
+  kabulFaizBaslangic    DateTime?
+  inkarTazminati        Decimal?        @db.Decimal(14, 2)
+  inkarTazminatiYon     String? // LEHE | ALEYHE
+  yargilamaGideri       Decimal?        @db.Decimal(14, 2) // tek yönlü kararda tutar; iki yönlüde LEHİMİZE olan
+  yargilamaGideriAleyhe Decimal?        @db.Decimal(14, 2) // TASLAK EKİ: kısmi kabulde aleyhimize hükmedilen
+  vekaletUcreti         Decimal?        @db.Decimal(14, 2) // tek yönlü kararda tutar; iki yönlüde LEHİMİZE olan
+  vekaletUcretiAleyhe   Decimal?        @db.Decimal(14, 2) // TASLAK EKİ: kısmi kabulde aleyhimize hükmedilen (06 2(j))
+  vekaletUcretiYon      String? // LEHE | ALEYHE | IKI_YONLU
+  kararKaynakBelgeId    String? // TASLAK EKİ: kısa/gerekçeli karar evrakı (Belge.id, FK değil)
+  kararOnaylayanId      String? // TASLAK EKİ: karar kartını onaylayan avukat
+  kararOnayAt           DateTime? // TASLAK EKİ
+  gerekceliTebligTarihi DateTime?
+  kesinlesmeTarihi      DateTime? // şerh yokken "kesinleşti" gösterilmez
+  kesinlesmeBelgeId     String?
+  silindiAt             DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  taraflar              DavaTaraf[]
+  islemler              DavaIslem[]
+  ihtiyatiHacizler      IhtiyatiHaciz[]
+  sureler               Sure[] // sanal: Sure.davaId (B1 kolonu, FK bu dosyada)
+  belgeler              Belge[] // sanal: Belge.davaId (B1 kolonu, FK bu dosyada)
+
+  @@index([dosyaId])
+  @@index([uyapDosyaId])
+}
+
+// Davanın tarafları (B08: davalılar = süresinde itiraz eden teyitli borçlular). Ray Excel #22 → rol DAVALI önerisi.
+// HUKUKİ KAYIT. dosyaId, Dava.dosyaId ile aynı (M7).
+model DavaTaraf {
+  id           String      @id @default(uuid())
+  davaId       String
+  dava         Dava        @relation(fields: [davaId], references: [id], onDelete: Restrict)
+  dosyaId      String
+  dosya        RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Restrict)
+  borcluId     String? // Borclu.id (FK değil); müvekkil satırında ve eşleşmeyen karşı tarafta null
+  rol          String // DAVACI | DAVALI | FERI_MUDAHIL (büyüyebilir: IHBAR_OLUNAN … → CHECK yok)
+  itirazEttiMi Boolean?
+  adHam        String? // TASLAK EKİ (M): UYAP taraf listesi ya da Excel #22 adı, borçluyla eşleşmezse — ekranda maskeli
+  kaynakTuru   String? // TASLAK EKİ: UYAP | EXCEL | ELLE | KURAL
+  teyit        String      @default("ADAY") // ADAY | TEYITLI | REDDEDILDI (CHECK var; REDDEDILDI TASLAK EKİ)
+  teyitEdenId  String? // TASLAK EKİ
+  teyitAt      DateTime? // TASLAK EKİ
+  not          String?
+  silindiAt    DateTime?
+  createdAt    DateTime    @default(now())
+
+  @@index([davaId])
+  @@index([dosyaId])
+}
+
+// Dava içi işlem: tensip, cevap, ara karar, bilirkişi, duruşma, karar, kanun yolu … ve Ray Excel #28–#30.
+// UYAP evrakından gelenler ADAY'dır, avukat onaylar (S28–S29). HUKUKİ KAYIT. dosyaId, Dava.dosyaId ile aynı (M7).
+model DavaIslem {
+  id            String      @id @default(uuid())
+  davaId        String
+  dava          Dava        @relation(fields: [davaId], references: [id], onDelete: Restrict)
+  dosyaId       String
+  dosya         RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Restrict)
+  tur           String // TENSIP | CEVAP | CEVABA_CEVAP | IKINCI_CEVAP | ON_INCELEME | ARA_KARAR | BILIRKISI_ATAMA
+  //                      | BILIRKISI_RAPORU | DURUSMA | ISLEMDEN_KALDIRMA | GOREVSIZLIK | KARAR | GEREKCELI_KARAR
+  //                      | ISTINAF | KESINLESME | DELIL_DILEKCESI | DEKONT_SUNUMU | MUZEKKERE | MUZEKKERE_CEVABI | DIGER
+  //                      DELIL_DILEKCESI, DEKONT_SUNUMU, MUZEKKERE(_CEVABI): Ray Excel #29, #28, #30 (büyüyebilir → CHECK yok)
+  tarih         DateTime?
+  tebligTarihi  DateTime?
+  kaynakBelgeId String? // Belge.id (FK değil)
+  kaynakTuru    String? // TASLAK EKİ: UYAP_EVRAK | UYAP_YAPISAL | EXCEL | AI | ELLE
+  uyapEvrakTuru String?
+  referansNo    String? // dekont sunumunda iş emri no; müzekkerede muhatap kurum ve yazı no
+  excelHam      String? // Ray Excel hücresinin ham değeri; ayrıştırılamadıysa yalnız bu dolu ("elle tamamlayın")
+  ilgiliIslemId String? // TASLAK EKİ: MUZEKKERE_CEVABI → MUZEKKERE, GEREKCELI_KARAR → KARAR (DavaIslem.id, FK değil)
+  detayJson     Json? // TASLAK EKİ: türe özel ayrıntı — müzekkere {muhatap, istenenKalemler[{kalem, ekBelgeId}]}
+  //                      (veri-gereksinimi J6), tensip/ara karar {kesinSureler[{alinti, gun, sureId}]} (S29),
+  //                      bilirkişi {ucretAvansi, raporTebligTarihi}
+  ozet          String?     @db.Text
+  teyit         String      @default("ADAY") // ADAY | TEYITLI | REDDEDILDI (CHECK var; REDDEDILDI TASLAK EKİ)
+  teyitEdenId   String?
+  teyitAt       DateTime?
+  tekilAnahtar  String? // TASLAK EKİ: senkron/Excel tekilleştirmesi (dava + tur + birim evrak no | Excel sütunu) — eşzamanlı
+  //                       iki senkron aynı adayı iki kez açamaz (TakipOlayi.tekilAnahtar deseni, B1)
+  silindiAt     DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@unique([dosyaId, tekilAnahtar]) // TASLAK EKİ; NULL'lar çakışmaz
+  @@index([davaId, tur])
+  @@index([dosyaId])
+}
+
+// İhtiyati haciz (Ray Excel #27; B22 ve B28'in ihtiyati haciz kısmı). Karar sonrası İİK 261/264 süreleri Sure'de (teyit gerekli).
+// HUKUKİ KAYIT. davaId doluysa aynı dosyanın davası olmalı (M7).
+model IhtiyatiHaciz {
+  id                 String      @id @default(uuid())
+  dosyaId            String
+  dosya              RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Restrict)
+  davaId             String? // dava içinde istendiyse
+  dava               Dava?       @relation(fields: [davaId], references: [id], onDelete: Restrict)
+  asama              String // TAKIP_ONCESI | DAVADA | ILAMLI (CHECK var)
+  talepTarihi        DateTime?
+  sonuc              String      @default("BEKLIYOR") // BEKLIYOR | KABUL | RED | KISMEN (CHECK var)
+  kararTarihi        DateTime?
+  kararTebligTarihi  DateTime? // TASLAK EKİ (veri-gereksinimi I3): tefhim yoksa İİK 261 tetik adayı (teyit gerekli)
+  kararBelgeId       String?
+  teminatOrani       String? // TASLAK EKİ (I2): kararda yazan oran metni aynen ("%15")
+  teminatTutari      Decimal?    @db.Decimal(14, 2) // tutarı mahkeme belirler; program hesaplamaz
+  teminatYatirildiAt DateTime?
+  infazTalepTarihi   DateTime? // İİK 261 süresinin kapanış kanıtı (teyit gerekli)
+  excelHam           String?
+  kaynakTuru         String? // TASLAK EKİ: UYAP_EVRAK | EXCEL | ELLE
+  teyit              String      @default("ADAY") // ADAY | TEYITLI | REDDEDILDI (CHECK var; REDDEDILDI TASLAK EKİ)
+  teyitEdenId        String?
+  teyitAt            DateTime? // TASLAK EKİ
+  silindiAt          DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@index([dosyaId])
+  @@index([davaId]) // TASLAK EKİ: FK araması
+}
+
+// ── 013 · S33 — Mevzuat kütüphanesi ve atıf kapısı (K1) ─────────────────────
+
+// K1 kapısından geçen kütüphane (bilgi-bankasi/ aynası), müvekkil bazında (açık karar 18: "kopyala ve yeniden onayla").
+// Yükleme araclar/mevzuat-yukle.ts ile: anahtar musteriId + kunye, idempotent, --kuru kipi, yükleme kimliğiyle toplu pasif.
+// Dilekçeye yalnız durum = DOGRULANDI ve aktif = true girer.
+model MevzuatKaynak {
+  id                String    @id @default(uuid())
+  musteriId         String
+  musteri           Musteri   @relation(fields: [musteriId], references: [id], onDelete: Cascade)
+  tur               String // MEVZUAT | GENEL_SART | ICTIHAT
+  kunye             String // "İİK m.67/1" · "17. HD 2017/1431 E." — sürüm/yürürlük ayrımı gerekiyorsa künyeye yazılır
+  alinti            String    @db.Text // birebir alıntı
+  resmiUrl          String?
+  erisimTarihi      DateTime?
+  yururlukBas       DateTime?
+  yururlukBit       DateTime?
+  etiket            String // YERLESIK | TARTISMALI | TEYIT_GEREKLI (CHECK var)
+  durum             String    @default("TEYIT_GEREKLI") // DOGRULANDI | TEYIT_GEREKLI | KULLANMA (CHECK var)
+  kapsamNotu        String?   @db.Text
+  rucuSebebiKodlari String[]  @default([])
+  dogrulayanId      String?
+  dogrulamaAt       DateTime?
+  bilgiBankasiYolu  String? // "bilgi-bankasi/mevzuat/iik-67.md"
+  icerikOzet        String? // TASLAK EKİ: bilgi bankası kaydının sha256'sı — --kuru "değişecek / aynı kalacak" ayrımı
+  yuklemeId         String? // TASLAK EKİ (07 S33): toplu pasife alma için yükleme kimliği
+  aktif             Boolean   @default(true) // TASLAK EKİ: yanlış yükleme toplu pasif (KULLANMA'dan ayrı: KULLANMA uyarı olarak yaşar)
+  kopyaKaynakId     String? // TASLAK EKİ: "Zurich'e kopyala" — kaynak kaydın id'si (FK değil); kopya TEYIT_GEREKLI başlar
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt // TASLAK EKİ
+
+  @@unique([musteriId, kunye]) // TASLAK EKİ (07 S33: idempotent yükleme anahtarı)
+  @@index([musteriId, durum])
+}
+
+// ── 014 · S35 — Dosya kartı (dilekçenin 1. aşaması) ─────────────────────────
+
+// Sürümlü; kilitlenen kart değişmez, düzeltme = yeni sürüm (eskisi ESKIDI). HUKUKİ KAYIT: Restrict + silindiAt.
+// Kaynaklar: TakipTalebi (talep sınırı), Dava, DavaTaraf, onaylı AlanDegeri, MevzuatKaynak.
+// veri-gereksinimi'nin YENİ saydığı "aleyhe olgular" (G11), savunma matrisi (J3), ihtiyati haciz olguları (I4) icerikJson'da.
+model DosyaKarti {
+  id          String      @id @default(uuid())
+  dosyaId     String
+  dosya       RucuDosyasi @relation(fields: [dosyaId], references: [id], onDelete: Restrict)
+  davaId      String? // Dava.id (FK değil)
+  tur         String // DAVA | DELIL | CEVABA_CEVAP | BEYAN (büyüyebilir → CHECK yok)
+  surum       Int
+  icerikJson  Json // {olgular:[{id, metin, alanlar, belgeId, sayfa, alinti, alintiDogru, kritik, onayli}],
+  //                   secimler:{…}, eksikler, celiskiler, savunmalar?, aleyheOlgular?}
+  durum       String      @default("TASLAK") // TASLAK | ONAYLI | ESKIDI (CHECK var)
+  onaylayanId String?
+  onayAt      DateTime?
+  uretici     String? // model + prompt sürümü
+  silindiAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt // TASLAK EKİ: TASLAK kart düzenlenirken beklenen-içerik (çakışma) koruması
+
+  @@unique([dosyaId, tur, surum])
+}
+
+// ── 015 · S36 — Dilekçe v2: sürüm, şablon (iskelet), üslup ──────────────────
+
+// Her üretim ve her avukat kaydı yeni sürüm (B27); AI ham metni ve avukatın hâli ayrı. HUKUKİ KAYIT: Restrict + silindiAt.
+// UYAP'tan gelen nüsha eşleşince GONDERILDI_UYAP + kilitAt (S40). dosyaId, UretilenCikti.dosyaId ile aynı (M7).
+// Not: UretilenCikti → RucuDosyasi Cascade'dir; buradaki Restrict yüzünden sürümü olan çıktı fiziksel silinemez.
+model DilekceSurum {
+  id              String        @id @default(uuid())
+  ciktiId         String
+  cikti           UretilenCikti @relation(fields: [ciktiId], references: [id], onDelete: Restrict)
+  dosyaId         String
+  dosya           RucuDosyasi   @relation(fields: [dosyaId], references: [id], onDelete: Restrict)
+  sira            Int
+  kaynak          String // AI_HAM | AVUKAT (CHECK var)
+  icerik          String        @db.Text
+  talimat         String?       @db.Text
+  kartId          String? // DosyaKarti.id (FK değil)
+  sablonId        String? // DilekceSablon.id (FK değil)
+  uslupSurum      Int?
+  model           String?
+  promptSurum     String?
+  kaynakBelgeIds  String[]      @default([])
+  olguBaglariJson Json? // TASLAK EKİ: [{paragraf, olguIdleri[]}] — metindeki [O-n] bağları (06 §7.3), tıklanınca kaynak sayfa
+  uretimJson      Json? // TASLAK EKİ: üretim meta verisi {aiKullanimIds[], girisToken, cikisToken, onbellekOkunan, sureMs,
+  //                       okunamayanBelgeler[], kisaltilanBolumler[]} (06 2(h) "eksikler adıyla gösterilir")
+  kaliteJson      Json? // kırmızı / sarı bulgular, tensip provası
+  atifJson        Json? // [{metin, eslesenKaynakId, durum, onaylayanId, at}]
+  durum           String        @default("TASLAK") // TASLAK | IMZAYA_HAZIR | GONDERILDI_UYAP (CHECK var)
+  kilitAt         DateTime?
+  uyapBelgeId     String? // eşleşen UYAP evrakı (Belge.id, FK değil)
+  yazanId         String?
+  silindiAt       DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@unique([ciktiId, sira])
+  @@index([dosyaId])
+}
+
+// İskelet: Yelda'nın örneklerinden, müvekkil bazında (Ray kalıbı Zurich'e sızmaz; açık karar 18).
+// bilgi-bankasi/dilekce/sablonlar/<kod>.md aynası; araclar/sablon-yukle.ts --kuru + yükleme kimliği (S33 deseni).
+model DilekceSablon {
+  id               String   @id @default(uuid())
+  musteriId        String
+  musteri          Musteri  @relation(fields: [musteriId], references: [id], onDelete: Cascade)
+  kod              String // TASLAK EKİ: "itirazin-iptali-zmss-alkol" — bilgi bankası dosya adı; yükleme anahtarının parçası
+  tur              String // DAVA | DELIL | CEVABA_CEVAP | BEYAN (büyüyebilir → CHECK yok)
+  varyantJson      Json // {rucuSebebiKod?, mahkemeTuru?, usul?, davaliTur?}
+  bloklarJson      Json // bölüm sırası, sabit bloklar, koşullu bloklar, yer tutucular
+  kaynakOrnek      String? // "D1-dava (maskeli)"
+  surum            Int
+  onaylayanId      String?
+  onayAt           DateTime? // TASLAK EKİ
+  aktif            Boolean  @default(false)
+  bilgiBankasiYolu String? // TASLAK EKİ
+  icerikOzet       String? // TASLAK EKİ: --kuru karşılaştırması
+  yuklemeId        String? // TASLAK EKİ: toplu pasif
+  kopyaKaynakId    String? // TASLAK EKİ: başka müvekkilden kopyalandıysa kaynak kayıt (FK değil)
+  createdAt        DateTime @default(now())
+
+  @@unique([musteriId, kod, surum]) // TASLAK EKİ: idempotent yükleme anahtarı
+  @@index([musteriId, tur, aktif])
+}
+
+// Üslup kartı = müvekkilin ONAYLI kuralları. Kart sürüm N = surum ≤ N ve (pasifSurum yok ya da > N) olan onaylı kurallar;
+// DilekceSurum.uslupSurum bu N'dir (S38 regresyonu aynı kartı yeniden kurabilsin). S40 öğrenme döngüsü: fark adayları
+// ONERI olarak girer, yalnız Yelda onaylayınca kart sürümü artar (onaysız öğrenme yok; MentorKural kullanılmaz, B55).
+model UslupKurali {
+  id            String    @id @default(uuid())
+  musteriId     String
+  musteri       Musteri   @relation(fields: [musteriId], references: [id], onDelete: Cascade)
+  kapsam        String // HEPSI | DAVA | DELIL | CEVABA_CEVAP | BEYAN
+  metin         String    @db.Text
+  ornek         String?   @db.Text
+  kaynak        String // ELLE | FARK_ADAYI (S36'nın örnek çıkarımı da gelebilir → CHECK yok)
+  durum         String    @default("ONERI") // ONERI | ONAYLI | PASIF (CHECK var)
+  surum         Int       @default(1) // kuralın karta girdiği üslup kartı sürümü
+  pasifSurum    Int? // TASLAK EKİ (S40): bu sürümden itibaren kartta yok
+  kaynakSurumId String? // TASLAK EKİ (S40): FARK_ADAYI'nın çıktığı DilekceSurum.id (FK değil)
+  onaylayanId   String?
+  onayAt        DateTime? // TASLAK EKİ
+  yuklemeId     String? // TASLAK EKİ: sablon-yukle.ts toplu pasif
+  createdAt     DateTime  @default(now())
+
+  @@index([musteriId, durum])
+}
