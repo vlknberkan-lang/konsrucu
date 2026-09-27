@@ -14,7 +14,8 @@ export const YOLLAR: Record<'klasik' | 'idari' | 'belirsiz', { label: string; ic
 export const DURUM: Record<Durum, { label: string; tone: string }> = {
   isleniyor: { label: 'İşleniyor', tone: 'kr' },
   gozden: { label: 'Gözden geçir', tone: 'warning' },
-  idariBekl: { label: 'Dilekçe bekliyor', tone: 'info' },
+  // İDARİ_YOL: icra dilekçesi beklenmez; idareye başvuru yolunda süreleri avukat izler (S06, B12).
+  idariBekl: { label: 'İdari yol: süreleri avukat izler', tone: 'info' },
   takibeHazir: { label: 'Takibe hazır', tone: 'success' },
   gonderildi: { label: 'İmzaya gönderildi', tone: 'steel' },
 }

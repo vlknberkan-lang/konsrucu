@@ -23,7 +23,12 @@ import { dosyadanEmsal } from '@/lib/konsrucu/emsal-ara'
 import { sayiTR } from '@/lib/konsrucu/sayi'
 import { ileriMi, dosyaDurumIlerlet } from '@/lib/konsrucu/durum'
 import { silebilir, SILME_YETKISI_YOK } from '@/lib/konsrucu/db'
+import { idariYolOnaylayabilir, idariYolaAlinabilirMi, idariYolAktiviteMetni, IDARI_YOL_YETKI_YOK } from '@/lib/konsrucu/idari-yol'
 import { ELLE_YUKLEME_METIN_SINIRI, metniSinirla } from '@/lib/konsrucu/evrak-metin/ortak'
+import {
+  cikarimBirlestir, alanOnerisiBul, alanOnerisiniKaldir, dekontOnerisiBul, dekontOnerisiniKaldir,
+  ayniDeger, degerOku, dekontAnahtari, ALAN_ETIKET, ALANLAR, type AlanAdi, type YazilacakAnahtar,
+} from '@/lib/konsrucu/cikarim-birlestir'
 
 type DosyaPayload = {
   hasarNo?: string
@@ -93,7 +98,9 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
   await dosyaLimitKontrol(musteriId) // FREE plan: 20 aktif dosya kapısı
   const analiz = payload.metin ? await analizEt(payload.metin, ayarlar?.aciklamaFooter ?? undefined, undefined, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null, undefined, { musteriId }) : null
 
-  const durum: DosyaDurum = analiz ? (analiz.yol === 'idari' ? DosyaDurum.IDARI_YOL : DosyaDurum.INCELENIYOR) : DosyaDurum.INCELENIYOR
+  // S06 (F18; B12): AI'ın yol önerisi DURUMU DEĞİŞTİRMEZ — "idari" dese de dosya İNCELENİYOR açılır. Öneri
+  // yol/yolGuven/yolNeden alanlarında kalır; İDARİ_YOL'a yalnız avukat geçirir (idariYolaAl, Dosya Detay bandı).
+  const durum: DosyaDurum = DosyaDurum.INCELENIYOR
   const yeniOdemeler = dekontlardanOdemeler(analiz?.dekontlar)
   const faizBas = sonDekontTarihiOdeme(yeniOdemeler)
   const icraOneri = analiz ? yetkiliIcraOner(analiz.kazaYeri || analiz.il, analiz.il) : null
@@ -161,7 +168,7 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
         create: {
           kullaniciId: dbUser.id,
           eylem: analiz
-            ? `Yığın işlendi + asistan analizi → ${analiz.yol} (güven ${(analiz.yolGuven * 100) | 0}%), ${analiz.borclular.length} borçlu`
+            ? `Yığın işlendi + asistan analizi → ${analiz.yol} önerisi (güven ${(analiz.yolGuven * 100) | 0}%)${analiz.yol === 'idari' ? ' · durum İnceleniyor, idari yol kararı avukatta' : ''}, ${analiz.borclular.length} borçlu`
             : `Yığın işlendi → dosya oluştu (${payload.dosyalar.length} belge, yerel çıkarım)`,
         },
       },
@@ -201,15 +208,63 @@ export async function takipAcildi(formData: FormData) {
   revalidatePath(`/akilli-giris/${dosyaId}`)
 }
 
-/** "AI ile Çıkarım Yap": dosyanın belge metnini bizim AI'ya (analizEt) verir, sonucu DB'ye yazar.
- *  KORUMA: avukatın TEYIT_EDILDI yaptığı borçlular ve mevcut dekontlar SİLİNMEZ — AI çıktısı
- *  yalnız teyitsiz borçluları tazeler, dekontları (tarih+tutar) mükerrersiz EKLER. */
-export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: string; korunanBorclu?: number }> {
+// ───────────────── S07 · yeniden çıkarım koruması: alan okuma/yazma yardımcıları ─────────────────
+
+/** Birleştiricinin karşılaştırdığı kolonlar (aciklama cikarimJson'dadır). */
+const ALAN_SELECT = {
+  yol: true, brans: true, sigortaliUnvan: true, sigortaliTelefon: true, sigortaliPlaka: true, karsiPlaka: true,
+  il: true, kazaYeri: true, olusSekli: true, kusurDurumu: true, asilAlacak: true, rucuTutari: true, rucuOrani: true,
+  yetkiliIcra: true, muhatapOzet: true,
+} as const
+
+type AlanKaydi = Prisma.RucuDosyasiGetPayload<{ select: typeof ALAN_SELECT }>
+
+/** DB kaydı → birleştiricinin saf alan değerleri (Decimal → sayı). */
+function mevcutAlanlar(d: AlanKaydi): Partial<Record<Exclude<AlanAdi, 'aciklama'>, unknown>> {
+  const o: Partial<Record<Exclude<AlanAdi, 'aciklama'>, unknown>> = {}
+  for (const k of Object.keys(ALAN_SELECT) as (keyof typeof ALAN_SELECT)[]) o[k] = d[k]
+  o.asilAlacak = d.asilAlacak != null ? Number(d.asilAlacak) : null
+  o.rucuTutari = d.rucuTutari != null ? Number(d.rucuTutari) : null
+  return o
+}
+
+/** Kolon karşılığı olan yazılabilir anahtarlar (beyaz liste — öneri JSON'undan gelen anahtar kolona körlemesine gitmez). */
+const YAZILABILIR = new Set<string>([...ALANLAR.filter((a) => a !== 'aciklama'), 'yolGuven', 'yolNeden'])
+
+/** Birleştiricinin saf değerleri → Prisma update verisi (para → Decimal, enum doğrulanır, bilinmeyen anahtar atlanır). */
+function alanVerisi(yaz: Partial<Record<YazilacakAnahtar, string | number | null>>): Prisma.RucuDosyasiUpdateInput {
+  const data: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(yaz)) {
+    if (v == null || !YAZILABILIR.has(k)) continue
+    if (k === 'asilAlacak' || k === 'rucuTutari') { const d = guvenliDecimal(v); if (d) data[k] = d }
+    else if (k === 'yol') { if (typeof v === 'string' && v in Yol) data.yol = v as Yol }
+    else if (k === 'brans') { if (typeof v === 'string' && v in Brans) data.brans = v as Brans }
+    else if (k === 'yolGuven') { if (typeof v === 'number' && Number.isFinite(v)) data.yolGuven = v }
+    else data[k] = String(v)
+  }
+  return data as Prisma.RucuDosyasiUpdateInput
+}
+
+/** Öneri değerini ekranda/aktivitede göstermek için kısa metin. */
+function oneriMetni(alan: AlanAdi, v: string | number): string {
+  if (alan === 'asilAlacak' || alan === 'rucuTutari') return `${Number(v).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`
+  const s = String(v).replace(/\s+/g, ' ').trim()
+  return s.length > 80 ? `${s.slice(0, 77)}…` : s
+}
+
+/** "AI ile Çıkarım Yap": dosyanın belge metnini bizim AI'ya (analizEt) verir, sonucu dosyayla BİRLEŞTİRİR.
+ *  S07 (F13; B36, B37) — yeniden çıkarım koruması (lib/konsrucu/cikarim-birlestir):
+ *   - yalnız BOŞ alan yazılır; dolu alanda farklı değer cikarimJson.oneriler.alanlar'a gider ([Uygula]);
+ *   - cikarimJson birleştirilir: tevzi, dayanakFotoIds ve öteki anahtarlar korunur;
+ *   - borçlu SİLİNMEZ; mevcutla eşleşmeyen AI borçlusu teyitsiz eklenir;
+ *   - AI dekontları Odeme'ye YAZILMAZ, cikarimJson.oneriler.dekontlar'a gider ([Ödemeye ekle]);
+ *     faizBaslangic değişmez. */
+export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: string; korunanBorclu?: number; oneriSayisi?: number }> {
   const { dbUser, izinli } = await ctx()
   const dosya = await prisma.rucuDosyasi.findUnique({
     where: { id: dosyaId },
     select: {
-      musteriId: true, durum: true,
+      musteriId: true, durum: true, cikarimJson: true, ...ALAN_SELECT,
       belgeler: { select: { extractedText: true, kategori: true, dosyaAdi: true, storagePath: true } },
       borclular: { select: { adUnvan: true, tcVkn: true, teyitDurumu: true } },
       odemeler: { select: { tarih: true, tutar: true, haricMi: true } },
@@ -277,88 +332,64 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
     if (oran > 0 && oran <= 100) rucuOraniSon = `%${oran}`
   }
 
-  const cikarim = {
-    aciklama: analiz.aciklama ?? null,
-    olayTuru: analiz.olayTuru ?? null,
-    olayBaglami: analiz.olayBaglami ?? null,
-    sonrakiAdimlar: analiz.sonrakiAdimlar ?? [],
-    teyit: analiz.teyit ?? [],
-    llm: {
-      brans: analiz.brans ?? null, kazaYeri: analiz.kazaYeri ?? null, asilAlacak: analiz.asilAlacak ?? null,
-      yetkiliIcra: analiz.yetkiliIcra ?? null, kusurDurumu: analiz.kusurDurumu ?? null, olusSekli: analiz.olusSekli ?? null,
-    },
-  }
-
-  // dekontlar → Odeme: MEVCUT dekontlar korunur (elle girilmiş olabilir; faiz hesabının kaynağı) —
-  // AI'dan gelenler yalnız yeni (tarih+tutar eşleşmeyen) kayıt olarak eklenir. Set'e ekleyerek
-  // filtrelemek AI'ın AYNI yanıtta iki kez verdiği dekontu da teker indirir (self-dedup).
-  const yeniOdemeler = dekontlardanOdemeler(analiz.dekontlar)
-  const odemeAnahtar = (o: { tarih: Date | null; tutar: Prisma.Decimal | number | null }) =>
-    `${o.tarih ? o.tarih.toISOString().slice(0, 10) : ''}|${o.tutar != null ? Number(o.tutar) : 0}`
-  const gorulenOdeme = new Set(dosya.odemeler.map(odemeAnahtar))
-  const eklenecekOdemeler = yeniOdemeler.filter((o) => {
-    const k = odemeAnahtar(o)
-    if (gorulenOdeme.has(k)) return false
-    gorulenOdeme.add(k)
-    return true
-  })
-  // faiz başlangıcı = ekspertiz hariç en geç dekont (mevcut + yeni birlikte)
-  const faizBas = sonDekontTarihiOdeme([...dosya.odemeler, ...eklenecekOdemeler])
-
-  // borçlular: TEYIT_EDILDI kayıtlar avukat onayıdır — AI üzerine yazamaz. AI'dan gelen ve teyitli
-  // kayıtla aynı kişi olan (tcVkn ya da normalize ad eşleşen) borçlu tekrar oluşturulmaz.
-  const adNorm = (s: string) => s.toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim()
-  const korunanlar = dosya.borclular.filter((b) => b.teyitDurumu === TeyitDurum.TEYIT_EDILDI)
-  const korunanTc = new Set(korunanlar.map((b) => (b.tcVkn ?? '').replace(/\D/g, '')).filter(Boolean))
-  const korunanAd = new Set(korunanlar.map((b) => adNorm(b.adUnvan)))
-  const yeniBorclular = (analiz.borclular ?? []).filter((b) => {
-    const tc = (b.tcVkn ?? '').replace(/\D/g, '')
-    if (tc && korunanTc.has(tc)) return false
-    return !korunanAd.has(adNorm(b.adUnvan))
-  })
-
   // yetkili icra = KAZA YERİ → Adlî Rehber'den bağlı adliye (deterministik; LLM önerisine fallback)
   const icraOneri = yetkiliIcraOner(analiz.kazaYeri || analiz.il, analiz.il)
   const yetkiliIcraSon = icraOneri?.icraDairesi || analiz.yetkiliIcra || undefined
 
+  // S07 · BİRLEŞTİR (saf; lib/konsrucu/cikarim-birlestir): boş alan yazılır, dolu alanda farklı değer öneri olur;
+  // cikarimJson korunarak birleşir (tevzi, dayanakFotoIds…); borçlu silinmez; AI dekontu öneri olur (Odeme'ye
+  // yazılmaz, faizBaslangic değişmez). Mükerrer dekont (mevcut Odeme ya da bekleyen öneri) tekrar önerilmez.
+  const birlesim = cikarimBirlestir({
+    mevcut: {
+      alanlar: mevcutAlanlar(dosya),
+      cikarimJson: dosya.cikarimJson,
+      borclular: dosya.borclular,
+      odemeler: dosya.odemeler.map((o) => ({ tarih: o.tarih, tutar: o.tutar != null ? Number(o.tutar) : null })),
+    },
+    ai: {
+      alanlar: {
+        yol: yolDb(analiz.yol), brans: bransDb(analiz.brans),
+        sigortaliUnvan: analiz.sigortaliUnvan, sigortaliTelefon: analiz.sigortaliTelefon,
+        sigortaliPlaka: analiz.sigortaliPlaka, karsiPlaka: analiz.karsiPlaka,
+        il: analiz.il, kazaYeri: analiz.kazaYeri, olusSekli: analiz.olusSekli, kusurDurumu: analiz.kusurDurumu,
+        asilAlacak: aaNum != null ? Number(aaNum) : null, rucuTutari: rtNum != null ? Number(rtNum) : null,
+        rucuOrani: rucuOraniSon, yetkiliIcra: yetkiliIcraSon, muhatapOzet: analiz.muhatapOzet,
+        aciklama: analiz.aciklama,
+      },
+      yolGuven: analiz.yolGuven ?? null,
+      yolNeden: analiz.yolNeden ?? null,
+      analiz: {
+        olayTuru: analiz.olayTuru ?? null,
+        olayBaglami: analiz.olayBaglami ?? null,
+        sonrakiAdimlar: analiz.sonrakiAdimlar ?? [],
+        teyit: analiz.teyit ?? [],
+        llm: {
+          brans: analiz.brans ?? null, kazaYeri: analiz.kazaYeri ?? null, asilAlacak: analiz.asilAlacak ?? null,
+          yetkiliIcra: analiz.yetkiliIcra ?? null, kusurDurumu: analiz.kusurDurumu ?? null, olusSekli: analiz.olusSekli ?? null,
+        },
+      },
+      borclular: analiz.borclular ?? [],
+      dekontlar: dekontlardanOdemeler(analiz.dekontlar),
+    },
+  })
+  const { yeniBorclular } = birlesim
+  const yazilanAlanlar = Object.keys(birlesim.yazilacak).filter((k) => k !== 'yolGuven' && k !== 'yolNeden')
+  // yeniden çıkarımda eklenen borçlu hep TEYİTSİZ: AI "TEYIT_EDILDI" dese de avukat teyidi yerine geçmez
+  const yeniBorcluTeyit = (t?: string): TeyitDurum => (t === TeyitDurum.SUPHE ? TeyitDurum.SUPHE : TeyitDurum.TEYIT_GEREK)
+
   try {
     await prisma.$transaction([
-      // Teyitsiz borçlular YALNIZ AI yenilerini getirdiyse silinir — AI hiç borçlu döndüremediyse
-      // mevcut liste (elle girilmiş teyitsizler dahil) yerinde kalır; sil-ve-boş-bırak olmaz.
-      ...(analiz.borclular?.length
-        ? [prisma.borclu.deleteMany({ where: { dosyaId, teyitDurumu: { not: TeyitDurum.TEYIT_EDILDI } } })]
-        : []),
       prisma.rucuDosyasi.update({
         where: { id: dosyaId },
         data: {
-          faizBaslangic: faizBas ?? undefined, // dekont yoksa mevcut değeri koru
-          odemeler: eklenecekOdemeler.length
-            ? { create: eklenecekOdemeler.map((o) => ({ tarih: o.tarih, tutar: o.tutar, haricMi: o.haricMi, aciklama: o.aciklama })) }
-            : undefined,
-          yol: yolDb(analiz.yol),
-          yolGuven: analiz.yolGuven ?? null,
-          yolNeden: analiz.yolNeden ?? null,
-          brans: bransDb(analiz.brans) ?? undefined, // AI branş bulamadıysa elle seçilmişi EZME
-          sigortaliUnvan: analiz.sigortaliUnvan || undefined,
-          sigortaliTelefon: analiz.sigortaliTelefon || undefined,
-          sigortaliPlaka: analiz.sigortaliPlaka || undefined,
-          karsiPlaka: analiz.karsiPlaka || undefined,
-          il: analiz.il || undefined,
-          kazaYeri: analiz.kazaYeri || undefined,
-          olusSekli: analiz.olusSekli || undefined,
-          kusurDurumu: analiz.kusurDurumu || undefined,
-          asilAlacak: guvenliDecimal(analiz.asilAlacak) ?? undefined,
-          rucuTutari: guvenliDecimal(analiz.rucuTutari) ?? undefined,
-          rucuOrani: rucuOraniSon,
-          yetkiliIcra: yetkiliIcraSon,
-          muhatapOzet: analiz.muhatapOzet || undefined,
-          cikarimJson: cikarim as unknown as Prisma.InputJsonValue,
+          ...alanVerisi(birlesim.yazilacak),
+          cikarimJson: birlesim.cikarimJson as Prisma.InputJsonValue,
           durum: dosya.durum === DosyaDurum.HAVUZDA ? DosyaDurum.INCELENIYOR : undefined,
           borclular: yeniBorclular.length
             ? {
                 create: yeniBorclular.map((b) => ({
                   adUnvan: b.adUnvan, tcVkn: b.tcVkn || null, telefon: b.telefon || null, adres: b.adres || null,
-                  rol: rolDb(b.rol), kaynak: b.kaynak || null, teyitDurumu: teyitDb(b.teyit),
+                  rol: rolDb(b.rol), kaynak: b.kaynak || null, teyitDurumu: yeniBorcluTeyit(b.teyit),
                 })),
               }
             : undefined,
@@ -367,7 +398,17 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
       prisma.aktivite.create({
         data: {
           dosyaId, kullaniciId: dbUser.id,
-          eylem: `AI çıkarımı çalıştı → ${analiz.yol} (güven %${(analiz.yolGuven * 100) | 0}), ${yeniBorclular.length} borçlu${korunanlar.length ? ` (${korunanlar.length} teyitli borçlu korundu)` : ''}`,
+          eylem: `AI çıkarımı çalıştı → ${analiz.yol} önerisi (güven %${(analiz.yolGuven * 100) | 0}): ${yazilanAlanlar.length} boş alan dolduruldu, ` +
+            `${birlesim.oneriler.length} farklı değer öneri listesinde, ${yeniBorclular.length} yeni borçlu (teyitsiz), ` +
+            `${birlesim.dekontOnerileri.length} dekont öneride (ödemeye yazılmadı); mevcut ${dosya.borclular.length} borçlu korundu` +
+            (birlesim.degisti ? ' · onay sıfırlandı' : ''),
+          detayJson: {
+            tur: 'AI_CIKARIM_BIRLESTIR',
+            yazilan: yazilanAlanlar,
+            oneriAlanlari: birlesim.oneriler.map((o) => o.alan),
+            dekontOnerisi: birlesim.dekontOnerileri.length,
+            yeniBorclu: yeniBorclular.length,
+          } as Prisma.InputJsonValue,
         },
       }),
     ])
@@ -376,7 +417,160 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
   }
 
   revalidatePath(`/akilli-giris/${dosyaId}`)
-  return { ok: true, korunanBorclu: korunanlar.length }
+  return { ok: true, korunanBorclu: dosya.borclular.length, oneriSayisi: birlesim.oneriler.length + birlesim.dekontOnerileri.length }
+}
+
+const GORUNTULEYEN_YAZAMAZ = 'Görüntüleyen rolü dosyada değişiklik yapamaz.'
+
+/** cikarimJson nesnesinden avukat onayını düşür (takibe giden veri değişti). */
+function onaysiz(cj: Record<string, unknown>): Record<string, unknown> {
+  const yeni = { ...cj }
+  delete yeni.onay
+  return yeni
+}
+
+/** S07 · "AI farklı değer önerdi" → [Uygula]: öneriyi alana yazar, listeden düşürür, Aktivite'ye yazar.
+ *  Alan öneriden sonra elle değiştiyse öneri bayattır: uygulanmaz, listeden düşer. Onay sıfırlanır. */
+export async function aiOneriUygula(dosyaId: string, alan: string): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  if (dbUser.rol === 'GORUNTULEYEN') return { ok: false, error: GORUNTULEYEN_YAZAMAZ }
+  if (!(alan in ALAN_ETIKET)) return { ok: false, error: 'Geçersiz alan' }
+  const a = alan as AlanAdi
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true, cikarimJson: true, ...ALAN_SELECT } })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
+  const oneri = alanOnerisiBul(dosya.cikarimJson, a)
+  if (!oneri) return { ok: false, error: 'Öneri bulunamadı (başka biri uygulamış ya da kaldırmış olabilir). Sayfayı yenileyin.' }
+
+  const cjObj = (dosya.cikarimJson && typeof dosya.cikarimJson === 'object' && !Array.isArray(dosya.cikarimJson) ? dosya.cikarimJson : {}) as Record<string, unknown>
+  const guncel = a === 'aciklama' ? cjObj.aciklama : mevcutAlanlar(dosya)[a]
+  const cjYeni = alanOnerisiniKaldir(dosya.cikarimJson, a)
+  if (!ayniDeger(a, guncel, oneri.mevcut)) {
+    await prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { cikarimJson: cjYeni as Prisma.InputJsonValue } })
+    revalidatePath(`/akilli-giris/${dosyaId}`)
+    return { ok: false, error: `${ALAN_ETIKET[a]} öneriden sonra değişti; öneri bayatladı ve listeden kaldırıldı.` }
+  }
+
+  const deger = degerOku(a, oneri.onerilen)
+  if (deger == null) return { ok: false, error: 'Öneri değeri okunamadı' }
+  const cjSon = onaysiz(a === 'aciklama' ? { ...cjYeni, aciklama: String(deger) } : cjYeni)
+  const kolon = a === 'aciklama'
+    ? {}
+    : alanVerisi({ [a]: deger, ...(a === 'yol' && oneri.ek ? { yolGuven: oneri.ek.yolGuven, yolNeden: oneri.ek.yolNeden } : {}) })
+  try {
+    await prisma.$transaction([
+      prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { ...kolon, cikarimJson: cjSon as Prisma.InputJsonValue } }),
+      prisma.aktivite.create({
+        data: {
+          dosyaId, kullaniciId: dbUser.id,
+          eylem: `AI önerisi uygulandı · ${ALAN_ETIKET[a]}: ${oneriMetni(a, oneri.mevcut)} → ${oneriMetni(a, oneri.onerilen)} (onay sıfırlandı)`,
+          detayJson: { tur: 'AI_ONERI_UYGULA', alan: a, mevcut: oneri.mevcut, onerilen: oneri.onerilen, oneriZamani: oneri.zaman } as Prisma.InputJsonValue,
+        },
+      }),
+    ])
+  } catch (e) {
+    return { ok: false, error: `Öneri uygulanamadı: ${(e as Error).message}` }
+  }
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
+}
+
+/** S07 · AI dekont önerisi → [Ödemeye ekle]: Odeme kaydı açar (aynı gün+tutar varsa açmaz), öneriyi düşürür.
+ *  faizBaslangic alanına DOKUNMAZ (elle girilmişse korunur; boşsa faiz paneli son dekontu kendisi hesaplar). */
+export async function aiDekontOdemeyeEkle(dosyaId: string, anahtar: string): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  if (dbUser.rol === 'GORUNTULEYEN') return { ok: false, error: GORUNTULEYEN_YAZAMAZ }
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true, cikarimJson: true, odemeler: { select: { tarih: true, tutar: true } } } })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
+  const d = dekontOnerisiBul(dosya.cikarimJson, anahtar)
+  if (!d) return { ok: false, error: 'Dekont önerisi bulunamadı. Sayfayı yenileyin.' }
+  const zatenVar = dosya.odemeler.some((o) => dekontAnahtari(o.tarih, o.tutar != null ? Number(o.tutar) : null) === d.anahtar)
+  const cjSon = onaysiz(dekontOnerisiniKaldir(dosya.cikarimJson, anahtar))
+  const tutarMetni = `${d.tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`
+  try {
+    await prisma.$transaction([
+      ...(zatenVar
+        ? []
+        : [prisma.odeme.create({ data: { dosyaId, tarih: d.tarih ? new Date(d.tarih) : null, tutar: new Prisma.Decimal(d.tutar), haricMi: d.haricMi, aciklama: d.aciklama } })]),
+      prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { cikarimJson: cjSon as Prisma.InputJsonValue } }),
+      prisma.aktivite.create({
+        data: {
+          dosyaId, kullaniciId: dbUser.id,
+          eylem: zatenVar
+            ? `AI dekont önerisi zaten ödeme listesinde: ${d.tarih ?? 'tarihsiz'} · ${tutarMetni} (öneri kaldırıldı)`
+            : `AI dekontu ödemeye eklendi: ${d.tarih ?? 'tarihsiz'} · ${tutarMetni}${d.haricMi ? ' (ekspertiz, faize dahil değil)' : ''} — faiz başlangıcı alanı değiştirilmedi (onay sıfırlandı)`,
+          detayJson: { tur: 'AI_DEKONT_ODEME', anahtar: d.anahtar, tarih: d.tarih, tutar: d.tutar, haricMi: d.haricMi, eklendi: !zatenVar } as Prisma.InputJsonValue,
+        },
+      }),
+    ])
+  } catch (e) {
+    return { ok: false, error: `Dekont eklenemedi: ${(e as Error).message}` }
+  }
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
+}
+
+/** S07 · Öneriyi yoksay: listeden düşürür (veri değişmez → onay korunur), Aktivite'ye yazar. */
+export async function aiOneriYoksay(dosyaId: string, tur: 'alan' | 'dekont', anahtar: string): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  if (dbUser.rol === 'GORUNTULEYEN') return { ok: false, error: GORUNTULEYEN_YAZAMAZ }
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true, cikarimJson: true } })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
+  const alanO = tur === 'alan' ? alanOnerisiBul(dosya.cikarimJson, anahtar) : null
+  const dekontO = tur === 'dekont' ? dekontOnerisiBul(dosya.cikarimJson, anahtar) : null
+  if (!alanO && !dekontO) return { ok: false, error: 'Öneri bulunamadı. Sayfayı yenileyin.' }
+  const cjSon = alanO ? alanOnerisiniKaldir(dosya.cikarimJson, anahtar) : dekontOnerisiniKaldir(dosya.cikarimJson, anahtar)
+  await prisma.$transaction([
+    prisma.rucuDosyasi.update({ where: { id: dosyaId }, data: { cikarimJson: cjSon as Prisma.InputJsonValue } }),
+    prisma.aktivite.create({
+      data: {
+        dosyaId, kullaniciId: dbUser.id,
+        eylem: alanO
+          ? `AI önerisi yoksayıldı · ${ALAN_ETIKET[alanO.alan]}: ${oneriMetni(alanO.alan, alanO.onerilen)} (mevcut değer korundu)`
+          : `AI dekont önerisi yoksayıldı: ${dekontO!.tarih ?? 'tarihsiz'} · ${dekontO!.tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`,
+      },
+    }),
+  ])
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
+}
+
+/** S06 (F18; B12) · "İdari yola al": AI'ın idari yol önerisini AVUKAT ya da ADMIN onaylar → durum İDARİ_YOL.
+ *  Rol kontrolü SUNUCUDA (düğme gizli olsa da action doğrudan çağrılabilir). Yalnız takip öncesi dosya.
+ *  Koşullu yazım (durum hâlâ okunan değer mi) çift tıklamayı ve eşzamanlı durum değişimini yakalar.
+ *  Onay Aktivite'ye yazılır; `yolOnaylayanId` kolonu 003 SQL'iyle gelir (B1b) — o zamana kadar tek iz detayJson. */
+export async function idariYolaAl(dosyaId: string): Promise<{ ok: boolean; error?: string }> {
+  const { dbUser, izinli } = await ctx()
+  if (!idariYolOnaylayabilir(dbUser)) return { ok: false, error: IDARI_YOL_YETKI_YOK }
+  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { musteriId: true, durum: true, yol: true, yolGuven: true, yolNeden: true } })
+  if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
+  if (dosya.durum === DosyaDurum.IDARI_YOL) return { ok: false, error: 'Dosya zaten idari yolda.' }
+  if (!idariYolaAlinabilirMi(dosya.durum)) return { ok: false, error: 'Takibi açılmış dosya idari yola alınamaz (yalnız takip öncesi dosyalar).' }
+
+  try {
+    const sonuc = await prisma.$transaction(async (tx) => {
+      const g = await tx.rucuDosyasi.updateMany({
+        where: { id: dosyaId, durum: dosya.durum },
+        data: { durum: DosyaDurum.IDARI_YOL, yol: Yol.IDARI },
+      })
+      if (g.count === 0) return false
+      await tx.aktivite.create({
+        data: {
+          dosyaId, kullaniciId: dbUser.id,
+          eylem: idariYolAktiviteMetni({ yolGuven: dosya.yolGuven, yolNeden: dosya.yolNeden, oncekiDurum: dosya.durum }),
+          detayJson: {
+            tur: 'IDARI_YOL_ONAY', oncekiDurum: dosya.durum, aiYol: dosya.yol, yolGuven: dosya.yolGuven, yolNeden: dosya.yolNeden,
+            onaylayanId: dbUser.id, onaylayanRol: dbUser.rol,
+          } as Prisma.InputJsonValue,
+        },
+      })
+      return true
+    })
+    if (!sonuc) return { ok: false, error: 'Dosyanın durumu bu sırada değişti; sayfayı yenileyip tekrar deneyin.' }
+  } catch (e) {
+    return { ok: false, error: `İdari yola alınamadı: ${(e as Error).message}` }
+  }
+  revalidatePath(`/akilli-giris/${dosyaId}`)
+  return { ok: true }
 }
 
 const katDb = (k: string): BelgeKategori => (k && k in BelgeKategori ? (k as BelgeKategori) : BelgeKategori.DIGER)

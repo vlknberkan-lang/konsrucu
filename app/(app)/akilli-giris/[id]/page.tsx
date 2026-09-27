@@ -34,6 +34,10 @@ import { SurecSerit } from '@/components/akilli-giris/detay/surec-serit'
 import { BelgeSerit, type BelgeKey } from '@/components/akilli-giris/detay/belge-serit'
 import { UyapEvraklar } from '@/components/akilli-giris/detay/uyap-evraklar'
 import { DosyaSor } from '@/components/akilli-giris/detay/dosya-sor'
+import { IdariYolOnerisi } from '@/components/akilli-giris/detay/idari-yol-onerisi'
+import { AiOneriler } from '@/components/akilli-giris/detay/ai-oneriler'
+import { idariYolOnaylayabilir } from '@/lib/konsrucu/idari-yol'
+import { onerileriOku } from '@/lib/konsrucu/cikarim-birlestir'
 import { DosyaOzet, ozetKur } from '@/components/konsrucu/dosya-ozet'
 import { GorevEkle } from '@/components/takip-gorevi/gorev-ekle'
 import { tenantKullanicilari } from '@/lib/konsrucu/db'
@@ -423,6 +427,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
           </div>
         </div>
       </div>
+
+      {/* S06: AI idari yol önerisi (karar avukatta) · S07: yeniden çıkarımın farklı bulduğu değerler (ezmez, önerir) */}
+      <IdariYolOnerisi dosyaId={dosya.id} yol={dosya.yol} yolGuven={dosya.yolGuven} yolNeden={dosya.yolNeden} durum={dosya.durum} yetkili={idariYolOnaylayabilir(dbUser)} />
+      <AiOneriler dosyaId={dosya.id} oneriler={onerileriOku(dosya.cikarimJson)} />
 
       <div className="sticky top-0 z-20 mt-[14px] rounded-2xl border border-border bg-surface/95 px-5 py-3 shadow-card backdrop-blur supports-[backdrop-filter]:bg-surface/80">
         <DosyaOzet data={ozetKur(dosya)} bugun={bugun} />

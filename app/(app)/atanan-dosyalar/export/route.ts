@@ -15,6 +15,7 @@ import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { ASAMA, asamaBilgi, asamaRenk, TON_RENK, ASAMA_DURUMLAR, ASAMA_META, ASAMA_SIRA, type AsamaKey } from '@/lib/konsrucu/asama'
 import { tarihTR, kalanGun as kalanGunIst, bugunIstBasi } from '@/lib/konsrucu/format'
+import { ZAMANASIMI_RADARI } from '@/lib/konsrucu/aktiflik'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -63,19 +64,20 @@ export async function GET(req: Request) {
         }
       : {}),
   }
-  // zamanaşımı radarı filtresi — sayfadaki listeyle birebir aynı küme ("görünen listeyi indir" sözü)
-  const TAKIP_ONCESI: DosyaDurum[] = [DosyaDurum.HAVUZDA, DosyaDurum.INCELENIYOR, DosyaDurum.TAKIBE_HAZIR]
+  // zamanaşımı radarı filtresi — sayfadaki listeyle birebir aynı küme ("görünen listeyi indir" sözü);
+  // durum kümesi tek kaynaktan: takip öncesi + İDARİ_YOL (lib/konsrucu/aktiflik, S06).
+  const RADAR: DosyaDurum[] = [...ZAMANASIMI_RADARI]
   const zaBugun = bugunIstBasi()
   const where: Prisma.RucuDosyasiWhereInput = {
     ...temelWhere,
     ...(asama !== 'all' ? { durum: { in: ASAMA_DURUMLAR[asama] as DosyaDurum[] } } : {}),
     ...(cekildi === 'evet' ? { hugodanCekildi: true } : cekildi === 'hayir' ? { hugodanCekildi: false } : {}),
     ...(za === 'bos'
-      ? { zamanasimi: null, AND: [{ durum: { in: TAKIP_ONCESI } }] }
+      ? { zamanasimi: null, AND: [{ durum: { in: RADAR } }] }
       : za === 'yakin'
-        ? { zamanasimi: { gte: zaBugun, lt: new Date(zaBugun.getTime() + 30 * 86_400_000) }, AND: [{ durum: { in: TAKIP_ONCESI } }] }
+        ? { zamanasimi: { gte: zaBugun, lt: new Date(zaBugun.getTime() + 30 * 86_400_000) }, AND: [{ durum: { in: RADAR } }] }
         : za === 'gecti'
-          ? { zamanasimi: { lt: zaBugun }, AND: [{ durum: { in: TAKIP_ONCESI } }] }
+          ? { zamanasimi: { lt: zaBugun }, AND: [{ durum: { in: RADAR } }] }
           : {}),
   }
   const orderBy: Prisma.RucuDosyasiOrderByWithRelationInput[] =

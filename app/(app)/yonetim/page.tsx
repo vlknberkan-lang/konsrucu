@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 import { superadminMi } from '@/lib/konsrucu/yonetici'
+import { HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
 import { PlanSecici, KrediEkleForm, DemoDurum } from '@/components/yonetim/yonetim-client'
 
 export const dynamic = 'force-dynamic'
@@ -37,7 +38,8 @@ export default async function YonetimPage() {
     }),
     prisma.rucuDosyasi.groupBy({
       by: ['musteriId'],
-      where: { durum: { notIn: ['TAHSIL', 'KAPANDI', 'IDARI_YOL'] } },
+      // "Aktif dosya" = açık iş: İDARİ_YOL dahil (S06, B12). Not: plan kotası (ai-kredi dosyaLimitKontrol) ayrı sayar.
+      where: { durum: { notIn: [...HATIRLATMA_DISI] } },
       _count: { _all: true },
     }),
     prisma.aiKullanim.groupBy({

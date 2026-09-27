@@ -2,18 +2,16 @@
  * KonsRücü — Haftalık takvim raporu ÖNİZLEME · GET /takvim/rapor
  * Aktif tenant'ın önümüzdeki 7 günlük etkinliklerini + yaklaşan/GEÇMİŞ zamanaşımılarını rapor
  * e-postası olarak render eder (lib/konsrucu/rapor-mail). Zamanlı gönderim aynı üreticiyi kullanır.
- * Zamanaşımı radarı yalnız takibi açılmamış açık dosyaları izler; tavan yok (eski take:12 kalktı).
+ * Zamanaşımı radarı takibi açılmamış açık dosyaları ve İDARİ_YOL dosyalarını izler (S06); tavan yok (eski take:12 kalktı).
  * Tenant-kapsamlı, auth zorunlu (giriş yapılmış tarayıcıda açılır).
  */
 import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { haftalikRaporHtml, type RaporEtkinlik, type RaporZamanasimi } from '@/lib/konsrucu/rapor-mail'
-import { dosyaAktif } from '@/lib/konsrucu/aktiflik'
+import { zamanasimiRadarinda, ZAMANASIMI_RADARI } from '@/lib/konsrucu/aktiflik'
 import { bugunIstBasi, kalanGun } from '@/lib/konsrucu/format'
 
 export const dynamic = 'force-dynamic'
-
-const TAKIP_ONCESI = ['HAVUZDA', 'INCELENIYOR', 'TAKIBE_HAZIR'] as const
 
 export async function GET(req: Request) {
   const { aktifMusteriId } = await ctx()
@@ -32,16 +30,16 @@ export async function GET(req: Request) {
       include: { dosya: { select: { hukukDosyaNo: true, hasarDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } } } },
     }),
     prisma.rucuDosyasi.findMany({
-      where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { gte: bas, lt: zaSon } },
+      where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: { gte: bas, lt: zaSon } },
       orderBy: { zamanasimi: 'asc' },
       select: zaSelect,
     }),
     prisma.rucuDosyasi.findMany({
-      where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { lt: bas } },
+      where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: { lt: bas } },
       orderBy: { zamanasimi: 'asc' },
       select: zaSelect,
     }),
-    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: null } }),
+    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: null } }),
   ])
 
   const etkinlikler: RaporEtkinlik[] = kayit.map((e) => ({
@@ -60,8 +58,8 @@ export async function GET(req: Request) {
     tarih: d.zamanasimi!.toISOString(),
     kalanGun: kalanGun(d.zamanasimi!, simdi),
   })
-  const zamanasimi = zaKayit.filter((d) => d.zamanasimi && dosyaAktif(d)).map(zaSatir)
-  const zamanasimiGecti = zaGectiKayit.filter((d) => d.zamanasimi && dosyaAktif(d)).map(zaSatir)
+  const zamanasimi = zaKayit.filter((d) => d.zamanasimi && zamanasimiRadarinda(d)).map(zaSatir)
+  const zamanasimiGecti = zaGectiKayit.filter((d) => d.zamanasimi && zamanasimiRadarinda(d)).map(zaSatir)
 
   const { html } = haftalikRaporHtml({
     aliciAd: 'Avukat',

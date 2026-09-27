@@ -14,7 +14,7 @@ import { prisma } from '@/lib/prisma'
 import { mailGonder } from '@/lib/konsrucu/mail'
 import { takipGoreviMail } from '@/lib/konsrucu/takip-gorevi-mail'
 import { GOREV_INCLUDE, gorevMailGirdisi } from '@/lib/konsrucu/takip-gorevi'
-import { dosyaAktif, KAPALI_DURUMLAR } from '@/lib/konsrucu/aktiflik'
+import { hatirlatmaKapsaminda, HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
 import { HACIZ_GOREV_ONEK } from '@/lib/konsrucu/teblig-gorev'
 import { cronYetkisiz, cronYanit } from '@/lib/konsrucu/cron-ortak'
 
@@ -35,13 +35,15 @@ async function handle(req: Request) {
   // AKTİFLİK: pasifleştirilen kullanıcıya (ofisten ayrılan) ya da pasif tenant'ın dosyasına mail GİTMEZ —
   // diğer cron'lar cronTenantlar ile aynı süzgeci uygular; bu rota görev-bazlı olduğundan where'de uygular.
   // Ayrıca KAPANMIŞ dosyanın süre görevine hatırlatma GİTMEZ (aktiflik kapısı) — kapalı dosyada haciz/itiraz
-  // uyarısı yanlış; durum kodu where'de, UYAP-kapalı serbest metni aşağıda dosyaAktif ile elenir.
+  // uyarısı yanlış; durum kodu where'de, UYAP-kapalı serbest metni aşağıda hatirlatmaKapsaminda ile elenir.
+  // S06 (B12): liste HATIRLATMA_DISI (TAHSIL, KAPANDI) — İDARİ_YOL dosyasının görevleri artık hatırlatılır
+  // (eski KAPALI_DURUMLAR idari yolu da susturuyordu; idari yolda süreleri avukat izler, e-posta şart).
   const due = await prisma.takipGorevi.findMany({
     where: {
       durum: { in: ['ACIK', 'ISLEMDE'] },
       sorumluId: { not: null },
       sorumlu: { is: { aktif: true } },
-      dosya: { musteri: { aktif: true }, durum: { notIn: [...KAPALI_DURUMLAR] } },
+      dosya: { musteri: { aktif: true }, durum: { notIn: [...HATIRLATMA_DISI] } },
       sonTarih: { not: null, lte: new Date(now.getTime() + PENCERE_MS) },
       hatirlatmaGonderildiAt: null,
       // Haciz süresi (İİK m.78) görevleri e-posta ile hatırlatılmaz — bkz. dosya başı notu.
@@ -66,7 +68,7 @@ async function handle(req: Request) {
   let atlananKapali = 0
   for (const g of due) {
     // UYAP serbest metni "Kapalı/Kapandı" ise dosya bitmiştir → süre uyarısı yanlış, atla (durum kodu where'de elendi).
-    if (!dosyaAktif(g.dosya)) { atlananKapali++; continue }
+    if (!hatirlatmaKapsaminda(g.dosya)) { atlananKapali++; continue }
     const alici = override || g.sorumlu?.eposta
     if (!alici) { detay.push({ id: g.id, baslik: g.baslik, sorumlu: null, sonTarih: g.sonTarih?.toISOString() ?? null, ok: false, err: 'sorumlu e-postası yok' }); hata++; continue }
     const atayanAd = g.atayanId ? atayanMap.get(g.atayanId) ?? null : null

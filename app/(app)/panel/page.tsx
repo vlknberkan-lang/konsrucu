@@ -15,6 +15,7 @@ import { prisma } from '@/lib/prisma'
 import { Badge } from '@/components/konsrucu/ui'
 import { tarihTR } from '@/lib/konsrucu/format'
 import { ASAMA_DURUMLAR, ASAMA_META, asamaBilgi, durumAsama, type AsamaKey } from '@/lib/konsrucu/asama'
+import { HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +23,9 @@ const HAFTA_MS = 7 * 86_400_000
 const GUN_MS = 86_400_000
 const HAFTA_SAYISI = 12
 const KAPALI: DosyaDurum[] = ['TAHSIL', 'KAPANDI']
-const ACIK_DISI: DosyaDurum[] = ['TAHSIL', 'KAPANDI', 'IDARI_YOL'] // "açık iş" dışı (idari yan yol dahil)
+// "açık iş" dışı: yalnız TAHSIL/KAPANDI. İDARİ_YOL açık iştir — süreleri avukat izler (S06, B12; eskiden
+// idari yol da dışarıda sayılıyordu). Tek kaynak: lib/konsrucu/aktiflik (hatırlatma kapsamıyla aynı küme).
+const ACIK_DISI: DosyaDurum[] = [...HATIRLATMA_DISI]
 const OPEN_EVRE: AsamaKey[] = ['oncesi', 'icra', 'arabuluculuk', 'dava', 'infaz']
 
 export default async function PanelPage() {

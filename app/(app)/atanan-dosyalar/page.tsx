@@ -18,6 +18,7 @@ import { CekimKuyrugu, type KuyrukDosya } from '@/components/atanan-dosyalar/cek
 import { HugoImportButton } from '@/components/atanan-dosyalar/hugo-import-modal'
 import { IcraEslestirButton } from '@/components/atanan-dosyalar/icra-eslestir'
 import { tarihTR, kalanGun, bugunIstBasi } from '@/lib/konsrucu/format'
+import { ZAMANASIMI_RADARI, OTOMASYON_DISI } from '@/lib/konsrucu/aktiflik'
 
 type SP = { q?: string; cekildi?: string; sort?: string; asama?: string; za?: string; uyap?: string }
 
@@ -93,14 +94,15 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
       : {}),
   }
   // Ek radar filtreleri AND birikiminde toplanır — aşama sekmesinin durum koşulunu EZMEZ, birbiriyle birleşebilir.
-  // za: Bugün panosuyla AYNI küme — radar yalnız takibi açılmamış dosyaları izler (takip açılınca zamanaşımı kesilir).
-  const TAKIP_ONCESI: DosyaDurum[] = [DosyaDurum.HAVUZDA, DosyaDurum.INCELENIYOR, DosyaDurum.TAKIBE_HAZIR]
+  // za: Bugün panosuyla AYNI küme — radar takibi açılmamış dosyaları ve İDARİ_YOL'u izler (takip açılınca
+  // zamanaşımı kesilir; idari yolda takip yok). Tek kaynak: lib/konsrucu/aktiflik (S06, B12).
+  const RADAR: DosyaDurum[] = [...ZAMANASIMI_RADARI]
   const bugun = bugunIstBasi() // İstanbul gün başlangıcı — sunucu UTC'yken pencere kaymasın
   const ekKosul: Prisma.RucuDosyasiWhereInput[] = []
-  if (za === 'bos') ekKosul.push({ zamanasimi: null, durum: { in: TAKIP_ONCESI } })
-  else if (za === 'yakin') ekKosul.push({ zamanasimi: { gte: bugun, lt: new Date(bugun.getTime() + 30 * 86_400_000) }, durum: { in: TAKIP_ONCESI } })
-  else if (za === 'gecti') ekKosul.push({ zamanasimi: { lt: bugun }, durum: { in: TAKIP_ONCESI } })
-  if (uyapSorunlu) ekKosul.push({ uyapEslesme: { not: null, notIn: ['OK'] }, durum: { notIn: ['TAHSIL', 'KAPANDI', 'IDARI_YOL'] as DosyaDurum[] } })
+  if (za === 'bos') ekKosul.push({ zamanasimi: null, durum: { in: RADAR } })
+  else if (za === 'yakin') ekKosul.push({ zamanasimi: { gte: bugun, lt: new Date(bugun.getTime() + 30 * 86_400_000) }, durum: { in: RADAR } })
+  else if (za === 'gecti') ekKosul.push({ zamanasimi: { lt: bugun }, durum: { in: RADAR } })
+  if (uyapSorunlu) ekKosul.push({ uyapEslesme: { not: null, notIn: ['OK'] }, durum: { notIn: [...OTOMASYON_DISI] } })
   const listeWhere: Prisma.RucuDosyasiWhereInput = {
     ...temelWhere,
     ...(asama !== 'all' ? { durum: { in: ASAMA_DURUMLAR[asama] as DosyaDurum[] } } : {}),

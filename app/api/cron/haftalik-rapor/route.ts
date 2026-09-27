@@ -5,8 +5,9 @@
  * verisi hazırlanır, sonra alıcılar kişi bazında gruplanır — birden fazla şirkete üye olan
  * (Yelda) tüm şirketlerini TEK mailde şirket bantlarıyla alır; tek şirkete üye olan (Sude)
  * yalnız kendi şirketini görür (tenant izolasyonu alıcı bazında korunur).
- * Zamanaşımı radarı yalnız TAKİBİ AÇILMAMIŞ açık dosyaları izler (takip açılınca rücu
- * zamanaşımı kesilir); tarihi geçmişler ayrı kırmızı bölümde ASLA gizlenmez, tavan yok.
+ * Zamanaşımı radarı TAKİBİ AÇILMAMIŞ açık dosyaları ve İDARİ_YOL dosyalarını izler (takip açılınca rücu
+ * zamanaşımı kesilir; idari yolda icra takibi yok — S06, B12); tarihi geçmişler ayrı kırmızı bölümde ASLA
+ * gizlenmez, tavan yok.
  * Korumalı: CRON_SECRET (Vercel Bearer header). Hata varsa HTTP 500 (panelde görünür).
  *
  * Manuel test:  GET /api/cron/haftalik-rapor?key=<CRON_SECRET>&to=<test@adres>  (to ops. —
@@ -16,7 +17,7 @@ import { prisma } from '@/lib/prisma'
 import { haftalikRaporHtml, type RaporBolum, type RaporEtkinlik, type RaporZamanasimi } from '@/lib/konsrucu/rapor-mail'
 import { mailGonder } from '@/lib/konsrucu/mail'
 import { cronYetkisiz, cronTenantlar, cronYanit } from '@/lib/konsrucu/cron-ortak'
-import { dosyaAktif } from '@/lib/konsrucu/aktiflik'
+import { zamanasimiRadarinda, ZAMANASIMI_RADARI } from '@/lib/konsrucu/aktiflik'
 import { bugunIstBasi, kalanGun } from '@/lib/konsrucu/format'
 
 export const dynamic = 'force-dynamic'
@@ -24,8 +25,8 @@ export const runtime = 'nodejs'
 export const maxDuration = 120
 
 const BASE = process.env.RAPOR_BASE_URL || 'https://konsrucu.vercel.app'
-// Rücu zamanaşımı, takip AÇILANA KADAR koşar — radar bu durumlarla sınırlı.
-const TAKIP_ONCESI = ['HAVUZDA', 'INCELENIYOR', 'TAKIBE_HAZIR'] as const
+// Rücu zamanaşımı, takip AÇILANA KADAR koşar — radar ZAMANASIMI_RADARI durumlarıyla sınırlı (takip öncesi +
+// İDARİ_YOL; tek kaynak lib/konsrucu/aktiflik — Bugün ve Atanan Dosyalar süzgeciyle aynı küme).
 
 async function handle(req: Request) {
   const yetkisiz = cronYetkisiz(req)
@@ -59,18 +60,18 @@ async function handle(req: Request) {
       }),
       // yaklaşan: önümüzdeki 30 gün — tavan YOK (eski take:12 13. dosyayı sessizce düşürüyordu)
       prisma.rucuDosyasi.findMany({
-        where: { musteriId: t.musteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { gte: bas, lt: zaSon } },
+        where: { musteriId: t.musteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: { gte: bas, lt: zaSon } },
         orderBy: { zamanasimi: 'asc' },
         select: zaSelect,
       }),
       // GEÇMİŞ: tarihi geçmiş ama takibi hâlâ açılmamış dosyalar — eski gte filtresi bunları tamamen gizliyordu
       prisma.rucuDosyasi.findMany({
-        where: { musteriId: t.musteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { lt: bas } },
+        where: { musteriId: t.musteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: { lt: bas } },
         orderBy: { zamanasimi: 'asc' },
         select: zaSelect,
       }),
       // tarihi hiç girilmemiş açık dosyalar — radar dışında kaldıklarını ekip bilsin
-      prisma.rucuDosyasi.count({ where: { musteriId: t.musteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: null } }),
+      prisma.rucuDosyasi.count({ where: { musteriId: t.musteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: null } }),
     ])
 
     const etkinlikler: RaporEtkinlik[] = kayit.map((e) => ({
@@ -90,8 +91,8 @@ async function handle(req: Request) {
       kalanGun: kalanGun(d.zamanasimi!, simdi),
     })
     // UYAP "kapalı" diyorsa (serbest metin) radar dışı — aktiflik kapısıyla aynı kural
-    const zamanasimi = zaKayit.filter((d) => d.zamanasimi && dosyaAktif(d)).map(zaSatir)
-    const zamanasimiGecti = zaGectiKayit.filter((d) => d.zamanasimi && dosyaAktif(d)).map(zaSatir)
+    const zamanasimi = zaKayit.filter((d) => d.zamanasimi && zamanasimiRadarinda(d)).map(zaSatir)
+    const zamanasimiGecti = zaGectiKayit.filter((d) => d.zamanasimi && zamanasimiRadarinda(d)).map(zaSatir)
 
     bolumler.push({ tenant: t, bolum: { musteriAd: t.musteriAd, etkinlikler, zamanasimi, zamanasimiGecti, zamanasimiBosSayisi: zaBosSayisi } })
   }

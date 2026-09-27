@@ -11,12 +11,12 @@ import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { Badge } from '@/components/konsrucu/ui'
 import { tarihTR, saatTR, kalanGun, bugunIstBasi, paraTR } from '@/lib/konsrucu/format'
-import { dosyaAktif } from '@/lib/konsrucu/aktiflik'
+import { zamanasimiRadarinda, ZAMANASIMI_RADARI, OTOMASYON_DISI } from '@/lib/konsrucu/aktiflik'
 
 export const dynamic = 'force-dynamic'
 
 const GUN_MS = 86_400_000
-const TAKIP_ONCESI = ['HAVUZDA', 'INCELENIYOR', 'TAKIBE_HAZIR'] as const
+// Zamanaşımı radarının durum kümesi tek kaynaktan (takip öncesi + İDARİ_YOL; S06, B12): lib/konsrucu/aktiflik
 
 export default async function BugunPage() {
   const { dbUser, aktifMusteriId } = await ctx()
@@ -37,7 +37,7 @@ export default async function BugunPage() {
   const zaSon = new Date(bas.getTime() + 30 * GUN_MS)
   const zaSelect = { id: true, hukukDosyaNo: true, hasarDosyaNo: true, zamanasimi: true, durum: true, uyapDurum: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' as const } } }
   // uyapKapaliMi'nin (regex /kapa(l|n)/i) SQL karşılığı — SAYILAR count'tan gelsin diye (take tavanlı
-  // liste + JS süzgeci sayıyı yanlış gösterirdi); listeler yine dosyaAktif ile süzülür.
+  // liste + JS süzgeci sayıyı yanlış gösterirdi); listeler yine zamanasimiRadarinda ile süzülür.
   const uyapAcikWhere = {
     NOT: [
       { uyapDurum: { contains: 'kapal', mode: 'insensitive' as const } },
@@ -76,20 +76,20 @@ export default async function BugunPage() {
       take: 12,
       include: { plan: { select: { dosya: { select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } } } } } },
     }),
-    // zamanaşımı radarı — yalnız takibi açılmamış açık dosyalar (takip açılınca kesilir)
-    prisma.rucuDosyasi.findMany({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { gte: bas, lt: zaSon }, ...uyapAcikWhere }, orderBy: { zamanasimi: 'asc' }, take: ZA_LISTE, select: zaSelect }),
-    prisma.rucuDosyasi.findMany({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { lt: bas }, ...uyapAcikWhere }, orderBy: { zamanasimi: 'asc' }, take: ZA_LISTE, select: zaSelect }),
-    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { gte: bas, lt: zaSon }, ...uyapAcikWhere } }),
-    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: { lt: bas }, ...uyapAcikWhere } }),
-    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...TAKIP_ONCESI] }, zamanasimi: null } }),
+    // zamanaşımı radarı — takibi açılmamış açık dosyalar + İDARİ_YOL (takip açılınca kesilir; idari yolda takip yok)
+    prisma.rucuDosyasi.findMany({ where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: { gte: bas, lt: zaSon }, ...uyapAcikWhere }, orderBy: { zamanasimi: 'asc' }, take: ZA_LISTE, select: zaSelect }),
+    prisma.rucuDosyasi.findMany({ where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: { lt: bas }, ...uyapAcikWhere }, orderBy: { zamanasimi: 'asc' }, take: ZA_LISTE, select: zaSelect }),
+    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: { gte: bas, lt: zaSon }, ...uyapAcikWhere } }),
+    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: { lt: bas }, ...uyapAcikWhere } }),
+    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: null } }),
     // geçmişte kalmış ama sonuçlandırılmamış toplantılar (takvim kapanış disiplini)
     prisma.etkinlik.count({ where: { dosya: { musteriId: aktifMusteriId }, baslar: { lt: bas }, durum: 'PLANLANDI' } }),
     // UYAP eşleşme sorunu: eklenti v1 "bulamadım/belirsiz" raporu bırakan açık dosyalar (kör nokta radarı)
-    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { notIn: ['TAHSIL', 'KAPANDI', 'IDARI_YOL'] }, uyapEslesme: { not: null, notIn: ['OK'] } } }),
+    prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { notIn: [...OTOMASYON_DISI] }, uyapEslesme: { not: null, notIn: ['OK'] } } }),
   ])
 
-  const zaYakin = zaYakinHam.filter(dosyaAktif)
-  const zaGecti = zaGectiHam.filter(dosyaAktif)
+  const zaYakin = zaYakinHam.filter(zamanasimiRadarinda)
+  const zaGecti = zaGectiHam.filter(zamanasimiRadarinda)
   const ad = dbUser.ad.split(/\s+/)[0]
 
   const bugunkuler = etkinlikler.filter((e) => e.baslar.getTime() < bas.getTime() + GUN_MS)
