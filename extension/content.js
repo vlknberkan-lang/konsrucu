@@ -29,6 +29,10 @@
   if (window.__rucuV1) return;
   window.__rucuV1 = true;
 
+  // Olay sınıflandırıcı (saf) — extension/siniflandir.js, manifest'te bu dosyadan ÖNCE yüklenir (v1.9.0).
+  // Yüklenmemişse (manifest hatası) olay ÜRETİLMEZ — yanlış tiple yazmaktansa hiç yazmamak; 🧪 Tanı gösterir.
+  const SNF = globalThis.KonsSiniflandir || null;
+
   // ═══════════════ yardımcılar ═══════════════
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const tr = (s) => String(s == null ? "" : s).trim();
@@ -576,7 +580,8 @@
     if (list && list.length) {
       rec.evrak = list;
       rec.sonEvrakTarihi = list.map((e) => e.tarih).filter(Boolean).sort().slice(-1)[0] || "";
-      const teb = list.map((e) => e.tebligTarihi).filter(Boolean).sort()[0];
+      // en erken tebliğ tarihi — İADE/bila sınıflanan evrakınki hariç (siniflandir.js · v1.9.0)
+      const teb = SNF ? SNF.tebligTarihiSec(list) : list.map((e) => e.tebligTarihi).filter(Boolean).sort()[0];
       if (teb) rec.tebligTarihi = teb;
     }
   }
@@ -703,33 +708,11 @@
   }
 
   // ═══════════════ olay türetme + senkron gövdesi ═══════════════
-  function tipFromMetin(s) {
-    const t = String(s || "").toLowerCase();
-    if (/itiraz/.test(t)) return "ITIRAZ";
-    if (/haciz/.test(t)) return "HACIZ";
-    if (/kesinleş|kesinles/.test(t)) return "KESINLESTI";
-    if (/tahsil|reddiyat|makbuz|ödeme|odeme/.test(t)) return "TAHSILAT";
-    if (/tebli|mazbata/.test(t)) return "TEBLIG";
-    return null;
-  }
+  // v1.9.0: sınıflandırma extension/siniflandir.js'e taşındı (Türkçe "İ" düzeltmesi, İADE / dosya
+  // alacağına haciz / ihtiyati haciz ayrımı, ödeme emri + harç/masraf makbuzu ≠ tahsilat; testli).
+  // Eski tipFromMetin toLowerCase() kullanıyordu → "Borca İtiraz" / "Takibe İtiraz" hiç yakalanmıyordu.
   function olaylarTuret(rec) {
-    const ol = [];
-    const ekle = (tip, tarih, aciklama) => { if (tip) ol.push({ tip, tarih: tarih || null, aciklama: String(aciklama || "").slice(0, 200) }); };
-    if (rec.tebligTarihi) ekle("TEBLIG", rec.tebligTarihi, "Tebliğ (UYAP)");
-    for (const ev of rec.evrak || []) {
-      const tip = tipFromMetin(ev.tur || ev.aciklama);
-      if (tip && (ev.tarih || ev.tebligTarihi)) ekle(tip, ev.tarih || ev.tebligTarihi, ev.tur || ev.aciklama);
-    }
-    for (const s of rec.safahat || []) {
-      const tip = tipFromMetin(s.islem);
-      if (tip && s.tarih) ekle(tip, s.tarih, s.islem);
-    }
-    // Aşama/durum metni "itiraz" diyorsa ve tarihli itiraz olayı yoksa → STABİL tarihe bağla (flood önlemi)
-    if (!ol.some((o) => o.tip === "ITIRAZ") && (/itiraz/i.test(String(rec.asama || "")) || /itiraz/i.test(String(rec.durum || "")))) {
-      const t = rec.safahatSon || rec.sonEvrakTarihi || rec.tebligTarihi || "";
-      if (t) ekle("ITIRAZ", t, "Takibe itiraz (UYAP aşama)");
-    }
-    return ol;
+    return SNF ? SNF.olaylarTuret(rec) : [];
   }
 
   function senkronGovde(h, rec, eslesmeSonuc) {
@@ -841,6 +824,7 @@
       if (!hedefler.length) { if (gorunur) flash("Senkron bekleyen dosya yok — her şey taze. 🎉"); _seritIlerleme = null; seritGuncelle(); return; }
 
       if (gorunur) durumYaz(`▶ ${hedefler.length} hedef (daire+esas) kimliğiyle sorgulanıyor… (${tokenlar.length} şirket)`);
+      if (gorunur && !SNF) ekleSatir("⚠ siniflandir.js yüklenmemiş — bu turda olay (itiraz/tebliğ/haciz) gönderilmeyecek; durum + finansal gider.");
       const birimler = await birimlerYukle();
       if (!birimler.length) { if (gorunur) flash("UYAP daire listesi alınamadı — oturum düşmüş olabilir, sayfayı yenileyin."); return; }
 
@@ -1293,7 +1277,7 @@
     document.body.appendChild(fab);
     panel = document.createElement("div"); panel.id = "rucu-panel";
     panel.innerHTML = `
-      <div class="rucu-hd">Rücu Takip · UYAP Senkron <span class="v">v1.6.0 · (daire+esas) kimlikli · ⚖kopilot</span></div>
+      <div class="rucu-hd">Rücu Takip · UYAP Senkron <span class="v">v${esc(surumAl())} · (daire+esas) kimlikli · ⚖kopilot</span></div>
       <div class="rucu-bd">
         <div class="rucu-row">
           <button class="rucu-btn" id="rucu-run">▶ Şimdi Senkronla</button>
@@ -1319,6 +1303,8 @@
     panel.querySelector("#rucu-diag").addEventListener("click", tani);
     kesifButonTazele();
   }
+  // panel başlığındaki sürüm manifest'ten okunur (eskiden elle yazılı "v1.6.0" kalmıştı)
+  function surumAl() { try { return chrome.runtime.getManifest().version || "?"; } catch (e) { return "?"; } }
   function togglePanel() { buildUi(); panel.classList.toggle("open"); }
   function flash(msg) { buildUi(); const d = document.createElement("div"); d.className = "rucu-flash"; d.textContent = msg; panel.querySelector(".rucu-bd").prepend(d); setTimeout(() => d.remove(), 8000); }
   function durumYaz(html) { buildUi(); durumEl.innerHTML = html; }
@@ -1344,6 +1330,9 @@
   async function tani() {
     durumYaz("Tanı çalışıyor…");
     const parca = [];
+    parca.push(SNF
+      ? `Olay sınıflandırıcı: ✓ (siniflandir.js ${esc(SNF.surum || "")})`
+      : "Olay sınıflandırıcı: ❌ siniflandir.js yüklenmemiş — senkron olay ÜRETMİYOR (manifest content_scripts sırasını kontrol et)");
     try { const b = await birimlerYukle(); parca.push(`UYAP daire listesi: <b>${b.length}</b> birim (oturum ✓)`); }
     catch (e) { parca.push(`UYAP daire listesi: ❌ ${esc(e.message)} — oturum düşmüş olabilir`); }
     const tokenlar = await anahtarlar();
@@ -1382,4 +1371,10 @@
 
   if (document.body) buildUi();
   else document.addEventListener("DOMContentLoaded", buildUi);
+
+  // Test kancası (tests/eklenti-siniflandir.test.ts): yalnız vitest'in vm bağlamı __KONS_TEST__ tanımlar.
+  // Tarayıcıda tanımlı değildir; UYAP sayfası (MAIN world) eklentinin isolated world global'ine yazamaz.
+  if (globalThis.__KONS_TEST__ && typeof globalThis.__KONS_TEST__ === "object") {
+    globalThis.__KONS_TEST__.icerik = { olaylarTuret, senkronGovde, siniflandiriciVar: !!SNF };
+  }
 })();
