@@ -6,8 +6,12 @@
  *
  * Akış: makbuzCikarPdf (PDF bytes → kalem dizisi) → belgedenMasrafCikar (Belge → cins eşleştirme +
  * dedup + Masraf.create) → dosyaMakbuzlariniTara (dosyadaki tüm DEKONT belgelerini tara).
+ *
+ * S02/S09: yapay zekâ yedeği (yüzey 'makbuz') lib/ai/cagri.ts sarmalayıcısından geçer — metin varsa
+ * MASKELİ metin; PDF/görüntü bloğu yalnız görsel AI kapısı açıkken. Kapalıyken kural katmanı çalışır,
+ * sonuç "elle girin" cümlesiyle döner (MAKBUZ_AI_KAPALI).
  */
-import Anthropic from '@anthropic-ai/sdk'
+import type Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
@@ -15,7 +19,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { cinsEslesti, ogrenilenMap, normCins } from './masraf-cins'
 import { masrafDedupKey, paraGuvenli } from './masraf'
 import { pdfMetinCikar } from './pdf-metin'
-import { anthropic, toolCikti } from './ai-util'
+import { toolCikti } from './ai-util'
+import { aiOturumu, aiKapiHatasiMi, jetonluMu, type AiIcerik, type GorselMime, type MaskeKaynagi } from '@/lib/ai/cagri'
+import { gorselAiAcik } from '@/lib/ai/bayrak'
 
 // KATMAN 2 (fallback): yerel parser düşemezse / makbuz taranmışsa LLM. Makbuz "oku ve sayıları dök"
 // işidir → en ucuz model yeter (Sonnet DEĞİL). Çoğu makbuz Katman 1'de ₺0'a çözülür, buraya azı düşer.
@@ -91,22 +97,25 @@ function masrafKalemiMi(cinsHam: string): boolean {
   return !MASRAF_DISI.some((d) => n.includes(d))
 }
 
-/** Makbuz baytlarını PDF mi görsel mi olduğunu sihirli baytlardan anlayıp uygun Claude bloğu kurar. */
-function makbuzBlok(bytes: Buffer): Anthropic.ContentBlockParam {
-  const data = bytes.toString('base64')
+/** Makbuz baytlarını PDF mi görsel mi olduğunu sihirli baytlardan anlayıp sarmalayıcı bloğu kurar.
+ *  Bu blok MASKELENEMEZ: yalnız görsel AI kapısı (AI_GORSEL=acik) açıkken gider (S09). */
+function makbuzBlok(bytes: Buffer): AiIcerik {
+  const b64 = bytes.toString('base64')
   const h = bytes.subarray(0, 4)
-  if (h[0] === 0x25 && h[1] === 0x50 && h[2] === 0x44 && h[3] === 0x46) // %PDF
-    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
-  const media: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' | null =
+  if (h[0] === 0x25 && h[1] === 0x50 && h[2] === 0x44 && h[3] === 0x46) return { tur: 'pdf', b64 } // %PDF
+  const media: GorselMime | null =
     h[0] === 0x89 && h[1] === 0x50 ? 'image/png'
       : h[0] === 0xff && h[1] === 0xd8 ? 'image/jpeg'
       : h[0] === 0x47 && h[1] === 0x49 && h[2] === 0x46 ? 'image/gif'
       : h[0] === 0x52 && h[1] === 0x49 && h[2] === 0x46 ? 'image/webp' // RIFF (webp)
       : null
-  if (media) return { type: 'image', source: { type: 'base64', media_type: media, data } }
+  if (media) return { tur: 'gorsel', mime: media, b64 }
   // bilinmiyor → çoğu UYAP makbuzu PDF; PDF varsay
-  return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
+  return { tur: 'pdf', b64 }
 }
+
+/** Yapay zekâ yedeği kapalıyken kullanıcıya gösterilen cümle (kural katmanı çalışmaya devam eder). */
+export const MAKBUZ_AI_KAPALI = 'Makbuz yerel olarak okunamadı; yapay zekâ yedeği KVKK düzenlemesi tamamlanana kadar kapalı. Masrafı elle girin.'
 
 // ── KATMAN 1: yerel şablon parser (₺0) — metinli UYAP makbuzunu LLM'siz oku ───────────────────
 // UYAP harç/masraf makbuzları çok standart tablolardır. Metin katmanı varsa LLM'e gerek yok:
@@ -215,48 +224,68 @@ export async function makbuzCikarPdf(
   ipuclari?: { dosyaAdi?: string; alacakliUnvan?: string },
   ai?: { musteriId?: string; dosyaId?: string },
 ): Promise<MakbuzKalem[]> {
-  if (!pdfBytes?.length) return []
+  return (await makbuzCikarDetay(pdfBytes, ipuclari, ai)).kalemler
+}
+
+/**
+ * makbuzCikarPdf + neden: yapay zekâ yedeği kapalı/durdurulmuşsa `aiKapali` açık bir cümle taşır
+ * (kural katmanı yine çalışır; yalnız AI yedeği kapanır — S02). `maske`: dosyadaki bilinen kişiler.
+ */
+export async function makbuzCikarDetay(
+  pdfBytes: Buffer,
+  ipuclari?: { dosyaAdi?: string; alacakliUnvan?: string },
+  ai?: { musteriId?: string; dosyaId?: string },
+  maske?: MaskeKaynagi,
+): Promise<{ kalemler: MakbuzKalem[]; aiKapali?: string }> {
+  if (!pdfBytes?.length) return { kalemler: [] }
 
   // KATMAN 1 (₺0): metinli PDF'i yerel oku + şablon parser.
   const metin = await pdfMetinCikar(pdfBytes)
   if (metin) {
     const p = makbuzParseMetin(metin)
-    if (p.reddiyat) return []
-    if (p.guvenli) return p.kalemler // toplam tuttu → tam ve doğru, LLM'e gerek yok
+    if (p.reddiyat) return { kalemler: [] }
+    if (p.guvenli) return { kalemler: p.kalemler } // toplam tuttu → tam ve doğru, LLM'e gerek yok
   }
 
-  // KATMAN 2 (fallback): ucuz LLM. Metin çıktıysa metni gönder (vision'dan ucuz); çıkmadıysa belge/görüntü.
-  const key = process.env.ANTHROPIC_API_KEY
-  if (!key) return []
-  const client = anthropic(key, { yuzey: 'makbuz', ...ai })
+  // KATMAN 2 (fallback): ucuz LLM (yüzey 'makbuz'). Metin çıktıysa MASKELİ metin; çıkmadıysa PDF/görüntü
+  // bloğu — o blok maskelenemez, yalnız görsel AI kapısı açıkken gider.
+  if (!process.env.ANTHROPIC_API_KEY) return { kalemler: [] }
+  const oturum = aiOturumu({ yuzey: 'makbuz', ai, maske, gorselIzni: true })
+  if (!oturum.acikMi() || (!metin && !gorselAiAcik())) return { kalemler: [], aiKapali: MAKBUZ_AI_KAPALI }
 
   const ipucuSatirlari: string[] = []
   if (ipuclari?.dosyaAdi) ipucuSatirlari.push(`Belge adı: ${ipuclari.dosyaAdi}`)
   if (ipuclari?.alacakliUnvan) ipucuSatirlari.push(`Alacaklı/vekil ünvanı (BIZ tarafı): ${ipuclari.alacakliUnvan}`)
   const ipucu = ipucuSatirlari.length ? `${ipucuSatirlari.join('\n')}\n\n` : ''
 
-  const content: Anthropic.ContentBlockParam[] = metin
-    ? [{ type: 'text', text: `${ipucu}Aşağıdaki makbuz METNİNDEKİ tüm masraf/harç kalemlerini çıkar ve "kaydet" aracını çağır.\n\n--- MAKBUZ METNİ ---\n${metin.slice(0, 30000)}` }]
-    : [makbuzBlok(pdfBytes), { type: 'text', text: `${ipucu}Yukarıdaki makbuzdaki tüm masraf/harç kalemlerini çıkar ve "kaydet" aracını çağır.` }]
+  const icerik: AiIcerik[] = metin
+    ? [
+        { tur: 'metin', metin: `${ipucu}Aşağıdaki makbuz METNİNDEKİ tüm masraf/harç kalemlerini çıkar ve "kaydet" aracını çağır.` },
+        { tur: 'belge', ad: 'Makbuz metni', metin: metin.slice(0, 30000) },
+      ]
+    : [makbuzBlok(pdfBytes), { tur: 'metin', metin: `${ipucu}Yukarıdaki makbuzdaki tüm masraf/harç kalemlerini çıkar ve "kaydet" aracını çağır.` }]
 
   try {
-    const res = await client.messages.create({
+    const y = await oturum.iste({
       model: MODEL_FALLBACK,
-      max_tokens: 3000,
-      system: SISTEM,
-      messages: [{ role: 'user', content }],
-      tools: [{ name: 'kaydet', description: 'Makbuzdan çıkarılan masraf kalemlerini kaydet', input_schema: SCHEMA as Anthropic.Tool.InputSchema }],
-      tool_choice: { type: 'tool', name: 'kaydet' },
+      maxTokens: 3000,
+      sistem: SISTEM,
+      icerik,
+      arac: { ad: 'kaydet', aciklama: 'Makbuzdan çıkarılan masraf kalemlerini kaydet', sema: SCHEMA as Anthropic.Tool.InputSchema },
     })
-    const block = res.content.find((b) => b.type === 'tool_use')
-    if (!block || block.type !== 'tool_use') return []
-    const zarf = toolCikti(block.input, ZMakbuzZarf, 'makbuzCikarPdf')
-    if (!zarf || zarf.reddiyatMakbuzuMu) return [] // şema tutmadı ya da reddiyat/tahsilat → masraf kalemi yok
-    return (Array.isArray(zarf.kalemler) ? zarf.kalemler : [])
-      .flatMap((k) => { const r = ZMakbuzKalem.safeParse(k); return r.success ? [r.data as MakbuzKalem] : [] })
+    if (y.aracGirdisi == null) return { kalemler: [] }
+    const zarf = toolCikti(y.aracGirdisi, ZMakbuzZarf, 'makbuzCikarPdf')
+    if (!zarf || zarf.reddiyatMakbuzuMu) return { kalemler: [] } // şema tutmadı ya da reddiyat/tahsilat → masraf kalemi yok
+    return {
+      kalemler: (Array.isArray(zarf.kalemler) ? zarf.kalemler : [])
+        .flatMap((k) => { const r = ZMakbuzKalem.safeParse(k); return r.success ? [r.data as MakbuzKalem] : [] })
+        // açılamayan jetonlu 'sorumlu' DB'ye yazılmaz
+        .map((k) => (jetonluMu(k.sorumlu) ? { ...k, sorumlu: undefined } : k)),
+    }
   } catch (e) {
-    console.error('makbuzCikarPdf (LLM fallback) hata:', e)
-    return []
+    if (aiKapiHatasiMi(e)) return { kalemler: [], aiKapali: e.name === 'AiKvkkKapaliHata' || e.name === 'AiGorselKapaliHata' ? MAKBUZ_AI_KAPALI : e.message }
+    console.error('makbuzCikarPdf (LLM fallback) hata:', e instanceof Error ? e.name : 'bilinmeyen')
+    return { kalemler: [] }
   }
 }
 
@@ -284,7 +313,11 @@ export async function belgedenMasrafCikar(
   try {
     const belge = await prisma.belge.findUnique({
       where: { id: belgeId },
-      select: { id: true, dosyaId: true, storagePath: true, dosyaAdi: true, dosya: { select: { musteriId: true } } },
+      select: {
+        id: true, dosyaId: true, storagePath: true, dosyaAdi: true,
+        // bilinen kişiler yalnız maskeleme için (AI yedeğine giden makbuz metninde ad/TCKN jetonlansın)
+        dosya: { select: { musteriId: true, sigortaliUnvan: true, borclular: { select: { adUnvan: true, tcVkn: true }, orderBy: { id: 'asc' } } } },
+      },
     })
     if (!belge) return { eklendi: 0, atlandi: 0, toplam: 0, hata: 'Belge bulunamadı' }
 
@@ -301,8 +334,11 @@ export async function belgedenMasrafCikar(
     if (error || !data) return { eklendi: 0, atlandi: 0, toplam: 0, hata: `PDF indirilemedi: ${error?.message ?? 'boş'}` }
     const bytes = Buffer.from(await data.arrayBuffer())
 
-    const kalemler = await makbuzCikarPdf(bytes, { dosyaAdi: belge.dosyaAdi }, { musteriId: belge.dosya.musteriId, dosyaId: belge.dosyaId })
-    if (!kalemler.length) return { eklendi: 0, atlandi: 0, toplam: 0 }
+    const { kalemler, aiKapali } = await makbuzCikarDetay(bytes, { dosyaAdi: belge.dosyaAdi }, { musteriId: belge.dosya.musteriId, dosyaId: belge.dosyaId }, {
+      kisiler: [...(belge.dosya.borclular ?? []).map((b) => b.adUnvan), belge.dosya.sigortaliUnvan],
+      kimlikler: (belge.dosya.borclular ?? []).map((b) => b.tcVkn),
+    })
+    if (!kalemler.length) return { eklendi: 0, atlandi: 0, toplam: 0, ...(aiKapali ? { hata: aiKapali } : {}) }
 
     // öğrenilen cins sözlüğü (tenant)
     const ayar = await prisma.ayarlar.findUnique({ where: { musteriId: belge.dosya.musteriId }, select: { masrafEslestirJson: true } })
@@ -369,7 +405,8 @@ export async function belgedenMasrafCikar(
 
     return { eklendi, atlandi, toplam: kalemler.length }
   } catch (e) {
-    console.error('belgedenMasrafCikar hata:', e)
+    // KVKK: hata nesnesi (Prisma argümanları) makbuzdaki kişi adını taşıyabilir → günlüğe yalnız ad/kod
+    console.error('belgedenMasrafCikar hata:', e instanceof Error ? `${e.name}${(e as { code?: string }).code ? ` ${(e as { code?: string }).code}` : ''}` : 'bilinmeyen')
     return { eklendi: 0, atlandi: 0, toplam: 0, hata: e instanceof Error ? e.message : 'bilinmeyen hata' }
   }
 }

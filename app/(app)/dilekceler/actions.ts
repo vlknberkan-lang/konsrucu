@@ -3,8 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 import { ctx } from '@/lib/konsrucu/db'
-import { anthropic } from '@/lib/konsrucu/ai-util'
 import { AiDurdurulduHata, KrediYetersizHata } from '@/lib/konsrucu/ai-kredi'
+import { aiOturumu, aiKapiHatasiMi, acilamayanUyarisi } from '@/lib/ai/cagri'
+import { KVKK_KAPALI_MESAJI, yuzeyAcik } from '@/lib/ai/bayrak'
 import {
   calismaBaglami, DILEKCE_CALISMA_SISTEM, DILEKCE_TUR_ADLARI,
   taslakKaydetGirdi, taslakUretGirdi,
@@ -14,7 +15,10 @@ import {
 type Hata = { ok: false; error: string }
 const tarih = (v: Date | null | undefined) => v?.toISOString() ?? null
 
-/** Dava geçmişinden yeni taslak üretir; önceki çıktıları veya dosya durumunu değiştirmez. */
+/** Dava geçmişinden yeni taslak üretir; önceki çıktıları veya dosya durumunu değiştirmez.
+ *  S09: yüzey 'dilekce' lib/ai/cagri.ts sarmalayıcısından geçer. Tarafların TCKN/VKN'si ve adresi,
+ *  vekil adresi ve UETS'i AI'a GİTMEZ (künyeyi kod/avukat basar); kalan bağlam maskeli, taslak sunucuda
+ *  geri açılır. Açılamayan jeton kalırsa uyarı olarak gösterilir. */
 export async function davaTaslagiUret(input: {
   dosyaId: string; tur: CalismaDilekceTuru; talimat: string; kaynakBelgeIds?: string[]
 }): Promise<{ ok: true; ciktiId: string; metin: string; uyarilar: string[] } | Hata> {
@@ -26,6 +30,8 @@ export async function davaTaslagiUret(input: {
   const g = parsed.data
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return { ok: false, error: 'Dilekçe üretimi için sunucuda AI bağlantısı yapılandırılmamış. Mevcut taslakları düzenleyebilirsiniz.' }
+  // KVKK kapısı: yüzey canlıda kapalıysa dosya verisi hiç okunmaz; mevcut taslaklar düzenlenebilir.
+  if (!yuzeyAcik('dilekce')) return { ok: false, error: `${KVKK_KAPALI_MESAJI} Mevcut taslakları düzenleyebilirsiniz.` }
 
   try {
     const musteri = await prisma.musteri.findFirst({ where: { id: aktifMusteriId, aktif: true }, select: { id: true } })
@@ -33,7 +39,7 @@ export async function davaTaslagiUret(input: {
     const dosya = await prisma.rucuDosyasi.findFirst({
       where: { id: g.dosyaId, musteriId: aktifMusteriId },
       include: {
-        borclular: { select: { adUnvan: true, rol: true, tcVkn: true, adres: true } },
+        borclular: { select: { adUnvan: true, rol: true, tcVkn: true }, orderBy: { id: 'asc' } }, // tcVkn yalnız maskeleme için
         belgeler: {
           ...(g.kaynakBelgeIds ? { where: { id: { in: g.kaynakBelgeIds } } } : {}),
           select: { id: true, dosyaAdi: true, extractedText: true, kategori: true },
@@ -63,8 +69,10 @@ export async function davaTaslagiUret(input: {
     const baglam = calismaBaglami({
       kunye: {
         hukukDosyaNo: dosya.hukukDosyaNo, hasarDosyaNo: dosya.hasarDosyaNo,
-        musteriUnvani: ayarlar?.alacakliUnvan, vekil: ayarlar?.vekilAd, vekilAdres: ayarlar?.vekilAdres, vekilUets: ayarlar?.vekilUets,
-        kayitliTaraflar: dosya.borclular, icraDairesi: dosya.icraDairesi, icraEsas: dosya.icraDosyaNo,
+        // KVKK (S09): vekil adresi/UETS ve tarafların TCKN/VKN'si ile adresi AI'a gitmez → taslakta yer tutucu kalır.
+        musteriUnvani: ayarlar?.alacakliUnvan, vekil: ayarlar?.vekilAd,
+        kayitliTaraflar: dosya.borclular.map((b) => ({ adUnvan: b.adUnvan, rol: b.rol })),
+        icraDairesi: dosya.icraDairesi, icraEsas: dosya.icraDosyaNo,
         sigortali: dosya.sigortaliUnvan, kazaTarihi: tarih(dosya.kazaTarihi), kazaYeri: dosya.kazaYeri,
         olusSekli: dosya.olusSekli, kusurDurumu: dosya.kusurDurumu, rucuSebebi: dosya.rucuSebebi,
         asilAlacak: dosya.asilAlacak?.toString(), rucuTutari: dosya.rucuTutari?.toString(),
@@ -77,15 +85,27 @@ export async function davaTaslagiUret(input: {
     if (dosya.belgeler.length === 150 || dosya.notlar.length === 100 || dosya.olaylar.length === 100 || dosya.asamalar.length === 50 || dosya.ciktilar.length === 5 || dosya.odemeler.length === 50) {
       baglam.uyarilar.push('Yoğun dosya geçmişinde sınırlı sayıda kayıt kullanıldı; eski kayıtların tamamı taslağa dahil olmayabilir.')
     }
-    const client = anthropic(key, { yuzey: 'dilekce', musteriId: aktifMusteriId, dosyaId: dosya.id })
-    const res = await client.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 6500,
-      system: DILEKCE_CALISMA_SISTEM,
-      messages: [{ role: 'user', content: JSON.stringify({ istenenTur: DILEKCE_TUR_ADLARI[g.tur], avukatTalimati: g.talimat, kaynakVerisi: JSON.parse(baglam.metin) }) }],
+    // Bilinen kişisel veriler (DB sırasıyla → deterministik jetonlar). TCKN/VKN ve adres bağlamda yok;
+    // belge metinlerinde geçerlerse jetonlansın diye maske kaynağına verilir.
+    const oturum = aiOturumu({
+      yuzey: 'dilekce',
+      ai: { musteriId: aktifMusteriId, dosyaId: dosya.id },
+      maske: {
+        kisiler: [...dosya.borclular.map((b) => b.adUnvan), dosya.sigortaliUnvan],
+        kimlikler: dosya.borclular.map((b) => b.tcVkn),
+        plakalar: [dosya.sigortaliPlaka, dosya.karsiPlaka],
+      },
     })
-    if (res.stop_reason === 'max_tokens') return { ok: false, error: 'Taslak uzunluk sınırında yarım kaldı ve kaydedilmedi. Talimatı veya kaynak seçimini daraltıp yeniden deneyin.' }
-    const metin = res.content.flatMap((b) => b.type === 'text' ? [b.text] : []).join('\n').trim()
+    const y = await oturum.iste({
+      model: 'claude-sonnet-4-6', maxTokens: 6500,
+      sistem: DILEKCE_CALISMA_SISTEM,
+      icerik: [{ tur: 'json', veri: { istenenTur: DILEKCE_TUR_ADLARI[g.tur], avukatTalimati: g.talimat, kaynakVerisi: JSON.parse(baglam.metin) } }],
+    })
+    if (y.kesildi) return { ok: false, error: 'Taslak uzunluk sınırında yarım kaldı ve kaydedilmedi. Talimatı veya kaynak seçimini daraltıp yeniden deneyin.' }
+    const metin = y.metin.trim()
     if (metin.length < 60 || metin.length > 100000) return { ok: false, error: 'AI geçerli bir dilekçe metni döndürmedi. Taslak kaydedilmedi.' }
+    const jetonUyarisi = acilamayanUyarisi(y.acilamayanJetonlar)
+    if (jetonUyarisi) baglam.uyarilar.push(jetonUyarisi)
     const cikti = await prisma.$transaction(async (tx) => {
       // AI yanıtı beklenirken dosya silinmiş/taşınmışsa yazma.
       const halaErisilir = await tx.rucuDosyasi.findFirst({ where: { id: dosya.id, musteriId: aktifMusteriId }, select: { id: true } })
@@ -104,7 +124,7 @@ export async function davaTaslagiUret(input: {
     revalidatePath(`/akilli-giris/${dosya.id}`)
     return { ok: true, ciktiId: cikti.id, metin, uyarilar: [...baglam.uyarilar, 'Taslak avukat incelemesi gerektirir. Kaynak işaretlerini, ⟨…⟩ alanlarını, tarafları ve talepleri kontrol edin.'] }
   } catch (e) {
-    if (e instanceof KrediYetersizHata || e instanceof AiDurdurulduHata) return { ok: false, error: e.message }
+    if (e instanceof KrediYetersizHata || e instanceof AiDurdurulduHata || aiKapiHatasiMi(e)) return { ok: false, error: e.message }
     // Belge metni veya üçüncü taraf hata gövdeleri loglanmaz.
     console.error('[dilekceler] taslak üretilemedi', e instanceof Error ? e.name : 'Bilinmeyen hata')
     return { ok: false, error: 'Taslak oluşturulamadı. Önceki dilekçeleriniz korunuyor; lütfen tekrar deneyin.' }

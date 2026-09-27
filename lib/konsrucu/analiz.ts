@@ -3,11 +3,17 @@
  * İşlenen belge metninden GERÇEK rücu zekâsını çıkarır: triyaj (yol+güven+neden),
  * borçlular, kusur/oluş şekli, takip-aç açıklaması, bağımsız teyit önerileri.
  * Forced tool-use ile şema-zorunlu JSON. Model ucuz katman = Haiku (gerekirse sonnet).
+ *
+ * S09 (06, 5.6): çağrılar lib/ai/cagri.ts sarmalayıcısından geçer. `analizEt` MASKELİ metinle ve
+ * GÖRSELSİZ çalışır (yüzey 'cikarim'); kişi adı/TCKN/telefon/plaka/adres jetonla gider, yanıt sunucuda
+ * geri açılır. `enIyiHasarFotolari` yalnız görsel AI kapısı açıkken (AI_GORSEL=acik, yüzey 'foto').
  */
-import Anthropic from '@anthropic-ai/sdk'
+import type Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { unvanGecir } from './unvan'
-import { anthropic, toolCikti } from './ai-util'
+import { toolCikti } from './ai-util'
+import { aiOturumu, aiKapiHatasiMi, acilamayanUyarisi, jetonluMu, type MaskeKaynagi } from '@/lib/ai/cagri'
+import type { Maskeleyici } from '@/lib/ai/maske'
 
 const MODEL = 'claude-sonnet-4-6' // dedektif çıkarım: çok-belge bağlam + mentor akıl yürütme → güçlü model (haiku yetersiz)
 
@@ -123,7 +129,7 @@ const ZAnalizSonuc = z.object({
   teyit: z.array(z.object({ not: z.string() }).passthrough()),
 }).passthrough()
 
-const SISTEM = `Sen Ray Sigorta A.Ş. vekili hukuk bürosunun rücu DEDEKTİFİ ve MENTORUSUN. Sana bir hasar dosyasının TÜM belgelerinden çıkarılmış ham metin verilir: kaza tespit tutanağı, görgü tutanağı, ifade/beyan tutanakları, bilirkişi raporu, ekspertiz raporu, poliçe, ruhsat, ehliyet, alkol/promil raporu, dekontlar ve sigortacının İÇ "Lehe / Hukuk Devir Formu". METNİN YANI SIRA dosyadaki FOTOĞRAFLAR da ek görüntü olarak verilir — ehliyet, ruhsat, tutanak ve plaka fotoğraflarındaki isim/TCKN/plaka bilgilerini de OKU ve bağlama kat (OCR metni eksik olabilir, görüntüye bak). Önce OLAYIN BAĞLAMINI kur, sonra alanları çıkar ve "kaydet" aracını çağır.
+const SISTEM = `Sen Ray Sigorta A.Ş. vekili hukuk bürosunun rücu DEDEKTİFİ ve MENTORUSUN. Sana bir hasar dosyasının TÜM belgelerinden çıkarılmış ham metin verilir: kaza tespit tutanağı, görgü tutanağı, ifade/beyan tutanakları, bilirkişi raporu, ekspertiz raporu, poliçe, ruhsat, ehliyet, alkol/promil raporu, dekontlar ve sigortacının İÇ "Lehe / Hukuk Devir Formu". Fotoğraf/görüntü GÖNDERİLMEZ; yalnız belge metni verilir (OCR eksik olabilir — metinde olmayan bilgiyi UYDURMA, sonrakiAdimlar'a "belgeden elle kontrol et" yaz). Kişisel veriler JETONLUDUR: ad, TCKN/VKN, telefon, plaka, adres alanlarına metindeki jetonu AYNEN yaz (ör. adUnvan "[KİŞİ-1]", tcVkn "[TCKN-1]", sigortaliPlaka "[PLAKA-1]"); jetonlar sunucuda gerçek değere çevrilir. Önce OLAYIN BAĞLAMINI kur, sonra alanları çıkar ve "kaydet" aracını çağır.
 
 ★★ ANA İŞ — ÖNCE OLAY BAĞLAMINI KUR ("olayBaglami"): Bütün belgeleri TEK TEK, baştan sona oku. Olayı yeniden inşa et: ne zaman, nerede, hangi araçlar/plakalar, hangi kişiler (sürücü / araç sahibi / işleten / yaya / tanık), kaza NASIL meydana geldi, KUSUR kimde ve hangi orana göre. Her kritik olgunun HANGİ BELGEDEN geldiğini söyle (ör. "kaza tespit tutanağına göre…", "görgü tutanağındaki tanık X'in beyanına göre…", "ifade tutanağında sürücü…", "bilirkişi raporunda %… kusur"). BAĞLAMI KURMADAN borçlu/kusur ÖNERME — öneri bu bağlamdan çıkmalı.
 
@@ -137,7 +143,7 @@ OLMAYAN bir karşı aracı/plakayı ASLA UYDURMA; tür araç-araç çarpışmas�
 
 ★★ LEHE FORMUNA KİLİTLENME: "Lehe / Hukuk Devir Formu" sigortacının İÇ talep formudur ve GÜVENİLİR DEĞİLDİR — özellikle "RÜCU MUHATABI / MUHATAPLARI" ve TCKN alanları HATALI olabilir (aynı TCKN farklı dosyalarda yanlışlıkla tekrarlayabilir). Lehe formunu yalnız bir İPUCU/başlangıç olarak kullan; borçluyu ve kusuru TUTANAKLARLA (kaza tespit, görgü, ifade, bilirkişi) ÇAPRAZ DOĞRULA. Çelişki varsa RESMÎ TUTANAĞA güven; Lehe'deki sapmayı "olayBaglami" ve "sonrakiAdimlar"da açıkça belirt ve o borçlunun teyit'ini SUPHE/TEYIT_GEREK yap. Borçlunun kimliği olayın GERÇEĞİNDEN gelir, formun yazdığından değil.
 
-★★ FARKLI İSİMLER = AYRI ROLLER → ÇOKLU BORÇLU: Olayı fiilen yapan SÜRÜCÜYÜ kanıtlardan tespit et — şikayet/ifade tutanağındaki isim, EKTEKİ FOTOĞRAFLARDAKİ ehliyet/ruhsat, kaza tespit tutanağı. Bu sürücü Lehe formundaki muhataptan FARKLIYSA, kişileri "aynı kişi" VARSAYMA: genelde AYRI rollerdir (kusurlu SÜRÜCÜ + RUHSAT SAHİBİ/İŞLETEN) → MÜTESELSİL sorumlulukla İKİSİNİ DE borçlu yaz. Tek bir isme (Lehe muhatabına) İNDİRGEME. Hangi ismin hangi belgeden/rolden geldiğini olayBaglami'nda açıkla; bağ kuramadığın borçluya teyit=TEYIT_GEREK + sonrakiAdimlar'a tescil/MERNİS sorgusu ekle.
+★★ FARKLI İSİMLER = AYRI ROLLER → ÇOKLU BORÇLU: Olayı fiilen yapan SÜRÜCÜYÜ kanıtlardan tespit et — şikayet/ifade tutanağındaki isim, ehliyet/ruhsat belgesinin metni, kaza tespit tutanağı. Bu sürücü Lehe formundaki muhataptan FARKLIYSA, kişileri "aynı kişi" VARSAYMA: genelde AYRI rollerdir (kusurlu SÜRÜCÜ + RUHSAT SAHİBİ/İŞLETEN) → MÜTESELSİL sorumlulukla İKİSİNİ DE borçlu yaz. Tek bir isme (Lehe muhatabına) İNDİRGEME. Hangi ismin hangi belgeden/rolden geldiğini olayBaglami'nda açıkla; bağ kuramadığın borçluya teyit=TEYIT_GEREK + sonrakiAdimlar'a tescil/MERNİS sorgusu ekle.
 
 ★★ MENTOR — EKSİK BİLGİDE YOL GÖSTER ("sonrakiAdimlar"): Bir bilgi yoksa UYDURMA; bunun yerine SOMUT, eyleme dönük adımlar yaz (kime ne sorulacak, hangi sorgu yapılacak). Örnekler:
  - TCKN bulunamadıysa → "Sigortalıyı ara: kaza günü karşı taraf sürücüsünün ad-soyad / TCKN / iletişim bilgisini sor" ve/veya "Görgü/ifade tutanağındaki isimle Nüfus(MERNİS) ya da EGM/SBM tescil-işleten sorgusu yap".
@@ -171,17 +177,11 @@ export type Gorsel = { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/
  * Hasar fotoğrafı adayları arasından İCRA DOSYASINA konacak, araçtaki hasarın AÇIK göründüğü en iyi n
  * fotoğrafı seçer (0-tabanlı indeks listesi döner). Ucuz görsel ayıklama → Haiku. Yoksa/uygunsuzsa null.
  */
-export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2, ai?: { musteriId?: string; dosyaId?: string }): Promise<number[] | null> {
-  const key = process.env.ANTHROPIC_API_KEY
-  if (!key || !gorseller.length) return null
-  const client = anthropic(key, { yuzey: 'foto', ...ai })
+export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2, ai?: { musteriId?: string; dosyaId?: string }, onHata?: (mesaj: string) => void): Promise<number[] | null> {
+  if (!process.env.ANTHROPIC_API_KEY || !gorseller.length) return null
+  // Görüntü maskelenemez: yalnız görsel AI kapısı (AI_GORSEL=acik) ve 'foto' yüzeyi açıkken gider (06, 5.5).
+  const oturum = aiOturumu({ yuzey: 'foto', ai, gorselIzni: true })
   const imgs = gorseller.slice(0, 12)
-  const content: Anthropic.ContentBlockParam[] = []
-  imgs.forEach((g, i) => {
-    content.push({ type: 'text', text: `Fotoğraf #${i}:` })
-    content.push({ type: 'image', source: { type: 'base64', media_type: g.mime, data: g.b64 } })
-  })
-  content.push({ type: 'text', text: `Yukarıdaki ${imgs.length} fotoğraf bir kasko/trafik hasar dosyasına ait. İcra dosyasına EK olarak konacak, ARAÇTAKİ HASARIN AÇIK GÖRÜLDÜĞÜ en iyi ${n} fotoğrafı seç (hasarlı bölge net görünen araç kareleri). Belge/ekran görüntüsü, ehliyet/ruhsat, plaka yakını, kişi ya da alakasız kareleri SEÇME. En fazla ${n} indeks döndür; uygun yoksa daha az.` })
   const SCHEMA = {
     type: 'object',
     properties: {
@@ -191,21 +191,22 @@ export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2, ai?: { must
     required: ['secilenler'],
   }
   try {
-    const res = await client.messages.create({
+    const y = await oturum.iste({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 400,
-      system: 'Sen bir hasar dosyası görsel ayıklayıcısısın. Yalnızca aracın gövdesindeki hasarın açıkça göründüğü fotoğrafları seçersin; belge taraması, kimlik/ruhsat, plaka yakını ve alakasız kareleri elersin.',
-      messages: [{ role: 'user', content }],
-      tools: [{ name: 'sec', description: 'En iyi hasar fotoğraflarının indekslerini döndür', input_schema: SCHEMA as Anthropic.Tool.InputSchema }],
-      tool_choice: { type: 'tool', name: 'sec' },
+      maxTokens: 400,
+      sistem: 'Sen bir hasar dosyası görsel ayıklayıcısısın. Yalnızca aracın gövdesindeki hasarın açıkça göründüğü fotoğrafları seçersin; belge taraması, kimlik/ruhsat, plaka yakını ve alakasız kareleri elersin.',
+      icerik: [
+        ...imgs.flatMap((g, i) => [{ tur: 'metin' as const, metin: `Fotoğraf #${i}:` }, { tur: 'gorsel' as const, mime: g.mime, b64: g.b64 }]),
+        { tur: 'metin', metin: `Yukarıdaki ${imgs.length} fotoğraf bir kasko/trafik hasar dosyasına ait. İcra dosyasına EK olarak konacak, ARAÇTAKİ HASARIN AÇIK GÖRÜLDÜĞÜ en iyi ${n} fotoğrafı seç (hasarlı bölge net görünen araç kareleri). Belge/ekran görüntüsü, ehliyet/ruhsat, plaka yakını, kişi ya da alakasız kareleri SEÇME. En fazla ${n} indeks döndür; uygun yoksa daha az.` },
+      ],
+      arac: { ad: 'sec', aciklama: 'En iyi hasar fotoğraflarının indekslerini döndür', sema: SCHEMA as Anthropic.Tool.InputSchema },
     })
-    const block = res.content.find((b) => b.type === 'tool_use')
-    if (!block || block.type !== 'tool_use') return null
-    const out = block.input as { secilenler?: unknown }
+    const out = (y.aracGirdisi ?? {}) as { secilenler?: unknown }
     const idx = Array.isArray(out.secilenler) ? (out.secilenler as unknown[]).filter((i): i is number => Number.isInteger(i) && (i as number) >= 0 && (i as number) < imgs.length) : []
     return Array.from(new Set(idx)).slice(0, n)
   } catch (e) {
-    console.error('enIyiHasarFotolari hata:', e)
+    if (aiKapiHatasiMi(e)) onHata?.(e.message)
+    else console.error('enIyiHasarFotolari hata:', e instanceof Error ? e.name : 'bilinmeyen')
     return null
   }
 }
@@ -214,6 +215,7 @@ export async function enIyiHasarFotolari(gorseller: Gorsel[], n = 2, ai?: { must
 // KALDIRILDI — eşzamanlı iki çıkarım artık birbirinin tanısını EZMİYOR). Saha bulgusu 2026-07-06:
 // kredi bitince/istek büyüyünce catch hatayı yutuyordu; kullanıcı "API anahtarı yok" sanıyordu.
 function hataOku(e: unknown): string {
+  if (aiKapiHatasiMi(e)) return e.message // KVKK kapısı / sızıntı / görsel kapısı: mesaj kullanıcıya olduğu gibi
   const st = (e as { status?: number })?.status
   const msg = e instanceof Error ? e.message : String(e)
   if (st === 401) return 'API anahtarı geçersiz ya da iptal edilmiş (401) — Vercel ortam değişkenini kontrol et'
@@ -224,31 +226,64 @@ function hataOku(e: unknown): string {
   return `${st ?? ''} ${msg}`.trim().slice(0, 300)
 }
 
-export async function analizEt(metin: string, footer?: string, gorseller?: Gorsel[], ogrenilenKurallar?: string, alacakliUnvan?: string | null, onHata?: (mesaj: string) => void, ai?: { musteriId?: string; dosyaId?: string }): Promise<AnalizSonuc | null> {
-  const key = process.env.ANTHROPIC_API_KEY
-  if (!key) { onHata?.('ANTHROPIC_API_KEY tanımlı değil (sunucu ortam değişkeni)'); return null }
+export type AnalizSecenek = {
+  /** UYAP takip açıklamasının sonuna eklenecek footer (Ayarlar). Maskelenerek gider. */
+  footer?: string
+  /** Mentor kurallarının prompt metni. Maskelenerek gider. */
+  ogrenilenKurallar?: string
+  alacakliUnvan?: string | null
+  onHata?: (mesaj: string) => void
+  /** Yanıtta açılamayan/yabancı jeton kaldıysa (06, 5.6 kırmızı kapı) kullanıcıya gösterilecek uyarı. Değer içermez. */
+  onUyari?: (mesaj: string) => void
+  ai?: { musteriId?: string; dosyaId?: string }
+  /** Dosyadaki bilinen kişisel veriler (borçlular, sigortalı, plakalar …) — deterministik jetonlar için. */
+  maske?: MaskeKaynagi | Maskeleyici
+}
+
+/**
+ * Model çıktısında AÇILAMAYAN jeton kalmış metin alanları temizlenir: '[TCKN-7]' gibi uydurma jeton
+ * DB'ye yazılmaz, adı jetonlu kalan borçlu eklenmez (kaynaksız sayılır; 06, 5.6 kırmızı kapı).
+ */
+function jetonlariAyikla(a: AnalizSonuc): AnalizSonuc {
+  const temiz = (s: string | undefined) => (s && !jetonluMu(s) ? s : undefined)
+  const kimlik = (s: string | undefined) => { const t = temiz(s); return t && /\d/.test(t) ? t : undefined }
+  return {
+    ...a,
+    sigortaliUnvan: temiz(a.sigortaliUnvan),
+    sigortaliTelefon: temiz(a.sigortaliTelefon),
+    sigortaliPlaka: temiz(a.sigortaliPlaka),
+    karsiPlaka: temiz(a.karsiPlaka),
+    borclular: (a.borclular ?? [])
+      .filter((b) => !jetonluMu(b.adUnvan))
+      .map((b) => ({ ...b, tcVkn: kimlik(b.tcVkn), telefon: temiz(b.telefon), adres: temiz(b.adres) })),
+  }
+}
+
+export async function analizEt(metin: string, s: AnalizSecenek = {}): Promise<AnalizSonuc | null> {
+  const { onHata } = s
+  if (!process.env.ANTHROPIC_API_KEY) { onHata?.('ANTHROPIC_API_KEY tanımlı değil (sunucu ortam değişkeni)'); return null }
   if (!metin.trim()) { onHata?.('belge metni boş'); return null }
-  const client = anthropic(key, { yuzey: 'cikarim', ...ai })
-  const imgs = (gorseller ?? []).slice(0, 12)
-  const content: Anthropic.ContentBlockParam[] = [{ type: 'text', text: `Belge metni:\n\n${metin.slice(0, 150000)}` }]
-  for (const g of imgs) content.push({ type: 'image', source: { type: 'base64', media_type: g.mime, data: g.b64 } })
-  if (imgs.length) content.push({ type: 'text', text: `Yukarıdaki ${imgs.length} fotoğrafı da incele (ehliyet/ruhsat/tutanak/plaka); metinde olmayan isim/TCKN/plakayı görüntüden oku ve bağlama kat.` })
+  const oturum = aiOturumu({ yuzey: 'cikarim', ai: s.ai, maske: s.maske })
+  const sistemEk = [s.footer ? `Açıklama footer'ı (sonuna ekle): ${s.footer}` : '', s.ogrenilenKurallar ?? ''].filter(Boolean).join('\n')
   try {
-    const res = await client.messages.create({
+    const y = await oturum.iste({
       model: MODEL,
-      max_tokens: 4500,
-      system: unvanGecir(SISTEM, alacakliUnvan) + (footer ? `\nAçıklama footer'ı (sonuna ekle): ${footer}` : '\nFooter verilmediyse footer EKLEME.') + (ogrenilenKurallar ?? ''),
-      messages: [{ role: 'user', content }],
-      tools: [{ name: 'kaydet', description: 'Çıkarılan rücu alanlarını kaydet', input_schema: SCHEMA as Anthropic.Tool.InputSchema }],
-      tool_choice: { type: 'tool', name: 'kaydet' },
+      maxTokens: 4500,
+      sistem: unvanGecir(SISTEM, s.alacakliUnvan) + (s.footer ? '' : '\nFooter verilmediyse footer EKLEME.'),
+      sistemEk,
+      icerik: [{ tur: 'belge', ad: 'Dosya belgeleri', metin: metin.slice(0, 150000) }],
+      arac: { ad: 'kaydet', aciklama: 'Çıkarılan rücu alanlarını kaydet', sema: SCHEMA as Anthropic.Tool.InputSchema },
     })
-    const block = res.content.find((b) => b.type === 'tool_use')
-    if (!block || block.type !== 'tool_use') { onHata?.('model yanıtında beklenen çıktı (tool_use) yok'); return null }
-    const parsed = toolCikti(block.input, ZAnalizSonuc, 'analizEt')
+    if (y.aracGirdisi == null) { onHata?.(y.kesildi ? 'model yanıtı uzunluk sınırında yarım kaldı' : 'model yanıtında beklenen çıktı (tool_use) yok'); return null }
+    const parsed = toolCikti(y.aracGirdisi, ZAnalizSonuc, 'analizEt')
     if (!parsed) { onHata?.('model çıktısı şema doğrulamasını geçemedi (beklenen alanlar eksik/bozuk)'); return null }
-    return parsed as unknown as AnalizSonuc
+    // Kırmızı kapı: açılamayan jeton kimlik alanlarından ayıklanır (jetonlariAyikla); serbest metin alanlarında
+    // (açıklama, olay bağlamı …) kalabilir → çağıran uyarıyı Aktivite'ye yazar, sessizce geçmez.
+    const uyari = acilamayanUyarisi(y.acilamayanJetonlar)
+    if (uyari) s.onUyari?.(uyari)
+    return jetonlariAyikla(parsed as unknown as AnalizSonuc)
   } catch (e) {
-    console.error('analizEt hata:', e)
+    if (!aiKapiHatasiMi(e)) console.error('analizEt hata:', e instanceof Error ? `${e.name} ${(e as { status?: number }).status ?? ''}` : 'bilinmeyen')
     onHata?.(hataOku(e))
     return null
   }

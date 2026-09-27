@@ -11,9 +11,12 @@
  * Çekilen kararlar çağıran tarafça EmsalKarar olarak cache'lenebilir (korpus organik büyür).
  *
  * Yasal/etik: mahkeme kararları telifsiz; makul hız (dosya başına ~1 sorgu) + cache.
+ *
+ * S09 (06, 5.6): yüzey 'emsal' lib/ai/cagri.ts sarmalayıcısından geçer — maskeli olay özeti, tek oturum.
+ * Yargıtay'a giden arama ifadesi GERİ AÇILMAZ; jetonları atılır (dış servise kişisel veri gitmez).
  */
-import Anthropic from '@anthropic-ai/sdk'
-import { anthropic } from './ai-util'
+import { aiOturumu, type AiOturumu, type MaskeKaynagi } from '@/lib/ai/cagri'
+import { AiKvkkKapaliHata } from '@/lib/ai/bayrak'
 
 const BASE = 'https://karararama.yargitay.gov.tr'
 const UCUZ_MODEL = 'claude-haiku-4-5-20251001' // sorgu üretimi + ön eleme (katmanlı: önce ucuz)
@@ -143,10 +146,19 @@ export async function kararMetni(id: string): Promise<string> {
 const SORGU_SISTEM = `Sen bir Yargıtay karar arama uzmanısın. Sana bir rücu (sigorta geri rücu) dosyasının olay bağlamı verilir. Görevin: Yargıtay Karar Arama motorunda EN İSABETLİ sonucu getirecek 2-5 kelimelik TÜRKÇE arama ifadesi üretmek.
 KURALLAR:
 - Hukuki terim + olay çekirdeği kullan (ör. "alkollü sürücü rücu", "ehliyetsiz sürücü tazminat rücu", "hatır taşıması rücu", "zamanaşımı trafik sigortası rücu").
-- Çok genel ("rücu") veya çok dar (isim/plaka/tarih) olmasın. Özel ad, TCKN, plaka, dosya no YAZMA.
+- Çok genel ("rücu") veya çok dar (isim/plaka/tarih) olmasın. Özel ad, TCKN, plaka, dosya no, JETON ([KİŞİ-1] gibi) YAZMA.
 - Sadece arama ifadesini döndür — tırnak/açıklama yok.`
 
-async function sorguUret(client: Anthropic, g: EmsalGirdi): Promise<string> {
+/** Arama ifadesinden jeton ve jeton kalıntılarını atar: dış servise (Yargıtay) kişisel veri ya da jeton gitmez. */
+export function sorguTemizle(k: string): string {
+  return k
+    .replace(/[\[［(（{⟦][^\]］)）}⟧]{0,20}[\]］)）}⟧]/gu, ' ')
+    .replace(/\b(?:TCKN|VKN|TEL|IBAN|EPOSTA|PLAKA|KİŞİ|KISI|ADRES)\s*[-–]?\s*\d+\b/giu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+async function sorguUret(oturum: AiOturumu, g: EmsalGirdi): Promise<string> {
   if (g.elleKelime && g.elleKelime.trim()) return g.elleKelime.trim()
   const baglam = [
     g.olayTuru && `Olay türü: ${g.olayTuru}`,
@@ -154,53 +166,56 @@ async function sorguUret(client: Anthropic, g: EmsalGirdi): Promise<string> {
     g.kusurDurumu && `Kusur: ${g.kusurDurumu}`,
     g.olayBaglami && `Bağlam: ${g.olayBaglami.slice(0, 1500)}`,
   ].filter(Boolean).join('\n')
-  const res = await client.messages.create({
-    model: UCUZ_MODEL, max_tokens: 60, system: SORGU_SISTEM,
-    messages: [{ role: 'user', content: `Dosya:\n${baglam}\n\nArama ifadesi:` }],
+  // geriAc: false — ifade Yargıtay'a gidecek; jeton açılırsa gerçek ad dış servise sızar. Jetonlar atılır.
+  const y = await oturum.iste({
+    model: UCUZ_MODEL, maxTokens: 60, sistem: SORGU_SISTEM, geriAc: false,
+    icerik: [{ tur: 'belge', ad: 'Dosya', metin: baglam }, { tur: 'metin', metin: 'Arama ifadesi:' }],
   })
-  const blok = res.content.find((b) => b.type === 'text')
-  const k = blok && blok.type === 'text' ? blok.text.trim().replace(/^["'\s]+|["'\s]+$/g, '') : ''
+  const k = sorguTemizle(y.maskeliMetin.trim().replace(/^["'\s]+|["'\s]+$/g, ''))
   return k || 'rücu tazminat'
 }
 
 const ELE_SISTEM = `Sana bir rücu dosyasının bağlamı ve Yargıtay'dan dönen karar listesi (künye) verilir. Görevin: dosyaya EN ALÂKALI olabilecek kararların index numaralarını seçmek. Daire ve konu uyumuna bak (sigorta/tazminat/rücu daireleri öncelikli). Sadece virgülle ayrılmış index'leri döndür (ör. "1,4,7"). En fazla {N} tane seç.`
 
-async function onEle(client: Anthropic, g: EmsalGirdi, satirlar: EmsalSatir[], n: number): Promise<EmsalSatir[]> {
+async function onEle(oturum: AiOturumu, g: EmsalGirdi, satirlar: EmsalSatir[], n: number): Promise<EmsalSatir[]> {
   const liste = satirlar.map((s, i) => `${i + 1}. [${s.daire}] ${s.esasNo} / ${s.kararNo} (${s.kararTarihi})`).join('\n')
   const baglam = [g.olayTuru, g.brans, g.kusurDurumu, g.olayBaglami?.slice(0, 1000)].filter(Boolean).join(' · ')
-  const res = await client.messages.create({
-    model: UCUZ_MODEL, max_tokens: 40, system: ELE_SISTEM.replace('{N}', String(n)),
-    messages: [{ role: 'user', content: `Dosya: ${baglam}\n\nKararlar:\n${liste}\n\nSeçilen index'ler:` }],
+  const y = await oturum.iste({
+    model: UCUZ_MODEL, maxTokens: 40, sistem: ELE_SISTEM.replace('{N}', String(n)), geriAc: false,
+    icerik: [{ tur: 'belge', ad: 'Dosya', metin: baglam }, { tur: 'metin', metin: `Kararlar:\n${liste}\n\nSeçilen index'ler:` }],
   })
-  const blok = res.content.find((b) => b.type === 'text')
-  const ham = blok && blok.type === 'text' ? blok.text : ''
-  const idx = [...ham.matchAll(/\d+/g)].map((m) => parseInt(m[0], 10) - 1).filter((i) => i >= 0 && i < satirlar.length)
+  const idx = [...y.maskeliMetin.matchAll(/\d+/g)].map((m) => parseInt(m[0], 10) - 1).filter((i) => i >= 0 && i < satirlar.length)
   const secili = [...new Set(idx)].slice(0, n).map((i) => satirlar[i])
   return secili.length ? secili : satirlar.slice(0, n) // AI boş dönerse ilk N
 }
 
 const ALAKA_SISTEM = `Sana bir rücu dosyasının bağlamı ve bir Yargıtay kararının TAM METNİ verilir. Görevin: bu kararın dosyaya neden emsal olduğunu 1-2 cümlede, somut hukuki dayanakla yaz (ör. "Alkollü sürücüye %100 kusurla rücuda halefiyeti teyit ediyor; KTK m.98 atfı dilekçeye dayanak."). Karar dosyaya UYMUYORSA tek kelime "UYMAZ" yaz. Süsleme yok, sadece gerekçe.`
 
-async function alakaYaz(client: Anthropic, g: EmsalGirdi, metin: string): Promise<string> {
+async function alakaYaz(oturum: AiOturumu, g: EmsalGirdi, metin: string): Promise<string> {
   const baglam = [g.olayTuru, g.brans, g.kusurDurumu, g.olayBaglami?.slice(0, 800)].filter(Boolean).join(' · ')
-  const res = await client.messages.create({
-    model: DERIN_MODEL, max_tokens: 200, system: ALAKA_SISTEM,
-    messages: [{ role: 'user', content: `Dosya: ${baglam}\n\nKARAR METNİ:\n${metin.slice(0, 30000)}\n\nAlâka gerekçesi:` }],
+  const y = await oturum.iste({
+    model: DERIN_MODEL, maxTokens: 200, sistem: ALAKA_SISTEM,
+    icerik: [
+      { tur: 'belge', ad: 'Dosya', metin: baglam },
+      { tur: 'belge', ad: 'Yargıtay kararı', metin: metin.slice(0, 30000) },
+      { tur: 'metin', metin: 'Alâka gerekçesi:' },
+    ],
   })
-  const blok = res.content.find((b) => b.type === 'text')
-  return blok && blok.type === 'text' ? blok.text.trim() : ''
+  return y.metin.trim()
 }
 
 /**
  * Dosya bağlamından canlı emsal bul: sorgu üret → ara → ön ele → tam metin → alâka gerekçesi.
+ * S09: tek AI oturumu (kredi bir kez; maskeli olay özeti; aynı kişi her adımda aynı jeton).
  * @param sayi Döndürülecek nihai emsal sayısı (varsayılan 4).
  */
-export async function dosyadanEmsal(g: EmsalGirdi, sayi = 4, ai?: { musteriId?: string; dosyaId?: string }): Promise<{ kelime: string; emsaller: EmsalSecim[] }> {
-  const key = process.env.ANTHROPIC_API_KEY
-  if (!key) throw new Error('ANTHROPIC_API_KEY yok')
-  const client = anthropic(key, { yuzey: 'emsal', ...ai })
+export async function dosyadanEmsal(g: EmsalGirdi, sayi = 4, ai?: { musteriId?: string; dosyaId?: string }, maske?: MaskeKaynagi): Promise<{ kelime: string; emsaller: EmsalSecim[] }> {
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY yok')
+  const oturum = aiOturumu({ yuzey: 'emsal', ai, maske })
+  // Elle kelime verilmiş olsa da eleme ve gerekçe AI adımıdır: kapalı yüzeyde Yargıtay'a da gidilmez.
+  if (!oturum.acikMi()) throw new AiKvkkKapaliHata('emsal')
 
-  const kelime = await sorguUret(client, g)
+  const kelime = await sorguUret(oturum, g)
   let satirlar = await aramaYargitay(kelime, 20)
   // Sorgu çok dar → 0 sonuç: son kelimeyi atarak genişlet (en çok 2 kez)
   let genisKelime = kelime
@@ -212,7 +227,7 @@ export async function dosyadanEmsal(g: EmsalGirdi, sayi = 4, ai?: { musteriId?: 
   }
   if (!satirlar.length) return { kelime: genisKelime, emsaller: [] }
 
-  const adaylar = await onEle(client, g, satirlar, Math.min(sayi + 2, satirlar.length))
+  const adaylar = await onEle(oturum, g, satirlar, Math.min(sayi + 2, satirlar.length))
 
   // Tam metni SIRALI çek (rate-limit) + alâka gerekçesi; "UYMAZ" olanları ele
   const emsaller: EmsalSecim[] = []
@@ -220,7 +235,7 @@ export async function dosyadanEmsal(g: EmsalGirdi, sayi = 4, ai?: { musteriId?: 
     if (emsaller.length >= sayi) break
     try {
       const metin = await kararMetni(s.id)
-      const alaka = await alakaYaz(client, g, metin)
+      const alaka = await alakaYaz(oturum, g, metin)
       if (/^uymaz/i.test(alaka)) continue
       emsaller.push({ ...s, alaka, metin })
     } catch {

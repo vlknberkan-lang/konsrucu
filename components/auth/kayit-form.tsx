@@ -68,7 +68,9 @@ export function KayitForm() {
           <input name="kvkkOnay" type="checkbox" required className="mt-0.5 h-4 w-4 shrink-0 accent-[#0f9b95]" />
           <span>
             Kişisel verilerimin üyelik ve hizmet amacıyla işlenmesine onay veriyorum.{' '}
-            <Link href="/gizlilik" className="underline underline-offset-2 hover:text-foreground">Aydınlatma metni</Link>
+            {/* S02 (B14): uygulamanın aydınlatma metni — eklenti gizlilik politikası (/gizlilik) değil.
+                /gizlilik/ altında: middleware'de oturumsuz erişilebilir rota öneki. */}
+            <Link href="/gizlilik/aydinlatma" className="underline underline-offset-2 hover:text-foreground">Aydınlatma metni</Link>
           </span>
         </label>
       </div>

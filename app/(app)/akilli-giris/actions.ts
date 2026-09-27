@@ -24,6 +24,9 @@ import { sayiTR } from '@/lib/konsrucu/sayi'
 import { ileriMi, dosyaDurumIlerlet } from '@/lib/konsrucu/durum'
 import { silebilir, SILME_YETKISI_YOK } from '@/lib/konsrucu/db'
 import { idariYolOnaylayabilir, idariYolaAlinabilirMi, idariYolAktiviteMetni, IDARI_YOL_YETKI_YOK } from '@/lib/konsrucu/idari-yol'
+import { eskiDilekceHattiAcik, gorselAiAcik, yuzeyAcik, GORSEL_KAPALI_MESAJI, KVKK_KAPALI_MESAJI } from '@/lib/ai/bayrak'
+import { gorselAdaylari, gorselAktiviteMetni } from '@/lib/ai/gorsel-aday'
+import { aiKapiHatasiMi } from '@/lib/ai/cagri'
 import { ELLE_YUKLEME_METIN_SINIRI, metniSinirla } from '@/lib/konsrucu/evrak-metin/ortak'
 import {
   cikarimBirlestir, alanOnerisiBul, alanOnerisiniKaldir, dekontOnerisiBul, dekontOnerisiniKaldir,
@@ -96,7 +99,15 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
     mentorKurallariOku(musteriId),
   ])
   await dosyaLimitKontrol(musteriId) // FREE plan: 20 aktif dosya kapısı
-  const analiz = payload.metin ? await analizEt(payload.metin, ayarlar?.aciklamaFooter ?? undefined, undefined, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null, undefined, { musteriId }) : null
+  // S09: yeni dosyada bilinen kayıt yok → maskeleme desen + etiket sezgisiyle; görsel gönderilmez.
+  let aiHata: string | null = null
+  let jetonUyarisi = null as string | null // S09 kırmızı kapı: yanıtta açılamayan jeton kaldı
+  const analiz = payload.metin
+    ? await analizEt(payload.metin, {
+        footer: ayarlar?.aciklamaFooter ?? undefined, ogrenilenKurallar: mentorKurallariMetne(mentorKurallar),
+        alacakliUnvan: ayarlar?.alacakliUnvan ?? null, onHata: (m) => { aiHata = m }, onUyari: (u) => { jetonUyarisi = u }, ai: { musteriId },
+      })
+    : null
 
   // S06 (F18; B12): AI'ın yol önerisi DURUMU DEĞİŞTİRMEZ — "idari" dese de dosya İNCELENİYOR açılır. Öneri
   // yol/yolGuven/yolNeden alanlarında kalır; İDARİ_YOL'a yalnız avukat geçirir (idariYolaAl, Dosya Detay bandı).
@@ -168,8 +179,8 @@ export async function dosyaOlustur(payload: DosyaPayload): Promise<{ id: string 
         create: {
           kullaniciId: dbUser.id,
           eylem: analiz
-            ? `Yığın işlendi + asistan analizi → ${analiz.yol} önerisi (güven ${(analiz.yolGuven * 100) | 0}%)${analiz.yol === 'idari' ? ' · durum İnceleniyor, idari yol kararı avukatta' : ''}, ${analiz.borclular.length} borçlu`
-            : `Yığın işlendi → dosya oluştu (${payload.dosyalar.length} belge, yerel çıkarım)`,
+            ? `Yığın işlendi + asistan analizi → ${analiz.yol} önerisi (güven ${(analiz.yolGuven * 100) | 0}%)${analiz.yol === 'idari' ? ' · durum İnceleniyor, idari yol kararı avukatta' : ''}, ${analiz.borclular.length} borçlu${jetonUyarisi ? ` · ⚠ ${jetonUyarisi}` : ''}`
+            : `Yığın işlendi → dosya oluştu (${payload.dosyalar.length} belge, yerel çıkarım)${aiHata ? ` · AI çıkarımı yapılmadı: ${aiHata}` : ''}`,
         },
       },
     },
@@ -259,14 +270,14 @@ function oneriMetni(alan: AlanAdi, v: string | number): string {
  *   - borçlu SİLİNMEZ; mevcutla eşleşmeyen AI borçlusu teyitsiz eklenir;
  *   - AI dekontları Odeme'ye YAZILMAZ, cikarimJson.oneriler.dekontlar'a gider ([Ödemeye ekle]);
  *     faizBaslangic değişmez. */
-export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: string; korunanBorclu?: number; oneriSayisi?: number }> {
+export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: string; korunanBorclu?: number; oneriSayisi?: number; uyari?: string }> {
   const { dbUser, izinli } = await ctx()
   const dosya = await prisma.rucuDosyasi.findUnique({
     where: { id: dosyaId },
     select: {
       musteriId: true, durum: true, cikarimJson: true, ...ALAN_SELECT,
       belgeler: { select: { extractedText: true, kategori: true, dosyaAdi: true, storagePath: true } },
-      borclular: { select: { adUnvan: true, tcVkn: true, teyitDurumu: true } },
+      borclular: { select: { adUnvan: true, tcVkn: true, telefon: true, teyitDurumu: true }, orderBy: { id: 'asc' } },
       odemeler: { select: { tarih: true, tutar: true, haricMi: true } },
     },
   })
@@ -289,39 +300,35 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
   const metin = parcalar.join('\n\n').slice(0, 150000).trim()
   if (!metin) return { ok: false, error: 'Çıkarım için belge metni yok. Önce Evrak bölümünden belge ekleyin.' }
 
-  // GÖRSELLER (vision): ehliyet/ruhsat/tutanak/plaka fotoğraflarını da modele ver — metinde (zayıf OCR) olmayanı görüntüden okusun.
-  const IMG_ONC: Record<string, number> = { EHLIYET: 0, RUHSAT: 1, TUTANAK: 2, ALKOL: 3, SBM: 4, DIGER: 5, HASAR_FOTO: 6 }
-  const imgAday = dosya.belgeler
-    .filter((b) => b.storagePath && (IMG_ONC[b.kategori] != null || /\.(jpe?g|png|webp|gif)$/i.test(b.storagePath) || /\.(jpe?g|png|webp|gif)$/i.test(b.dosyaAdi)))
-    .sort((a, c) => (IMG_ONC[a.kategori] ?? 9) - (IMG_ONC[c.kategori] ?? 9))
-    .slice(0, 16)
-  const gorseller: { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; b64: string }[] = []
-  if (imgAday.length) {
-    const admin = createAdminClient()
-    let toplamBayt = 0 // API istek boyutu sınırı var: fotoğraf toplamı ~15MB'ı (base64 ~20MB) aşarsa 413 → kalanı atla
-    for (const b of imgAday) {
-      if (gorseller.length >= 12) break
-      try {
-        const { data, error } = await admin.storage.from('evrak').download(b.storagePath as string)
-        if (error || !data) continue
-        const buf = Buffer.from(await data.arrayBuffer())
-        const mime = imgMime(buf)
-        if (!mime || buf.length > 4_500_000) continue
-        if (toplamBayt + buf.length > 15_000_000) continue // öncelik sırası korunur, bütçeyi aşan atlanır
-        toplamBayt += buf.length
-        gorseller.push({ mime, b64: buf.toString('base64') })
-      } catch { /* görsel atlanır */ }
-    }
-  }
+  // GÖRSELLER (S02/S09; 06, 5.5): çıkarım GÖRSELSİZ çalışır — görüntü maskelenemez. Sağlık ve kimlik
+  // görselleri (alkol raporu, ehliyet, ruhsat, kimlik) hiçbir zaman, ötekiler KVKK kararına kadar gitmez.
+  // Aday listesi yalnız Aktivite'deki "0 görsel gönderildi (N görsel KVKK nedeniyle atlandı)" satırı için.
+  const gorselDurumu = gorselAdaylari(dosya.belgeler, { gorselAcik: false })
+  const gorselNotu = gorselAktiviteMetni(gorselDurumu, 0)
 
   const [ayarlar, mentorKurallar] = await Promise.all([
     prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { aciklamaFooter: true, alacakliUnvan: true } }),
     mentorKurallariOku(dosya.musteriId),
   ])
   let aiHata: string | null = null
-  const analiz = await analizEt(metin, ayarlar?.aciklamaFooter ?? undefined, gorseller, mentorKurallariMetne(mentorKurallar), ayarlar?.alacakliUnvan ?? null, (m) => { aiHata = m }, { musteriId: dosya.musteriId, dosyaId })
+  let jetonUyarisi = null as string | null // S09 kırmızı kapı: yanıtta açılamayan jeton kaldı (Aktivite'ye yazılır)
+  const analiz = await analizEt(metin, {
+    footer: ayarlar?.aciklamaFooter ?? undefined, ogrenilenKurallar: mentorKurallariMetne(mentorKurallar),
+    alacakliUnvan: ayarlar?.alacakliUnvan ?? null, onHata: (m) => { aiHata = m }, onUyari: (u) => { jetonUyarisi = u },
+    ai: { musteriId: dosya.musteriId, dosyaId },
+    // bilinen kayıtlar DB sırasıyla → deterministik jetonlar ([KİŞİ-1] = ilk borçlu); yanıt sunucuda geri açılır
+    maske: {
+      kisiler: [...dosya.borclular.map((b) => b.adUnvan), dosya.sigortaliUnvan],
+      kimlikler: dosya.borclular.map((b) => b.tcVkn),
+      telefonlar: [...dosya.borclular.map((b) => b.telefon), dosya.sigortaliTelefon],
+      plakalar: [dosya.sigortaliPlaka, dosya.karsiPlaka],
+    },
+  })
   if (!analiz) {
-    return { ok: false, error: aiHata ? `AI çıkarımı başarısız: ${aiHata}` : 'AI çıkarımı sonuç vermedi (model yanıtı boş).' }
+    const neden: string | null = aiHata
+    // KVKK kapısı (S02/S09): kapalı yüzey mesajı olduğu gibi gösterilir; AI'a hiçbir şey gitmemiştir.
+    if (neden === KVKK_KAPALI_MESAJI) return { ok: false, error: neden }
+    return { ok: false, error: neden ? `AI çıkarımı başarısız: ${neden}` : 'AI çıkarımı sonuç vermedi (model yanıtı boş).' }
   }
 
   // Rücu oranını TUTARLARDAN deterministik türet (LLM yaya→%100 derken tutarı yarı verebiliyor).
@@ -401,13 +408,20 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
           eylem: `AI çıkarımı çalıştı → ${analiz.yol} önerisi (güven %${(analiz.yolGuven * 100) | 0}): ${yazilanAlanlar.length} boş alan dolduruldu, ` +
             `${birlesim.oneriler.length} farklı değer öneri listesinde, ${yeniBorclular.length} yeni borçlu (teyitsiz), ` +
             `${birlesim.dekontOnerileri.length} dekont öneride (ödemeye yazılmadı); mevcut ${dosya.borclular.length} borçlu korundu` +
-            (birlesim.degisti ? ' · onay sıfırlandı' : ''),
+            (birlesim.degisti ? ' · onay sıfırlandı' : '') +
+            (gorselNotu ? ` · ${gorselNotu}` : '') +
+            (jetonUyarisi ? ` · ⚠ ${jetonUyarisi}` : ''),
           detayJson: {
             tur: 'AI_CIKARIM_BIRLESTIR',
             yazilan: yazilanAlanlar,
             oneriAlanlari: birlesim.oneriler.map((o) => o.alan),
             dekontOnerisi: birlesim.dekontOnerileri.length,
             yeniBorclu: yeniBorclular.length,
+            // S02: görsel sayıları (değer/ad yok) — "0 gönderildi, N KVKK nedeniyle atlandı"
+            gorselGonderilen: 0,
+            gorselKvkkAtlanan: gorselDurumu.hassas.length + gorselDurumu.kapali.length,
+            gorselHassas: gorselDurumu.hassas.length,
+            acilamayanJeton: !!jetonUyarisi,
           } as Prisma.InputJsonValue,
         },
       }),
@@ -417,7 +431,7 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
   }
 
   revalidatePath(`/akilli-giris/${dosyaId}`)
-  return { ok: true, korunanBorclu: dosya.borclular.length, oneriSayisi: birlesim.oneriler.length + birlesim.dekontOnerileri.length }
+  return { ok: true, korunanBorclu: dosya.borclular.length, oneriSayisi: birlesim.oneriler.length + birlesim.dekontOnerileri.length, ...(jetonUyarisi ? { uyari: jetonUyarisi } : {}) }
 }
 
 const GORUNTULEYEN_YAZAMAZ = 'Görüntüleyen rolü dosyada değişiklik yapamaz.'
@@ -1229,13 +1243,17 @@ export async function mentorKuralEkle(p: {
 /** İcra dayanağı: hasar fotoğrafları arasından AI vision ile araçtaki hasarın en net göründüğü 2'yi seçip cikarimJson.dayanakFotoIds'e yazar. */
 export async function hasarFotoSecAI(dosyaId: string): Promise<{ ok: boolean; secilen?: string[]; error?: string }> {
   const { dbUser, izinli } = await ctx()
+  // KVKK kapısı (S02/S09; 06, 5.5): görüntü maskelenemez — görsel AI (AI_GORSEL) ve 'foto' yüzeyi açık
+  // değilse fotoğraf indirilmez, hiçbir şey gönderilmez; seçim elle yapılır.
+  if (!gorselAiAcik() || !yuzeyAcik('foto')) return { ok: false, error: `${GORSEL_KAPALI_MESAJI} İcra dayanağı hasar fotoğraflarını elle seçin.` }
   const dosya = await prisma.rucuDosyasi.findUnique({
     where: { id: dosyaId },
-    select: { musteriId: true, cikarimJson: true, belgeler: { where: { kategori: BelgeKategori.HASAR_FOTO }, select: { id: true, storagePath: true } } },
+    select: { musteriId: true, cikarimJson: true, belgeler: { where: { kategori: BelgeKategori.HASAR_FOTO }, select: { id: true, storagePath: true, dosyaAdi: true, kategori: true } } },
   })
   if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
-  const adaylar = dosya.belgeler.filter((b) => b.storagePath)
-  if (!adaylar.length) return { ok: false, error: 'Dosyada hasar fotoğrafı yok' }
+  // Yanlış sınıflanmış kimlik/ehliyet/sağlık görseli (dosya adından) HASAR_FOTO olsa da gönderilmez.
+  const adaylar = gorselAdaylari(dosya.belgeler, { gorselAcik: true, kategoriler: new Set(['HASAR_FOTO']) }).gonderilecek
+  if (!adaylar.length) return { ok: false, error: 'Dosyada yapay zekâya gönderilebilecek hasar fotoğrafı yok' }
 
   const admin = createAdminClient()
   const gorseller: { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; b64: string }[] = []
@@ -1254,8 +1272,9 @@ export async function hasarFotoSecAI(dosyaId: string): Promise<{ ok: boolean; se
   }
   if (!gorseller.length) return { ok: false, error: 'Fotoğraflar indirilemedi ya da uygun biçimde değil' }
 
-  const idx = await enIyiHasarFotolari(gorseller, 2, { musteriId: dosya.musteriId, dosyaId })
-  if (idx == null) return { ok: false, error: 'AI seçim sonucu vermedi (API anahtarı yok ya da yanıt boş).' }
+  let fotoHata: string | null = null
+  const idx = await enIyiHasarFotolari(gorseller, 2, { musteriId: dosya.musteriId, dosyaId }, (m) => { fotoHata = m })
+  if (idx == null) return { ok: false, error: fotoHata ?? 'AI seçim sonucu vermedi (API anahtarı yok ya da yanıt boş).' }
   const secilen = idx.map((i) => idMap[i]).filter(Boolean)
 
   const cj = (dosya.cikarimJson && typeof dosya.cikarimJson === 'object' && !Array.isArray(dosya.cikarimJson) ? { ...(dosya.cikarimJson as object) } : {}) as Record<string, unknown>
@@ -1277,13 +1296,24 @@ function emsalAtif(e: { daire: string; kararTarihi: string; esasNo: string; kara
  */
 export async function emsalBul(dosyaId: string): Promise<{ ok: boolean; error?: string; kelime?: string; eklenen?: number }> {
   const { dbUser, izinli } = await ctx()
-  const dosya = await prisma.rucuDosyasi.findUnique({ where: { id: dosyaId }, select: { id: true, musteriId: true, brans: true, kusurDurumu: true, cikarimJson: true } })
+  if (!yuzeyAcik('emsal')) return { ok: false, error: KVKK_KAPALI_MESAJI } // S02/S09 KVKK kapısı
+  const dosya = await prisma.rucuDosyasi.findUnique({
+    where: { id: dosyaId },
+    select: {
+      id: true, musteriId: true, brans: true, kusurDurumu: true, cikarimJson: true,
+      // yalnız maskeleme için: olay bağlamındaki ad/plaka jetonlanır (S09)
+      sigortaliUnvan: true, sigortaliPlaka: true, karsiPlaka: true, borclular: { select: { adUnvan: true }, orderBy: { id: 'asc' } },
+    },
+  })
   if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok' }
   const cj = (dosya.cikarimJson ?? {}) as { olayBaglami?: string | null; olayTuru?: string | null }
   try {
     const { kelime, emsaller } = await dosyadanEmsal({
       olayBaglami: cj.olayBaglami ?? null, olayTuru: cj.olayTuru ?? null, brans: dosya.brans ?? null, kusurDurumu: dosya.kusurDurumu ?? null,
-    }, 4, { musteriId: dosya.musteriId, dosyaId })
+    }, 4, { musteriId: dosya.musteriId, dosyaId }, {
+      kisiler: [...dosya.borclular.map((b) => b.adUnvan), dosya.sigortaliUnvan],
+      plakalar: [dosya.sigortaliPlaka, dosya.karsiPlaka],
+    })
     if (!emsaller.length) return { ok: true, kelime, eklenen: 0 }
     for (const e of emsaller) {
       await prisma.emsalKarar.upsert({
@@ -1296,7 +1326,8 @@ export async function emsalBul(dosyaId: string): Promise<{ ok: boolean; error?: 
     revalidatePath(`/akilli-giris/${dosyaId}`)
     return { ok: true, kelime, eklenen: emsaller.length }
   } catch (e) {
-    console.error('emsalBul hata:', e)
+    if (aiKapiHatasiMi(e)) return { ok: false, error: e.message }
+    console.error('emsalBul hata:', e instanceof Error ? e.name : 'bilinmeyen')
     return { ok: false, error: 'Yargıtay araması başarısız (kaynak geçici erişilemez olabilir).' }
   }
 }
@@ -1326,7 +1357,7 @@ export async function emsalSil(emsalId: string): Promise<{ ok: boolean; error?: 
 export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error?: string; metin?: string; ciktiId?: string }> {
   // Eski hat kapalı (denetim B05–B09, B18, B19): sabit olgu/atıf basıyordu. Dilekçeler Dilekçe Masası'ndan üretilir.
   // Yalnız bilinçli geri açma için: ESKI_DILEKCE_HATTI=acik
-  if (process.env.ESKI_DILEKCE_HATTI !== 'acik') {
+  if (!eskiDilekceHattiAcik()) { // bayrak tek yerde: lib/ai/bayrak.ts
     return { ok: false, error: "Bu eski üretim hattı kapatıldı. Dilekçeleri Dilekçe Masası'ndan hazırlayın." }
   }
   const { dbUser, izinli } = await ctx()
@@ -1369,27 +1400,7 @@ export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error
   }
   const belgeMetni = parcalar.join('\n\n').slice(0, 120000)
 
-  // GÖRSELLER (vision) — ehliyet/ruhsat/tutanak/plaka foto
-  const D_IMG: Record<string, number> = { EHLIYET: 0, RUHSAT: 1, TUTANAK: 2, ALKOL: 3, SBM: 4, DIGER: 5, HASAR_FOTO: 6 }
-  const imgAday = dosya.belgeler
-    .filter((b) => b.storagePath && (D_IMG[b.kategori] != null || /\.(jpe?g|png|webp|gif)$/i.test(b.storagePath) || /\.(jpe?g|png|webp|gif)$/i.test(b.dosyaAdi)))
-    .sort((a, c) => (D_IMG[a.kategori] ?? 9) - (D_IMG[c.kategori] ?? 9))
-    .slice(0, 16)
-  const gorseller: { mime: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; b64: string }[] = []
-  if (imgAday.length) {
-    const admin = createAdminClient()
-    for (const b of imgAday) {
-      if (gorseller.length >= 10) break
-      try {
-        const { data, error } = await admin.storage.from('evrak').download(b.storagePath as string)
-        if (error || !data) continue
-        const buf = Buffer.from(await data.arrayBuffer())
-        const mime = imgMime(buf)
-        if (!mime || buf.length > 4_500_000) continue
-        gorseller.push({ mime, b64: buf.toString('base64') })
-      } catch { /* atla */ }
-    }
-  }
+  // GÖRSELLER: gönderilmez (S02/S09) — ehliyet/ruhsat/alkol raporu gibi görüntüler maskelenemez.
 
   // dekont kalemleri (deterministik gösterim + AI'a ipucu)
   const dekontlar = dosya.odemeler.map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : null, tutar: o.tutar != null ? Number(o.tutar) : null, aciklama: o.aciklama ?? null, haricMi: o.haricMi }))
@@ -1400,8 +1411,12 @@ export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error
     kazaTarihi: dosya.kazaTarihi ? dosya.kazaTarihi.toISOString().slice(0, 10) : null, kazaYeri: dosya.kazaYeri ?? dosya.il ?? null,
     davalilar: dosya.borclular.map((b) => ({ ad: b.adUnvan, rol: b.rol as string })),
     asilAlacak: anapara || null, rucuOrani: dosya.rucuOrani ?? null, kusurDurumu: dosya.kusurDurumu ?? null, odemeBilgi: null,
-    belgeMetni, gorseller, dekontlar, alacakliUnvan: ayarlar?.alacakliUnvan ?? null,
-  }, { musteriId: dosya.musteriId, dosyaId: dosya.id })
+    belgeMetni, dekontlar, alacakliUnvan: ayarlar?.alacakliUnvan ?? null,
+  }, { musteriId: dosya.musteriId, dosyaId: dosya.id }, {
+    kisiler: [...dosya.borclular.map((b) => b.adUnvan), dosya.sigortaliUnvan],
+    kimlikler: dosya.borclular.map((b) => b.tcVkn),
+    plakalar: [dosya.sigortaliPlaka, dosya.karsiPlaka],
+  })
 
   const girdi: DilekceGirdi = {
     davaciUnvan: ayarlar?.alacakliUnvan || 'RAY SİGORTA ANONİM ŞİRKETİ',

@@ -19,7 +19,9 @@ const uretGirdi = { dosyaId, tur: 'BEYAN' as const, talimat: 'Ödeme dekontunu s
 
 beforeEach(() => {
   vi.resetAllMocks()
+  vi.unstubAllEnvs()
   vi.stubEnv('ANTHROPIC_API_KEY', 'test-key')
+  vi.stubEnv('AI_ORTAM', 'staging') // S02/S09: canlıda 'dilekce' yüzeyi kapalı; bu testler kurgusal veri kipinde
   m.ctx.mockResolvedValue({ dbUser: { id: 'avukat', aktif: true, rol: 'AVUKAT' }, aktifMusteriId: 'tenant-1' })
   m.findMusteri.mockResolvedValue({ id: 'tenant-1' })
   m.ayarlar.mockResolvedValue(null)
@@ -81,5 +83,41 @@ describe('dilekçe mutasyon güvenliği', () => {
     m.ai.mockResolvedValue({ stop_reason: 'max_tokens', content: [{ type: 'text', text: 'Eksik metin' }] })
     expect((await davaTaslagiUret(uretGirdi)).ok).toBe(false)
     expect(m.create).not.toHaveBeenCalled()
+  })
+})
+
+describe('S02/S09 · dilekçe masası KVKK kapısı ve maskeleme', () => {
+  // Kurgusal taraf (Python araç testlerindeki uydurma ad). tcVkn: kontrol hanesi TUTMAYAN uydurma 11 hane —
+  // desen onu TCKN saymaz ama dosyada kayıtlı olduğu için yine de maskelenmeli.
+  const TARAF = { adUnvan: 'Kerimcan Tuzlaçayır', rol: 'SURUCU', tcVkn: '10000000146' }
+
+  it('canlıda yüzey kapalı: dosya okunmaz, AI çağrılmaz, taslak yazılmaz', async () => {
+    vi.stubEnv('AI_ORTAM', '')
+    const r = await davaTaslagiUret(uretGirdi)
+    expect(r.ok).toBe(false)
+    expect(!r.ok && r.error).toContain('KVKK')
+    expect(m.findDosya).not.toHaveBeenCalled()
+    expect(m.ai).not.toHaveBeenCalled()
+    expect(m.create).not.toHaveBeenCalled()
+  })
+
+  it('tarafın TCKN/VKN\'si ve adresi, vekil adresi/UETS AI\'a gitmez; ad jetonlanır; taslak geri açılır', async () => {
+    m.ayarlar.mockResolvedValue({ alacakliUnvan: 'Kurgusal Sigorta A.Ş.', vekilAd: 'Av. Kurgusal Vekil', vekilAdres: 'Kurgusal Mah. Örnek Sok. No:1', vekilUets: '12345-67890-12345' })
+    m.findDosya.mockResolvedValue({
+      id: dosyaId, musteriId: 'tenant-1', hukukDosyaNo: 'H-1', borclular: [TARAF],
+      belgeler: [{ id: belgeId, dosyaAdi: 'UYAP.pdf', extractedText: `Davalı ${TARAF.adUnvan} (T.C. ${TARAF.tcVkn}) ödeme yapmamıştır.`, kategori: 'DIGER' }],
+      asamalar: [], notlar: [], olaylar: [], ciktilar: [], odemeler: [],
+    })
+    m.ai.mockResolvedValue({ stop_reason: 'end_turn', content: [{ type: 'text', text: '⟨Mahkeme⟩ SAYIN HÂKİMLİĞİNE\nDAVALI: [KİŞİ-1]\nAÇIKLAMALAR: [KİŞİ-1] ödeme yapmamıştır. [KİŞİ-7] ise ⟨kontrol⟩.\nSONUÇ VE İSTEM: ⟨Talep⟩' }] })
+    const r = await davaTaslagiUret(uretGirdi)
+    const giden = JSON.stringify(m.ai.mock.calls[0][0])
+    for (const ham of [TARAF.tcVkn, 'Tuzlaçayır', 'Kerimcan', 'Örnek Sok', '12345-67890']) expect(giden, ham).not.toContain(ham)
+    expect(giden).toContain('[KİŞİ-1]')
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.metin).toContain('DAVALI: Kerimcan Tuzlaçayır')
+      expect(r.uyarilar.join(' ')).toContain('[KİŞİ-7]') // açılamayan (yabancı) jeton uyarısı
+    }
+    expect(m.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ icerik: expect.stringContaining('Kerimcan Tuzlaçayır ödeme yapmamıştır') }) }))
   })
 })

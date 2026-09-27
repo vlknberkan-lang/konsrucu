@@ -1,13 +1,15 @@
 /**
- * KonsRücü — Gizlilik Politikası (PUBLIC) · app/gizlilik/page.tsx
- * Chrome Web Store yayını + KVKK için zorunlu, oturumsuz erişilebilir sayfa.
+ * KonsRücü — Chrome eklentisi gizlilik politikası (PUBLIC) · app/gizlilik/page.tsx
+ * Chrome Web Store yayını için zorunlu, oturumsuz erişilebilir sayfa.
  * (middleware.ts'te /gizlilik public rota olarak işaretli.) Metin sabittir; auth/ctx KULLANMAZ.
+ * S02 (B14): bu sayfa YALNIZ eklentiye aittir. Uygulamanın aydınlatma metni ayrıdır:
+ * app/gizlilik/aydinlatma/page.tsx (taslak, açık karar 1d).
  */
 export const dynamic = 'force-static'
 
 export const metadata = {
-  title: 'Gizlilik Politikası · Rücu Takip UYAP Senkron Eklentisi',
-  description: 'Rücu Takip UYAP Senkron Chrome eklentisinin veri işleme ve gizlilik politikası (KVKK).',
+  title: 'KonsLaw Chrome eklentisi gizlilik politikası',
+  description: 'Rücu Takip UYAP Senkron Chrome eklentisinin veri işleme ve gizlilik politikası. Uygulamanın aydınlatma metni ayrı sayfadadır.',
 }
 
 const GUNCELLEME = '8 Temmuz 2026'
@@ -26,8 +28,12 @@ export default function GizlilikPage() {
     <main className="min-h-screen bg-slate-50 px-5 py-12 text-slate-800">
       <div className="mx-auto max-w-[760px] rounded-2xl border border-slate-200 bg-white px-7 py-9 shadow-sm sm:px-10">
         <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-400">Rücu Takip · UYAP Senkron Eklentisi</div>
-        <h1 className="mt-2 text-[28px] font-extrabold tracking-[-0.03em] text-slate-900">Gizlilik Politikası</h1>
+        <h1 className="mt-2 text-[28px] font-extrabold tracking-[-0.03em] text-slate-900">KonsLaw Chrome eklentisi gizlilik politikası</h1>
         <p className="mt-1.5 text-[13px] text-slate-500">Son güncelleme: {GUNCELLEME}</p>
+        <p className="mt-3 text-[13px] text-slate-500">
+          Bu politika yalnız Chrome eklentisini kapsar. Programın (web uygulaması) aydınlatma metni için:{' '}
+          <a href="/gizlilik/aydinlatma" className="underline underline-offset-2 hover:text-slate-700">Aydınlatma metni</a>.
+        </p>
 
         <p className="mt-6 text-[14.5px] leading-[1.65] text-slate-600">
           Bu politika, <b>Rücu Takip — UYAP Senkron</b> Chrome eklentisinin hangi verilere eriştiğini, bunları
