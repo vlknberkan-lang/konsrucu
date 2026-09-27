@@ -13,6 +13,7 @@ import type { DosyaDurum, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { uyapKimlik, corsJson, preflight } from '@/lib/konsrucu/uyap-auth'
 import { KAPALI_DURUMLAR, uyapKapaliMi } from '@/lib/konsrucu/aktiflik'
+import { senkronKapsamiOku, senkronKapsamKosulu } from '@/lib/konsrucu/senkron-kapsam'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,11 +32,14 @@ export async function GET(req: Request) {
 
   // AKTİFLİK KAPISI (Faz 0): kapanmış dosyaları düşür — durum notIn (DB, indeksli) + uyapDurum "Kapalı" (JS).
   // ARTIMLI: cutoff varsa yalnız hiç-çekilmemiş VEYA bayat dosyalar (taze olanlar dışarıda kalır).
+  // KAPSAM: ortam değişkeniyle tanımlı "canlı küme" varsa yalnız o dosyalar (arşiv otomatik taranmaz).
+  const kapsamKosulu = senkronKapsamKosulu(senkronKapsamiOku())
   const where: Prisma.RucuDosyasiWhereInput = {
     musteriId: { in: k.izinli },
     icraDosyaNo: { not: null },
     durum: { notIn: KAPALI_DURUMLAR as unknown as DosyaDurum[] },
     ...(cutoff ? { OR: [{ uyapSenkronAt: null }, { uyapSenkronAt: { lt: cutoff } }] } : {}),
+    ...kapsamKosulu,
   }
   const ham = await prisma.rucuDosyasi.findMany({
     where,
@@ -57,7 +61,7 @@ export async function GET(req: Request) {
 
   // Toplam aktif (pencere uygulanmadan) — "kaç dosya senkron bekliyor / kaçı taze" şeffaflığı.
   const aktifToplam = await prisma.rucuDosyasi.count({
-    where: { musteriId: { in: k.izinli }, icraDosyaNo: { not: null }, durum: { notIn: KAPALI_DURUMLAR as unknown as DosyaDurum[] } },
+    where: { musteriId: { in: k.izinli }, icraDosyaNo: { not: null }, durum: { notIn: KAPALI_DURUMLAR as unknown as DosyaDurum[] }, ...kapsamKosulu },
   })
 
   return corsJson({
