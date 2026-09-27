@@ -8,6 +8,7 @@
  * kritik olgular onaylanmadan kilitli). Kilitli kartta düzeltme yeni sürüm açar. Kişisel veri varsayılan maskeli.
  */
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, CheckCircle2, FileSearch, History, Loader2, Lock, RefreshCw, ShieldAlert } from 'lucide-react'
 import { Badge } from '@/components/konsrucu/ui'
@@ -226,6 +227,11 @@ export function DosyaKartiEkrani({ dosya, tur, kart, gecmis, belgeler, yetki, ai
               {kilitli && <p className="mt-0.5 flex items-center gap-1 text-success"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Kart kilitli{kart.onayAt ? ` (${tarihSaatTR(kart.onayAt, { day: '2-digit', month: '2-digit', year: 'numeric' })})` : ''}. Dilekçe taslağı bu karttan üretilir.</p>}
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {kilitli && (
+                <Link href={`/dilekceler/uret?dosya=${encodeURIComponent(dosya.id)}&tur=${tur}`} className={birincilDugme}>
+                  Dilekçe taslağını üret
+                </Link>
+              )}
               {yetki.yazabilir && kart.durum !== 'ESKIDI' && (
                 <button type="button" onClick={hazirla} disabled={!!bekliyor} className={sessizDugme} title="Kayıtlar ve belgelerden yeni sürüm hazırlar; aynı olguların onayı korunur">
                   {bekliyor === 'hazirla' ? <Loader2 className="dd-spin h-4 w-4" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />} Kartı yeniden hazırla

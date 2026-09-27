@@ -26,6 +26,9 @@ export const KREDI_BEDELI: Record<string, number> = {
 /** Model → [giriş, çıkış] USD / 1M token. Yeni model eklenirse buraya da eklenmeli. */
 const MODEL_FIYAT: Record<string, [number, number]> = {
   'claude-sonnet-4-6': [3, 15],
+  // Opus sınıfı (dilekçe v2 kart ve birleştirici) — liste fiyatı $/MTok, teyit edilmeli
+  'claude-opus-4-8': [5, 25],
+  'claude-opus-5-5': [5, 25],
   'claude-haiku-4-5-20251001': [1, 5],
   'claude-haiku-4-5': [1, 5],
 }

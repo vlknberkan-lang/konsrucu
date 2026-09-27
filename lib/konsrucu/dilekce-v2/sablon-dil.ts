@@ -57,6 +57,8 @@ const ALAN_OKUNUS: Record<string, string> = {
   asil_alacak: 'asıl alacak', islemis_faiz: 'işlemiş faiz', takip_cikisi: 'takip çıkışı', itiraz_edilen_tutar: 'itiraz edilen tutar',
   itiraz_kapsam_metni: 'itiraz kapsamı', son_tutanak_tarihi: 'son tutanak tarihi', cevap_tarihi: 'cevap dilekçesinin tarihi',
   hasar_dosya_no: 'hasar dosya no', faiz_turu_metni: 'faiz türü', takip_tarihi: 'takip tarihi', tensip_tarihi: 'tensip tarihi',
+  // S36 (composer.ts, iskelet.ts): aşama 2 künye ve talep alanları
+  dava_degeri: 'dava değeri', dava_degeri_aciklama: 'dava değeri açıklaması', hedef_belge: 'hedef belge',
 }
 export const yerTutucu = (ad: string) => `⟨${ALAN_OKUNUS[ad] ?? ad.replace(/_/g, ' ')}⟩`
 /** Metinde yapay zekâ yuvasının yerini tutan işaret (composer değiştirir; dışarı çıkmaz). */
