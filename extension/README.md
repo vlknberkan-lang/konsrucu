@@ -38,7 +38,14 @@ cd extension && zip -r ../uyap-eklenti-store-v2.0.0.zip . -x '*.bak' -x '*/.*' -
 Bu zip'i Web Store Developer Dashboard'a yükle. Yayın rehberi: `docs/eklenti-store-yayin.md`.
 
 ## Sürüm
-- **2.0.0** — kişisel anahtar, anlık senkron (iş kuyruğu + nabız) ve kopilot faizi (S14, S21, S22). **İzin değişikliği yok.**
+- **2.0.0** — kişisel anahtar, anlık senkron (iş kuyruğu + nabız), kopilot faizi ve **dava keşfi** (S14, S21, S22, S28). **İzin değişikliği yok.**
+  - **Dava keşfi (S28, salt-okuma):** hukuk dava dosyaları birim türüyle taranır (keşif 2026-09-27: `search_phrase_detayli`
+    `birimTuru2` ile esas/birim istemeden döner; kodlar 0920 Asliye Hukuk, 0902 Asliye Ticaret, 0912 Tüketici, 0904 Sulh Hukuk,
+    0925 İcra Hukuk). `dosyaAyrintiBilgileri_brd` → `ilgiliDosyaListesiStr` (icra + arabuluculuk no), `davaTurleriStr`,
+    `durusmaTarihiStr`, `onIncelemTarihiStr` (UYAP yazımı); taraflardan yalnız ad + rol. Ham veri `/api/uyap/dava`'ya gider;
+    eşleştirme sunucuda, bağı avukat onay kartıyla kurar (dava no / arabuluculuk no elle girilmez). Programdaki
+    "UYAP'ta davayı ara" düğmesi `DAVA_KESIF` işi açar; ayrıca günde bir kez tam tarama. Bağlanmış davanın evrakı icra evrak
+    hattıyla (aynı indirme ucu hukuk dosyasında da PDF döner) programdaki dosyaya iner. Bayrak: `ozellikler.hukuk` (UYAP_HUKUK).
   - **Anahtar (S14):** kişiye bağlı `kr2_…` anahtar; sunucu yalnız sha256 özetini saklar, iptal edilebilir, 90 günde dolar.
     İşlemler kişinin adıyla kaydedilir. Şerit, geçersiz ya da 14 günden kısa süresi kalan anahtarı uyarır (`/api/uyap/kimlik`).
     Eski şirket anahtarı eski uçlarda çalışır; yeni uçlar (`/api/uyap/is/*`) yalnız kişisel anahtarı kabul eder.
