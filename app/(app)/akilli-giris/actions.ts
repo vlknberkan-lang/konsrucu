@@ -1121,6 +1121,11 @@ export async function emsalSil(emsalId: string): Promise<{ ok: boolean; error?: 
 
 /** Dava dilekçesi taslağı üret: dosya verisi + faiz (takip çıkışı) + arabuluculuk + AI olay anlatımı → UretilenCikti TASLAK. */
 export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error?: string; metin?: string; ciktiId?: string }> {
+  // Eski hat kapalı (denetim B05–B09, B18, B19): sabit olgu/atıf basıyordu. Dilekçeler Dilekçe Masası'ndan üretilir.
+  // Yalnız bilinçli geri açma için: ESKI_DILEKCE_HATTI=acik
+  if (process.env.ESKI_DILEKCE_HATTI !== 'acik') {
+    return { ok: false, error: "Bu eski üretim hattı kapatıldı. Dilekçeleri Dilekçe Masası'ndan hazırlayın." }
+  }
   const { dbUser, izinli } = await ctx()
   const dosya = await prisma.rucuDosyasi.findUnique({
     where: { id: dosyaId },
@@ -1234,8 +1239,10 @@ export async function dilekceUret(dosyaId: string): Promise<{ ok: boolean; error
 /** Dilekçe taslağını (elle düzenlenmiş) kaydet + durum güncelle (TASLAK/IMZAYA_GIDEN/GONDERILDI). */
 export async function dilekceKaydet(ciktiId: string, icerik: string, durum?: string): Promise<{ ok: boolean; error?: string }> {
   const { izinli } = await ctx()
-  const c = await prisma.uretilenCikti.findUnique({ where: { id: ciktiId }, select: { dosya: { select: { id: true, musteriId: true } } } })
+  const c = await prisma.uretilenCikti.findUnique({ where: { id: ciktiId }, select: { durum: true, dosya: { select: { id: true, musteriId: true } } } })
   if (!c || !izinli.includes(c.dosya.musteriId)) return { ok: false, error: 'Çıktı bulunamadı veya yetkiniz yok' }
+  // Mahkemeye gönderilmiş dilekçe kayıt olarak korunur; üzerine yazılmaz (denetim B27).
+  if (c.durum === 'GONDERILDI') return { ok: false, error: 'Gönderildi olarak işaretlenmiş dilekçe değiştirilemez.' }
   const gecerli = ['TASLAK', 'IMZAYA_GIDEN', 'GONDERILDI'].includes(durum ?? '') ? durum : undefined
   await prisma.uretilenCikti.update({ where: { id: ciktiId }, data: { icerik: icerik.slice(0, 100000), durum: gecerli } })
   revalidatePath(`/akilli-giris/${c.dosya.id}`)

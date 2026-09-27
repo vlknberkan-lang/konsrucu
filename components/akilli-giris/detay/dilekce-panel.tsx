@@ -2,13 +2,15 @@
 
 /**
  * KonsRücü — Dava Dilekçesi paneli (Dava sekmesi).
- * "Dilekçe Üret" → AI olay anlatımı + tür şablonu + faiz/deliller → düzenlenebilir metin →
- * UYAP'a kopyala / kaydet / durum (Taslak→İmzaya→Gönderildi). Kaynak: UretilenCikti (DILEKCE).
+ * Eski "Dilekçe Üret" hattı kapatıldı (denetim B05–B09): yeni taslaklar Dilekçe Masası'nda üretilir.
+ * Burada yalnız daha önce üretilmiş taslak görüntülenir / kopyalanır / Word'e aktarılır / kaydedilir.
+ * Kaynak: UretilenCikti (DILEKCE).
  */
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, Loader2, Copy, Check, Save, Sparkles, FileDown } from 'lucide-react'
-import { dilekceUret, dilekceKaydet } from '@/app/(app)/akilli-giris/actions'
+import Link from 'next/link'
+import { FileText, Loader2, Copy, Check, Save, FileDown, ArrowRight } from 'lucide-react'
+import { dilekceKaydet } from '@/app/(app)/akilli-giris/actions'
 
 export type DilekceCikti = { id: string; icerik: string | null; durum: string | null }
 
@@ -25,14 +27,6 @@ export function DilekcePanel({ dosyaId, cikti }: { dosyaId: string; cikti: Dilek
   const [kayitOk, setKayitOk] = useState(false)
   const [wordPending, setWordPending] = useState(false)
 
-  function uret() {
-    setErr(null)
-    start(async () => {
-      const r = await dilekceUret(dosyaId)
-      if (r.ok && r.metin) { setMetin(r.metin); setCiktiId(r.ciktiId ?? null); setDurum('TASLAK'); router.refresh() }
-      else setErr(r.error ?? 'Üretilemedi')
-    })
-  }
   async function kopyala() {
     try { await navigator.clipboard.writeText(metin); setKopyalandi(true); setTimeout(() => setKopyalandi(false), 2000) } catch { setErr('Kopyalanamadı') }
   }
@@ -70,9 +64,9 @@ export function DilekcePanel({ dosyaId, cikti }: { dosyaId: string; cikti: Dilek
         </div>
         <div className="flex items-center gap-2">
           {metin && <span className="rounded-full bg-surface-muted px-2.5 py-1 text-[10.5px] font-semibold text-muted-foreground">{DURUM_ET[durum] ?? durum}</span>}
-          <button type="button" onClick={uret} disabled={pending} className="inline-flex items-center gap-1.5 rounded-[10px] bg-kr px-3.5 py-2 text-[13px] font-semibold text-kr-foreground transition hover:bg-kr/90 disabled:opacity-60">
-            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} {metin ? 'Yeniden üret' : 'Dilekçe Üret'}
-          </button>
+          <Link href={`/dilekceler?dosya=${dosyaId}`} className="inline-flex items-center gap-1.5 rounded-[10px] bg-kr px-3.5 py-2 text-[13px] font-semibold text-kr-foreground transition hover:bg-kr/90">
+            Dilekçe Masası&apos;nda hazırla <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </div>
       <div className="p-5">
@@ -80,7 +74,7 @@ export function DilekcePanel({ dosyaId, cikti }: { dosyaId: string; cikti: Dilek
           <div className="flex flex-col items-center gap-2 py-6 text-center">
             <FileText className="h-8 w-8 text-muted-foreground/50" />
             <p className="max-w-[56ch] text-[12.5px] leading-[1.55] text-muted-foreground">
-              Dosyadaki <b className="text-foreground">olay bağlamı</b>, borçlular, faiz hesabı (takip çıkışı), arabuluculuk ve deliller kullanılarak <b className="text-foreground">itirazın iptali dava dilekçesi taslağı</b> üretilir. Olay türüne göre (alkol · olay yeri terk · çarpıp-kaçma) <b className="text-foreground">mahkeme, argüman ve Yargıtay kararları</b> otomatik seçilir; <span className="font-mono">⟨…⟩</span> alanlarını siz tamamlarsınız.
+              Dava, cevap, beyan ve bilirkişi itirazı taslakları artık <b className="text-foreground">Dilekçe Masası</b>&apos;nda, dosyanın evrakı ve geçmişi yan yana görülerek hazırlanır. Taslak avukat kontrolü içindir; <span className="font-mono">⟨…⟩</span> alanlarını siz tamamlarsınız.
             </p>
           </div>
         ) : (
@@ -100,7 +94,7 @@ export function DilekcePanel({ dosyaId, cikti }: { dosyaId: string; cikti: Dilek
               </select>
               {err && <span className="text-[12px] text-danger">{err}</span>}
             </div>
-            <p className="mt-2 text-[11px] leading-[1.5] text-muted-foreground"><span className="font-mono">⟨…⟩</span> içindeki alanlar dosyada eksik — UYAP'a yapıştırmadan önce tamamlayın. Hukuki sebep, Yargıtay kararları ve talep <b className="text-foreground">şablondandır</b>; olay anlatımını AI yazar, kontrol edip düzenleyin.</p>
+            <p className="mt-2 text-[11px] leading-[1.5] text-muted-foreground">Bu taslak kapatılan eski hatla üretildi. <b className="text-foreground">Mahkeme başlığı, yetki, taraflar, olgular ve atıflar hatalı olabilir</b>; kullanmadan önce satır satır kontrol edin ya da Dilekçe Masası&apos;nda yeniden hazırlayın.</p>
           </>
         )}
       </div>

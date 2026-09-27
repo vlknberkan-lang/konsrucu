@@ -22,17 +22,17 @@ export const dynamic = 'force-static'
 export const metadata = {
   title: 'KonsLaw — Avukatın UYAP Asistanı',
   description:
-    'İcra dosyalarını uçtan uca yöneten platform: AI belge çıkarımı, otomatik süre radarı (zamanaşımı/itiraz/haciz), UYAP senkron, kapasite panosu. Hiçbir dosya, hiçbir süre kaçmaz.',
+    'İcra dosyalarını uçtan uca yöneten platform: AI belge çıkarımı, kayıtlı tarihler için süre hatırlatmaları, UYAP senkron, kapasite panosu. Hukuki son gün avukat teyidiyle belirlenir.',
 }
 
 const MAIL = 'mailto:vberkanbiyikli@gmail.com?subject=KonsLaw%20demo%20talebi'
 
 const FEATURES = [
   { icon: Sparkles, t: 'AI Belge Çıkarımı', d: 'Tüm evraktan borçlu(lar), alacak tutarı, dayanak belgeler, yetkili icra ve eyleme dönük öneriler — kaynağı gösterilerek, saniyeler içinde.' },
-  { icon: CalendarClock, t: 'Otomatik Süre Radarı', d: 'Zamanaşımı, itiraz (İİK 62), haciz (İİK 78), satış (İİK 106) süreleri otomatik izlenir; yaklaşan süre görev olarak önünüze gelir.' },
+  { icon: CalendarClock, t: 'Süre Hatırlatmaları', d: 'Zamanaşımı ve haciz isteme gibi kayıtlı tarihler için görev ve hatırlatma üretir; yaklaşan iş önünüze gelir. Hukuki son gün avukat teyidiyle belirlenir.' },
   { icon: Gauge, t: 'Kapasite & Darboğaz', d: 'Portföy nerede yığılıyor, haftalık giriş/çıkış dengesi, en uzun bekleyen dosyalar — yönetim tek bakışta.' },
   { icon: Puzzle, t: 'UYAP Senkron', d: 'Chrome eklentisiyle Avukat Portalından durum, safahat, evrak ve masraf canlı akar. Salt-okuma; takip açma yalnız avukat onayıyla.' },
-  { icon: Scale, t: 'Dava, Dilekçe & Emsal', d: 'İtirazın iptali ve dava dilekçesi üreticisi, görevli mahkeme önerisiyle; talep-anında Yargıtay emsal karar.' },
+  { icon: Scale, t: 'Dilekçe Masası', d: 'Dosyanın evrakı ve geçmişi yan yana; dava, cevap, beyan ve bilirkişi itirazı için avukatın düzenleyeceği AI taslağı. Kaynağı olmayan atıf yazılmaz.' },
   { icon: Coins, t: 'Taksit · Masraf · Faiz', d: 'Dönemsel kanuni faiz hesabı, taksit planı + hatırlatma, makbuzdan otomatik masraf çıkarımı ve rapor.' },
 ]
 
@@ -108,8 +108,8 @@ export default function TanitimPage() {
               İcra dosyalarınız,<br /><span className="text-[#46d6e0]">uçtan uca</span> tek platformda
             </h1>
             <p className="mt-6 max-w-[50ch] text-[17.5px] leading-[1.6] text-slate-300">
-              Belgeyi AI okur ve dosyayı kurar; zamanaşımı–itiraz–haciz süreleri otomatik izlenir; portföyün nerede yığıldığı tek bakışta.
-              <b className="text-white"> Hiçbir dosya, hiçbir süre kaçmaz.</b>
+              Belgeyi AI okur ve dosyayı kurar; kayıtlı tarihler hatırlatılır, UYAP gelişmeleri dosyaya akar; portföyün nerede yığıldığı tek bakışta.
+              <b className="text-white"> Hukuki son gün avukat teyidiyle belirlenir.</b>
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <Link href="/kayit" className="lp-btn inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#2fcad4] to-[#1f9aa2] px-6 py-3.5 text-[15.5px] font-bold text-[#04222a] shadow-[0_12px_34px_rgba(47,202,212,0.32)]">
