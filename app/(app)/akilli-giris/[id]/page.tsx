@@ -43,6 +43,29 @@ import { GorevEkle } from '@/components/takip-gorevi/gorev-ekle'
 import { tenantKullanicilari } from '@/lib/konsrucu/db'
 import { tarihTR, saatTR, kalanGun } from '@/lib/konsrucu/format'
 import { toTRInput as sayiToTRInput } from '@/lib/konsrucu/sayi'
+// ana senaryo (v2) panelleri
+import { DosyaYolHaritasi } from '@/components/dosya/yol-haritasi/yol-haritasi'
+import { EYLEM_CAPA } from '@/components/dosya/yol-haritasi/eylem'
+import { yolHaritasiYukle } from '@/lib/konsrucu/yol-haritasi/yukle'
+import { UyapBaglanti } from '@/components/senkron/uyap-baglanti'
+import { IcraNoSenkron } from '@/components/senkron/icra-no-senkron'
+import { TakipTalebiPaneli } from '@/components/takip-talebi/takip-talebi-paneli'
+import { ExcelOnerileri } from '@/components/takip-talebi/excel-onerileri'
+import { oneriPaneliYukle } from '@/lib/konsrucu/oneri/yukle'
+import { Bulduklarimiz } from '@/components/dosya/oneri/bulduklarimiz'
+import { RucuSebebiSec } from '@/components/dosya/oneri/rucu-sebebi-sec'
+import { EksikEvrak } from '@/components/dosya/oneri/eksik-evrak'
+import { YetkiliIcraSec } from '@/components/dosya/oneri/yetkili-icra-sec'
+import { olayPaneliYukle } from '@/lib/konsrucu/eksen/yukle'
+import { TebligItirazPaneli } from '@/components/dosya/olay/teblig-itiraz-paneli'
+import { SurelerPaneli } from '@/components/sure/sureler-paneli'
+import { arabuluculukPaneli } from '@/lib/konsrucu/arabuluculuk/veri'
+import { ArabuluculukBolumu } from '@/components/arabuluculuk/arabuluculuk-bolumu'
+import { davaPaneli } from '@/lib/konsrucu/dava/veri'
+import { DavaBolumu } from '@/components/dava/dava-bolumu'
+import { dilekceV2Acik } from '@/lib/konsrucu/dilekce-v2/bayrak'
+import { dilekceV2Ozeti } from '@/lib/konsrucu/dilekce-v2/kart-veri'
+import { DilekceV2Giris } from '@/components/dilekce-v2/dilekce-v2-giris'
 
 const fmtTRY = (n: number | null | undefined) =>
   n != null && Number.isFinite(Number(n)) ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)) + ' ₺' : null
@@ -83,7 +106,7 @@ function Kv({ label, value, mono, strong }: { label: string; value: React.ReactN
   )
 }
 
-export default async function DosyaDetayPage({ params, searchParams }: { params: { id: string }; searchParams: { asama?: string; olay?: string; belge?: string } }) {
+export default async function DosyaDetayPage({ params, searchParams }: { params: { id: string }; searchParams: { asama?: string; olay?: string; belge?: string; prova?: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -176,6 +199,27 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const emsaller = aktifSekme === 'dava'
     ? await prisma.emsalKarar.findMany({ where: { dosyaId: dosya.id }, orderBy: { createdAt: 'asc' }, select: { id: true, yargitayId: true, daire: true, esasNo: true, kararNo: true, kararTarihi: true, alaka: true, secili: true, aramaKelime: true } })
     : []
+  // Ana senaryo panelleri (S13–S31, S28): yol haritası her sekmede; diğerleri yalnız kendi sekmesinde yüklenir
+  const avukatRol = dbUser.rol === 'ADMIN' || dbUser.rol === 'AVUKAT'
+  // Yol haritası eylemleri sekmeli sayfada doğru sekmeye + panele gitsin (çapa başka sekmedeyse ?asama= ile)
+  const CAPA_SEKME: Record<string, string> = {
+    'yh-bulduklarimiz': '?asama=oncesi', 'yh-eksik-evrak': '?asama=oncesi', 'yh-rucu-sebebi': '?asama=oncesi', 'yh-evrak': '?belge=hasar', 'yh-taksit': '?belge=taksit',
+    'yh-uyap': '?asama=icra', 'yh-takip': '?asama=icra', 'yh-teblig-itiraz': '?asama=icra', 'yh-onaylar': '?asama=icra', 'yh-hazirlik': '?asama=icra',
+    'yh-sureler': aktifSekme === 'dava' ? '?asama=dava' : '?asama=icra',
+    'yh-arabuluculuk': '?asama=arabuluculuk', 'yh-yol-secimi': '?asama=arabuluculuk', 'yh-muvekkil-onayi': '?asama=arabuluculuk',
+    'yh-dava': '?asama=dava', 'yh-dilekce': '?asama=dava', 'yh-yargilama': '?asama=dava', 'yh-sonuc': '?asama=dava',
+  }
+  const capaHedef = (c: string) => (c === 'yh-onarim' ? '/yonetim/veri-onarim' : c === 'yh-idari-yol' ? '#yh-idari-yol' : `/akilli-giris/${dosya.id}${CAPA_SEKME[c] ?? ''}#${['yh-teblig-itiraz', 'yh-onaylar'].includes(c) ? 'yh-teblig-itiraz' : ['yh-yol-secimi', 'yh-muvekkil-onayi'].includes(c) ? 'yh-arabuluculuk' : ['yh-dilekce', 'yh-yargilama', 'yh-sonuc'].includes(c) ? 'yh-dava' : c}`)
+  const eylemHrefleri = Object.fromEntries(Object.entries(EYLEM_CAPA).map(([h, c]) => [h, capaHedef(c)])) as Partial<Record<keyof typeof EYLEM_CAPA, string>>
+  const yazabilirRol = dbUser.rol !== 'GORUNTULEYEN'
+  const [yolHaritasi, oneriPanel, olayPanel, arabPanel, davaPanel, dilekceKartlar] = await Promise.all([
+    yolHaritasiYukle({ dosyaId: dosya.id, musteriId: dosya.musteriId, prova: searchParams.prova ?? null }).catch(() => null),
+    aktifSekme === 'oncesi' && !aktifBelge ? oneriPaneliYukle(dosya.id).catch(() => null) : null,
+    aktifSekme === 'icra' && !aktifBelge ? olayPaneliYukle(dosya.id, dosya.musteriId).catch(() => null) : null,
+    aktifSekme === 'arabuluculuk' && !aktifBelge ? arabuluculukPaneli(dosya.id, dosya.musteriId, dbUser).catch(() => null) : null,
+    aktifSekme === 'dava' && !aktifBelge ? davaPaneli(dosya.id, dosya.musteriId, dbUser).catch(() => null) : null,
+    aktifSekme === 'dava' && !aktifBelge && dilekceV2Acik(dbUser.rol) ? dilekceV2Ozeti(prisma, dosya.musteriId, dosya.id).catch(() => null) : null,
+  ])
 
   // Önemli Olay (borca itiraz) — arabuluculuk sekmesinde "başvuru hazırlığı + tamamla" paneli
   const acikOlaylar = dosya.onemliOlaylar
@@ -408,6 +452,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
           </div>
 
           <div className="flex flex-col items-end gap-3">
+            <UyapBaglanti />
             {g != null && (
               <div className={`inline-flex items-center gap-[9px] rounded-xl border p-[8px_13px] ${zaRisk ? 'border-danger/30 bg-danger-soft text-danger' : zaWarn ? 'border-warning/30 bg-warning-soft text-[hsl(var(--warning-fg))]' : 'border-border bg-surface-muted text-muted-foreground'}`}>
                 {zaRisk ? <AlertTriangle className="h-[17px] w-[17px]" /> : <Clock className="h-[17px] w-[17px]" />}
@@ -428,7 +473,11 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
         </div>
       </div>
 
+      {/* S20: Dosya Yol Haritası — Şimdi kartı, sonra listesi, 8 durak (program yönlendirir) */}
+      {yolHaritasi && <div className="mt-[14px]"><DosyaYolHaritasi gorunum={yolHaritasi} kullaniciRol={dbUser.rol} eylemHrefleri={eylemHrefleri} /></div>}
+
       {/* S06: AI idari yol önerisi (karar avukatta) · S07: yeniden çıkarımın farklı bulduğu değerler (ezmez, önerir) */}
+      <div id="yh-idari-yol" />
       <IdariYolOnerisi dosyaId={dosya.id} yol={dosya.yol} yolGuven={dosya.yolGuven} yolNeden={dosya.yolNeden} durum={dosya.durum} yetkili={idariYolOnaylayabilir(dbUser)} />
       <AiOneriler dosyaId={dosya.id} oneriler={onerileriOku(dosya.cikarimJson)} />
 
@@ -455,8 +504,24 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
         </section>
       ) : aktifSekme !== 'oncesi' ? (
         <>
+          {aktifSekme === 'icra' && (
+            <div className="mt-[14px] flex flex-col gap-4">
+              <div id="yh-uyap"><IcraNoSenkron dosyaId={dosya.id} icraDosyaNo={dosya.icraDosyaNo} icraDairesi={dosya.icraDairesi} yazabilir={yazabilirRol} /></div>
+              <div id="yh-takip"><TakipTalebiPaneli dosyaId={dosya.id} /></div>
+              {olayPanel && <div id="yh-teblig-itiraz"><TebligItirazPaneli panel={olayPanel} yetkili={avukatRol} tarihGirebilir={yazabilirRol} okuyabilir /></div>}
+              <div id="yh-sureler"><SurelerPaneli dosyaId={dosya.id} /></div>
+            </div>
+          )}
+          {aktifSekme === 'arabuluculuk' && arabPanel && <div id="yh-arabuluculuk" className="mt-[14px]"><ArabuluculukBolumu {...arabPanel} /></div>}
+          {aktifSekme === 'dava' && (
+            <div id="yh-dava" className="mt-[14px] flex flex-col gap-4">
+              {davaPanel && <DavaBolumu {...davaPanel} />}
+              {dilekceKartlar && <DilekceV2Giris dosyaId={dosya.id} kartlar={dilekceKartlar} />}
+              <div id="yh-sureler"><SurelerPaneli dosyaId={dosya.id} /></div>
+            </div>
+          )}
           {aktifSekme === 'arabuluculuk' && arabuluculukOlayProps && <ArabuluculukBaslat {...arabuluculukOlayProps} />}
-          {aktifSekme === 'icra' && icraHazirlikProps && <IcraHazirlik {...icraHazirlikProps} />}
+          {aktifSekme === 'icra' && icraHazirlikProps && <div id="yh-hazirlik"><IcraHazirlik {...icraHazirlikProps} /></div>}
           <AsamaPanel
             sekme={aktifSekme}
             dosyaId={dosya.id}
@@ -470,6 +535,15 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
         </>
       ) : (
         <>
+      {oneriPanel && (
+        <div className="mt-[14px] flex flex-col gap-4">
+          <ExcelOnerileri dosyaId={dosya.id} />
+          <Bulduklarimiz veri={oneriPanel.bulduklarimiz} />
+          <RucuSebebiSec veri={oneriPanel.rucuSebebi} />
+          <EksikEvrak veri={oneriPanel.eksikEvrak} />
+          <YetkiliIcraSec veri={oneriPanel.yetkiliIcra} />
+        </div>
+      )}
       {/* durum pipeline */}
       <div className="mt-[14px] flex items-center overflow-x-auto rounded-[14px] border border-border bg-surface p-[12px_18px]">
         {pipeline.map((label, i) => {
