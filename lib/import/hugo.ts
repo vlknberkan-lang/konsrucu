@@ -51,7 +51,39 @@ export type HugoDosya = {
     tahsilEdilen: string | null // ham: önceden tahsilat (bakiye = hasar×oran − tahsilat)
     tazminatOdeme: string | null // ham
     ham: Record<string, string> // ham hücre değerleri (denetim izi)
+    /**
+     * S27 · Ray takip Excel'inin icra (#15–#18) ve dava (#19–#30) sütunları. YALNIZ bu sütunlardan en az biri
+     * başlıkta varsa bulunur (Hugo/Zurich satırlarında anahtar hiç yoktur → eski kaynakJson değişmez).
+     * Bunlar ÖNERİDİR: dosyaya/davaya avukat onayıyla yazılır (06 §3.5; lib/konsrucu/dava/excel-dava.ts).
+     */
+    rayTakip?: { icra: RayTakipIcra | null; dava: RayTakipDava | null }
   }
+}
+
+/** Ray takip Excel'i #15–#18 (icra). Tarihler "yyyy-aa-gg". */
+export type RayTakipIcra = {
+  icraMudurlugu: string | null // #15
+  icraEsas: string | null // #16
+  takipTarihi: string | null // #17
+  takipCikisi: number | null // #18 (TakipTalebi.toplam önerisi)
+  takipCikisiHam: string | null
+}
+
+/** Ray takip Excel'i #19–#30 (dava). Serbest metinli hücreler (#27, #28, #30) ham tutulur; ayrıştırma excel-dava.ts'te. */
+export type RayTakipDava = {
+  sonDurum: string | null // #19 — yazılmaz; karşılaştırma için saklanır
+  mahkeme: string | null // #20
+  esas: string | null // #21
+  davali: string | null // #22 (kişisel veri; ekranda maskeli)
+  ustDosyaNo: string | null // #23
+  davaSonDurum: string | null // #24 — yazılmaz; karşılaştırma için saklanır
+  acilisTarihi: string | null // #25
+  durusma: { tarih: string; saat: string | null } | null // #26
+  durusmaHam: string | null
+  ihtiyatiHaciz: string | null // #27
+  dekont: string | null // #28
+  delilDilekcesi: string | null // #29
+  muzekkereCevap: string | null // #30
 }
 
 export type SatirHatasi = { satir: number; sebep: string }
@@ -102,6 +134,30 @@ type AlanKey =
   | 'tazminatOdeme'
   | 'hasarTutari'
   | 'tahsilEdilen'
+  // S27 · Ray takip Excel'i icra (#15–#18) ve dava (#19–#30) sütunları → kaynak.rayTakip
+  | 'icraMudurlugu'
+  | 'icraEsas'
+  | 'takipTarihiRay'
+  | 'takipCikisi'
+  | 'sonDurum'
+  | 'mahkeme'
+  | 'esas'
+  | 'davali'
+  | 'ustDosyaNo'
+  | 'davaSonDurum'
+  | 'davaAcilisTarihi'
+  | 'durusmaTarihi'
+  | 'ihtiyatiHaciz'
+  | 'dekont'
+  | 'delilDilekcesi'
+  | 'muzekkereCevap'
+
+/** Ray takip Excel'inin icra ve dava sütunları (kaynak.rayTakip'e gider; RucuDosyasi'na doğrudan yazılmaz). */
+const RAY_ICRA_ALANLARI: AlanKey[] = ['icraMudurlugu', 'icraEsas', 'takipTarihiRay', 'takipCikisi']
+const RAY_DAVA_ALANLARI: AlanKey[] = [
+  'sonDurum', 'mahkeme', 'esas', 'davali', 'ustDosyaNo', 'davaSonDurum', 'davaAcilisTarihi',
+  'durusmaTarihi', 'ihtiyatiHaciz', 'dekont', 'delilDilekcesi', 'muzekkereCevap',
+]
 
 /** Başlık adı (kanonik) → alan. Sıra değişebilir; eşleme ada göredir. */
 const BASLIK_ESLEME: Record<string, AlanKey> = {
@@ -139,6 +195,28 @@ const BASLIK_ESLEME: Record<string, AlanKey> = {
   hasaryeri: 'kazaYeri', // "Hasar Yeri" = yetkili icra yeri
   tazminatodemetarihi: 'tazminatOdeme', // "Tazminat Ödeme Tarihi" → faiz başlangıcı
   atananburo: 'kadroluAvukat', // "Atanan Büro" → sorumlu avukat etiketi
+
+  // ── S27 · Ray takip Excel'i (30 sütun): icra #15–#18, dava #19–#30 (06 §3.5) ──
+  icramudurlugu: 'icraMudurlugu', // "İCRA MÜDÜRLÜĞÜ"
+  icradairesi: 'icraMudurlugu',
+  icraesas: 'icraEsas', // "İCRA ESAS"
+  icraesasno: 'icraEsas',
+  takiptarihi: 'takipTarihiRay', // "TAKİP TARİHİ"
+  takipcikisi: 'takipCikisi', // "TAKİP ÇIKIŞI"
+  sondurum: 'sonDurum', // "SON DURUM" (#19: yazılmaz, karşılaştırma)
+  mahkeme: 'mahkeme', // "MAHKEME"
+  esas: 'esas', // "ESAS" (mahkeme esas no)
+  davali: 'davali', // "DAVALI"
+  davalilar: 'davali',
+  ustdosyano: 'ustDosyaNo', // "ÜST DOSYA NO" (anlamı açık karar 12)
+  davasondurum: 'davaSonDurum', // "DAVA SON DURUM" (#24: yazılmaz, karşılaştırma)
+  davaacilistarihi: 'davaAcilisTarihi', // "DAVA AÇILIŞ TARİHİ"
+  durusmatarihi: 'durusmaTarihi', // "DURUŞMA TARİHİ" (tarih+saat ya da metin)
+  ihtiyatihaciz: 'ihtiyatiHaciz', // "İHTİYATİ HACİZ"
+  dekont: 'dekont', // "DEKONT" (iş emri no)
+  delildilekcesi: 'delilDilekcesi', // "DELİL DİLEKÇESİ"
+  muzekkerecevap: 'muzekkereCevap', // "MÜZEKKERE CEVAP"
+  muzekkerecevabi: 'muzekkereCevap',
 }
 
 const TR_HARF = /[çğıİöşüÇĞÖŞÜI]/g
@@ -181,7 +259,35 @@ function isoTarih(d: Date): string {
 }
 
 /** Tarih olan alanlar — ham denetim dökümünde seri no yerine yyyy-aa-gg yazmak için. */
-const TARIH_ALANLARI = new Set<AlanKey>(['hasarTarihi', 'zamanasimi', 'atanmaTarihi', 'bitisTarihi', 'tazminatOdeme'])
+const TARIH_ALANLARI = new Set<AlanKey>(['hasarTarihi', 'zamanasimi', 'atanmaTarihi', 'bitisTarihi', 'tazminatOdeme', 'takipTarihiRay', 'davaAcilisTarihi'])
+
+/**
+ * S27 · Tarih + saat hücresi (Ray "DURUŞMA TARİHİ"): Excel seri no kesirli gelebilir (46421.4097 → gün + 09:50),
+ * ya da "gg.aa.yyyy [SS:DD]" metni. Tarih değilse ("henüz verilmedi") → null; ham metin ayrıca saklanır.
+ * Excel saati yerel (TR) duvar saatidir: saat bilgisi "SS:DD" metni olarak döner, saat dilimine çevrilmez.
+ */
+export function tarihSaatTR(ham: unknown): { tarih: string; saat: string | null } | null {
+  if (ham == null || ham === '') return null
+  let seri: number | null = null
+  if (typeof ham === 'number') seri = ham
+  else if (/^\d{4,6}(\.\d+)?$/.test(String(ham).trim())) seri = Number(String(ham).trim())
+  if (seri != null) {
+    if (!(seri > 0 && seri < 100000)) return null
+    const gun = Math.floor(seri)
+    const dk = Math.round((seri - gun) * 1440)
+    const d = new Date(Math.round((gun - 25569) * 86400 * 1000))
+    if (Number.isNaN(d.getTime())) return null
+    const saat = dk > 0 && dk < 1440 ? `${String(Math.floor(dk / 60)).padStart(2, '0')}:${String(dk % 60).padStart(2, '0')}` : null
+    return { tarih: isoTarih(d), saat }
+  }
+  const s = String(ham).trim()
+  const m = s.match(/^(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4})(?:\s+(\d{1,2})[:.](\d{2}))?$/)
+  if (!m) return null
+  const d = tarihTR(m[1])
+  if (!d) return null
+  const saat = m[2] != null && Number(m[2]) < 24 && Number(m[3]) < 60 ? `${m[2].padStart(2, '0')}:${m[3]}` : null
+  return { tarih: isoTarih(d), saat }
+}
 
 /** Aşırı/bozuk değeri ele; Decimal(14,2) sınırı içinde, 2 ondalığa yuvarla. */
 function sinirla(n: number): number | null {
@@ -368,6 +474,47 @@ function baslikBul(matris: unknown[][]): { idx: number; harita: Record<number, A
   return { idx, harita: enIyiHarita, say: enIyi }
 }
 
+/**
+ * S27 · Ray takip Excel'i icra (#15–#18) ve dava (#19–#30) hücreleri → kaynak.rayTakip. Değer uydurulmaz:
+ * tarih/para ayrıştırılamazsa alan null kalır, ham metin (kaynak.ham ve *Ham alanları) korunur.
+ * Para için mevcut paraTR kullanılır (tutar ayrıştırıcısı DEĞİŞMEDİ).
+ */
+function rayTakipKur(hucre: (k: AlanKey) => unknown, al: (k: AlanKey) => string): { icra: RayTakipIcra | null; dava: RayTakipDava | null } {
+  const tarihIso = (k: AlanKey): string | null => {
+    const d = tarihTR(hucre(k))
+    return d ? isoTarih(d) : null
+  }
+  const icraDolu = RAY_ICRA_ALANLARI.some((k) => al(k))
+  const davaDolu = RAY_DAVA_ALANLARI.some((k) => al(k))
+  const icra: RayTakipIcra | null = icraDolu
+    ? {
+        icraMudurlugu: metin(al('icraMudurlugu')),
+        icraEsas: metin(al('icraEsas')),
+        takipTarihi: tarihIso('takipTarihiRay'),
+        takipCikisi: paraTR(hucre('takipCikisi')),
+        takipCikisiHam: metin(al('takipCikisi')),
+      }
+    : null
+  const dava: RayTakipDava | null = davaDolu
+    ? {
+        sonDurum: metin(al('sonDurum')),
+        mahkeme: metin(al('mahkeme')),
+        esas: metin(al('esas')),
+        davali: metin(al('davali')),
+        ustDosyaNo: metin(al('ustDosyaNo')),
+        davaSonDurum: metin(al('davaSonDurum')),
+        acilisTarihi: tarihIso('davaAcilisTarihi'),
+        durusma: tarihSaatTR(hucre('durusmaTarihi')),
+        durusmaHam: metin(al('durusmaTarihi')),
+        ihtiyatiHaciz: metin(al('ihtiyatiHaciz')),
+        dekont: metin(al('dekont')),
+        delilDilekcesi: metin(al('delilDilekcesi')),
+        muzekkereCevap: metin(al('muzekkereCevap')),
+      }
+    : null
+  return { icra, dava }
+}
+
 /** Hugo Excel tamponunu (.xls/.xlsx) çözümle → normalize satırlar + hatalar. */
 export function hugoCozumle(buf: Buffer | ArrayBuffer | Uint8Array): HugoParseSonuc {
   const bos: HugoParseSonuc = { satirlar: [], hatalar: [], baslikSatiri: null, eslesenKolon: 0 }
@@ -411,6 +558,8 @@ export function hugoCozumle(buf: Buffer | ArrayBuffer | Uint8Array): HugoParseSo
   // Zurich'e özgü kolonlar görüldüyse kaynağı 'zurich' damgala (denetim izi + downstream ipucu).
   const zurichFormat =
     alanKol.has('brans') || alanKol.has('sigortaliUnvan') || alanKol.has('policeNo') || alanKol.has('tahsilEdilen')
+  // S27 · Ray takip Excel'i (30 sütun) icra/dava sütunlarından en az biri başlıkta var mı?
+  const rayTakipVar = [...RAY_ICRA_ALANLARI, ...RAY_DAVA_ALANLARI].some((k) => alanKol.has(k))
 
   const satirlar: HugoDosya[] = []
   const hatalar: SatirHatasi[] = []
@@ -447,6 +596,9 @@ export function hugoCozumle(buf: Buffer | ArrayBuffer | Uint8Array): HugoParseSo
       if (TARIH_ALANLARI.has(k)) {
         const d = tarihTR(hucre(k))
         v = d ? isoTarih(d) : ''
+      } else if (k === 'durusmaTarihi') {
+        const ts = tarihSaatTR(hucre(k))
+        v = ts ? `${ts.tarih}${ts.saat ? ` ${ts.saat}` : ''}` : al(k)
       } else {
         v = al(k)
       }
@@ -487,6 +639,7 @@ export function hugoCozumle(buf: Buffer | ArrayBuffer | Uint8Array): HugoParseSo
         tahsilEdilen: metin(al('tahsilEdilen')),
         tazminatOdeme: tazminatOdeme ? isoTarih(tazminatOdeme) : null,
         ham,
+        ...(rayTakipVar ? { rayTakip: rayTakipKur(hucre, al) } : {}),
       },
     })
   }
