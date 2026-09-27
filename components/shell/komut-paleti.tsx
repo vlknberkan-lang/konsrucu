@@ -8,13 +8,15 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Loader2, FileText, CornerDownLeft, Sunrise, CalendarDays, ListTodo, AlertTriangle } from 'lucide-react'
+import { Search, Loader2, FileText, CornerDownLeft, Sunrise, CalendarDays, ListTodo, AlertTriangle, Scale, Timer } from 'lucide-react'
 
 type Sonuc = { id: string; hukukNo: string | null; hasarNo: string | null; icraNo: string | null; borclu: string | null; durum: string }
 
 const HIZLI = [
   { href: '/dilekceler', label: 'Dilekçe masası', Icon: FileText },
-  { href: '/bugun', label: 'Bugün panosu', Icon: Sunrise },
+  { href: '/bugun', label: 'Bugün masası', Icon: Sunrise },
+  { href: '/davalar', label: 'Davalar', Icon: Scale },
+  { href: '/sureler', label: 'Süreler', Icon: Timer },
   { href: '/takvim', label: 'Takvim', Icon: CalendarDays },
   { href: '/gorevler', label: 'Görevler', Icon: ListTodo },
   { href: '/onemli-olaylar', label: 'Önemli Olaylar', Icon: AlertTriangle },

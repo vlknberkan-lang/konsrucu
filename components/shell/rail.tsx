@@ -7,11 +7,12 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LifeBuoy } from 'lucide-react'
-import { RAIL_NAV, type NavCounts } from '@/lib/konsrucu/nav'
+import { RAIL_NAV, aktifNav, navGorunur, type NavCounts } from '@/lib/konsrucu/nav'
 import { KonsRucuMark } from '@/components/brand/konsrucu-mark'
 
-export function Rail({ userInit, counts }: { userInit: string; counts?: NavCounts }) {
+export function Rail({ userInit, counts, rol }: { userInit: string; counts?: NavCounts; rol?: string }) {
   const pathname = usePathname()
+  const aktifId = aktifNav(pathname)?.id
   return (
     <aside className="relative flex flex-col items-center gap-1.5 bg-[#0a1628] py-4 after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-white/[.06]">
       <Link href="/atanan-dosyalar" className="mb-2.5 grid h-[42px] w-[42px] place-items-center" aria-label="KonsRücü">
@@ -19,8 +20,8 @@ export function Rail({ userInit, counts }: { userInit: string; counts?: NavCount
       </Link>
 
       <div className="flex w-full flex-1 flex-col items-center gap-1 py-1">
-        {RAIL_NAV.map((n) => {
-          const active = pathname.startsWith(n.href)
+        {RAIL_NAV.filter((n) => navGorunur(n, rol)).map((n) => {
+          const active = n.id === aktifId
           const Icon = n.icon
           const rozet = n.id === 'onemli' ? counts?.onemli ?? 0 : n.id === 'gorevler' ? counts?.gorevler ?? 0 : 0
           const rozetTitle = n.id === 'gorevler' ? `${rozet} açık görev` : `${rozet} açık önemli olay`
@@ -29,6 +30,8 @@ export function Rail({ userInit, counts }: { userInit: string; counts?: NavCount
               key={n.id}
               href={n.ready ? n.href : '#'}
               aria-disabled={!n.ready}
+              aria-label={n.label}
+              aria-current={active ? 'page' : undefined}
               className={`group relative grid h-11 w-11 place-items-center rounded-[13px] transition ${
                 active
                   ? 'bg-kr text-white shadow-[0_4px_14px_hsl(var(--kr)/0.45)]'

@@ -8,6 +8,11 @@
  * Şık biçim: dondurulmuş başlık + otomatik filtre, aşamaya (DosyaDurum) göre renkli satır
  * zemini (design-system token'ları), "Kalan Gün" sütununda koşullu biçimlendirme (zaman aşımı).
  * Tenant-kapsamlı, auth zorunlu.
+ *
+ * S30 · `?rapor=ray` → Ray takip raporu (30 sütun): Ray takip Excel'inin başlıklarıyla birebir (docs 04 §4.2),
+ * her sütun programın kendi verisinden (lib/konsrucu/rapor-mail.ts · rayRaporTablo). Aynı süzgeçler geçerlidir.
+ * Teyitsiz hücreler sarı ve notlu; ayrıca "Teyit notları", "Sütun kaynakları" ve "Rapor bilgisi" sayfaları.
+ * Program raporu GÖNDERMEZ: avukat kontrol edip elle gönderir (B17). İndirme Aktivite'ye yazılır.
  */
 import ExcelJS from 'exceljs'
 import { Prisma, DosyaDurum } from '@prisma/client'
@@ -16,6 +21,7 @@ import { prisma } from '@/lib/prisma'
 import { ASAMA, asamaBilgi, asamaRenk, TON_RENK, ASAMA_DURUMLAR, ASAMA_META, ASAMA_SIRA, type AsamaKey } from '@/lib/konsrucu/asama'
 import { tarihTR, kalanGun as kalanGunIst, bugunIstBasi } from '@/lib/konsrucu/format'
 import { ZAMANASIMI_RADARI } from '@/lib/konsrucu/aktiflik'
+import { RAY_30_SUTUNLAR, rayRaporTablo, rayRaporMailTaslagi } from '@/lib/konsrucu/rapor-mail'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -29,7 +35,7 @@ const fmtTarih = (d: Date | null) => (d ? tarihTR(d) : '')
 const kalanGun = (d: Date | null) => (d ? kalanGunIst(d) : null)
 
 export async function GET(req: Request) {
-  const { aktifMusteriId } = await ctx()
+  const { dbUser, aktifMusteriId } = await ctx()
   if (!aktifMusteriId) {
     return new Response('Aktif müşteri seçili değil', { status: 400 })
   }
@@ -89,6 +95,18 @@ export async function GET(req: Request) {
           ? [{ atanmaTarihi: { sort: 'desc', nulls: 'last' } }]
           : [{ createdAt: 'desc' }]
 
+  // filtre özeti (meta satırı ve Ray raporu bilgisi aynı metni kullanır)
+  const filtreOzet = [
+    asama === 'all' ? 'Tüm aşamalar' : ASAMA_META[asama].label,
+    cekildi === 'evet' ? 'Çekilen' : cekildi === 'hayir' ? 'Bekleyen' : 'Tümü',
+    za === 'bos' ? 'zamanaşımı boş' : za === 'yakin' ? 'zamanaşımı ≤30g' : za === 'gecti' ? 'zamanaşımı geçti' : null,
+    q ? `arama: “${q}”` : null,
+  ].filter(Boolean).join(' · ')
+
+  if (url.searchParams.get('rapor') === 'ray') {
+    return rayRaporuYanit({ where, orderBy, musteriId: aktifMusteriId, kullanici: { id: dbUser.id, ad: dbUser.ad, rol: dbUser.rol }, filtreOzet })
+  }
+
   const rows = await prisma.rucuDosyasi.findMany({
     where,
     orderBy,
@@ -141,12 +159,6 @@ export async function GET(req: Request) {
   ws.getRow(1).height = 28
 
   // satır 2 — meta (tarih · filtre özeti · toplam)
-  const filtreOzet = [
-    asama === 'all' ? 'Tüm aşamalar' : ASAMA_META[asama].label,
-    cekildi === 'evet' ? 'Çekilen' : cekildi === 'hayir' ? 'Bekleyen' : 'Tümü',
-    za === 'bos' ? 'zamanaşımı boş' : za === 'yakin' ? 'zamanaşımı ≤30g' : za === 'gecti' ? 'zamanaşımı geçti' : null,
-    q ? `arama: “${q}”` : null,
-  ].filter(Boolean).join(' · ')
   ws.mergeCells(2, 1, 2, N)
   const m = ws.getCell(2, 1)
   m.value = `${tarihTR(new Date())} · ${filtreOzet} · ${rows.length} dosya`
@@ -267,6 +279,205 @@ export async function GET(req: Request) {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="Atanan-Dosyalar-${bugun}.xlsx"`,
+      'Cache-Control': 'no-store',
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// S30 · Ray takip raporu (30 sütun) — dışa aktarılmayan yardımcılar (route dosyası yalnız GET dışa aktarır)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+const TEYITSIZ_ZEMIN = TON_RENK.warning.fill // "onay bekliyor" rolü (amber) — teyitsiz hücre
+const ROL_ETIKET: Record<string, string> = { ADMIN: 'Yönetici', AVUKAT: 'Avukat', AVUKAT_YRD: 'Avukat yardımcısı', GORUNTULEYEN: 'Görüntüleyen' }
+const RAY_DAVA_ISLEMLERI = ['DEKONT_SUNUMU', 'DELIL_DILEKCESI', 'MUZEKKERE', 'MUZEKKERE_CEVABI']
+
+async function rayRaporuYanit(p: {
+  where: Prisma.RucuDosyasiWhereInput
+  orderBy: Prisma.RucuDosyasiOrderByWithRelationInput[]
+  musteriId: string
+  kullanici: { id: string; ad: string; rol: string }
+  filtreOzet: string
+}): Promise<Response> {
+  const simdi = new Date()
+  const bugunBas = bugunIstBasi(simdi)
+
+  const [musteri, dosyalar] = await Promise.all([
+    prisma.musteri.findUnique({ where: { id: p.musteriId }, select: { ad: true } }),
+    prisma.rucuDosyasi.findMany({
+      where: p.where,
+      orderBy: p.orderBy,
+      take: 10_000,
+      select: {
+        hukukDosyaNo: true, hasarDosyaNo: true, hasarTarihi: true, zamanasimi: true, rucuSebebi: true, rucuSebebiKod: true,
+        rucuOrani: true, rucuTutari: true, davaMiktari: true, kadroluAvukat: true, sozlesmeliAvukat: true, kaynakJson: true,
+        islemYapanYrd: true, icraDairesi: true, icraDosyaNo: true, takipTarihi: true,
+        durum: true, icraEksen: true, arabEksen: true, davaEksen: true, eksenJson: true, kapanisSebebi: true,
+        borclular: { select: { id: true, adUnvan: true }, orderBy: { id: 'asc' } },
+        takipTalepleri: {
+          where: { silindiAt: null, gecerli: true },
+          orderBy: { surum: 'desc' },
+          take: 1,
+          select: { toplam: true, gecerli: true, surum: true, onaylayanId: true, dondurulduAt: true, silindiAt: true },
+        },
+        asamalar: {
+          where: { tur: 'DAVA' },
+          orderBy: [{ sira: 'desc' }, { createdAt: 'desc' }],
+          take: 1,
+          select: { tur: true, birim: true, kimlikNo: true, baslangic: true, sonuc: true, durum: true },
+        },
+        etkinlikler: {
+          where: { tur: 'DURUSMA', durum: { not: 'IPTAL' }, baslar: { gte: bugunBas } },
+          orderBy: { baslar: 'asc' },
+          take: 10,
+          select: { tur: true, baslar: true, durum: true, kaynak: true, teyit: true },
+        },
+        ihtiyatiHacizler: {
+          where: { silindiAt: null },
+          select: { talepTarihi: true, sonuc: true, kararTarihi: true, teminatOrani: true, teminatTutari: true, excelHam: true, teyit: true, silindiAt: true },
+        },
+        davalar: {
+          where: { silindiAt: null },
+          select: {
+            rolumuz: true, derece: true, mahkemeTuru: true, mahkemeYer: true, mahkemeNo: true, esasYil: true, esasSira: true,
+            ustDosyaNoHam: true, acilisTarihi: true, sonrakiDurusma: true, onIncelemeTarihi: true, evre: true, durum: true,
+            hukum: true, kararTarihi: true, kararOnayAt: true, kesinlesmeTarihi: true, silindiAt: true, createdAt: true,
+            asama: { select: { detayJson: true } },
+            taraflar: { where: { silindiAt: null }, select: { rol: true, borcluId: true, adHam: true, teyit: true, silindiAt: true } },
+            islemler: {
+              where: { silindiAt: null, tur: { in: RAY_DAVA_ISLEMLERI } },
+              select: { tur: true, tarih: true, referansNo: true, excelHam: true, teyit: true, silindiAt: true },
+            },
+          },
+        },
+      },
+    }),
+  ])
+
+  const tablo = rayRaporTablo(
+    dosyalar.map((d) => ({ ...d, davalar: d.davalar.map(({ asama, ...v }) => ({ ...v, asamaDetayJson: asama?.detayJson ?? null })) })),
+    simdi,
+  )
+  const avukat = p.kullanici.rol === 'AVUKAT' || p.kullanici.rol === 'ADMIN'
+  const taslak = rayRaporMailTaslagi({
+    musteriAd: musteri?.ad ?? null,
+    hazirlayanAd: p.kullanici.ad,
+    bugun: simdi,
+    dosyaSayisi: tablo.ozet.dosya,
+    davaSayisi: tablo.ozet.davaAsamasinda,
+    teyitsizSatir: tablo.ozet.teyitsizSatir,
+  })
+
+  // ── 1. sayfa: Ray takip Excel'inin düzeni — 1. satır 30 başlık, veriler 2. satırdan ──
+  const wb = new ExcelJS.Workbook()
+  wb.creator = 'KonsRücu'
+  wb.created = simdi
+  const ws = wb.addWorksheet('Ray Takip', {
+    views: [{ state: 'frozen', ySplit: 1, xSplit: 1 }],
+    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  })
+  RAY_30_SUTUNLAR.forEach((s, i) => { ws.getColumn(i + 1).width = s.genislik })
+  const head = ws.getRow(1)
+  tablo.basliklar.forEach((b, i) => {
+    const c = head.getCell(i + 1)
+    c.value = b
+    c.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+    c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } }
+  })
+  head.height = 30
+
+  for (const satir of tablo.satirlar) {
+    const row = ws.addRow(satir.hucreler.map((h) => h.deger))
+    row.height = 18
+    satir.hucreler.forEach((h, i) => {
+      const c = row.getCell(i + 1)
+      const tur = RAY_30_SUTUNLAR[i].tur
+      c.font = { name: 'Calibri', size: 10, color: { argb: INK } }
+      c.alignment = { vertical: 'middle', horizontal: tur === 'para' ? 'right' : 'left', wrapText: tur === 'metin' }
+      c.border = { bottom: { style: 'thin', color: { argb: BORDER } }, right: { style: 'thin', color: { argb: BORDER } } }
+      if (tur === 'tarih' && h.deger instanceof Date) c.numFmt = 'dd.mm.yyyy'
+      if (tur === 'para' && typeof h.deger === 'number') c.numFmt = '#,##0.00'
+      if (h.teyitsiz) {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TEYITSIZ_ZEMIN } }
+        c.note = `TEYİTSİZ: ${h.teyitsiz}`
+      }
+    })
+    const ilk = row.getCell(1)
+    ilk.font = { name: 'Calibri', size: 10, bold: true, color: { argb: satir.teyitsiz ? TON_RENK.warning.ink : INK } }
+    if (satir.teyitsiz && !satir.hucreler[0].teyitsiz) {
+      ilk.note = `Bu satırda teyitsiz bilgi var:\n${satir.teyitNotlari.join('\n')}`
+    }
+  }
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: RAY_30_SUTUNLAR.length } }
+
+  // ── 2. sayfa: teyit notları (satır ve sütun bazında) ──
+  const notlar = wb.addWorksheet('Teyit Notları')
+  notlar.columns = [
+    { header: 'HUKUK DOSYA NO', width: 18 },
+    { header: 'Sütun', width: 30 },
+    { header: 'Neden teyitsiz', width: 70 },
+  ]
+  notlar.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+  notlar.getRow(1).eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } } })
+  for (const satir of tablo.satirlar) {
+    satir.hucreler.forEach((h, i) => {
+      if (h.teyitsiz) notlar.addRow([String(satir.hucreler[0].deger ?? ''), `#${RAY_30_SUTUNLAR[i].no} ${RAY_30_SUTUNLAR[i].baslik}`, h.teyitsiz])
+    })
+  }
+  if (notlar.rowCount === 1) notlar.addRow(['', '', 'Teyitsiz bilgi yok.'])
+
+  // ── 3. sayfa: sütun → kaynak alan (her sütun bir alandan ya da türetilmiş eksenden) ──
+  const kaynak = wb.addWorksheet('Sütun Kaynakları')
+  kaynak.columns = [{ header: '#', width: 5 }, { header: 'Sütun', width: 30 }, { header: 'Programdaki kaynak', width: 80 }]
+  kaynak.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+  kaynak.getRow(1).eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } } })
+  for (const s of RAY_30_SUTUNLAR) kaynak.addRow([s.no, s.baslik, s.kaynak])
+
+  // ── 4. sayfa: rapor bilgisi ve e-posta taslağı (gönderim elle, avukat onayıyla) ──
+  const bilgi = wb.addWorksheet('Rapor Bilgisi')
+  bilgi.getColumn(1).width = 26
+  bilgi.getColumn(2).width = 90
+  const bilgiSatirlari: [string, string][] = [
+    ['Müvekkil', musteri?.ad ?? '—'],
+    ['Rapor tarihi', tarihTR(simdi)],
+    ['Süzgeç', p.filtreOzet],
+    ['Dosya', String(tablo.ozet.dosya)],
+    ['Dava aşamasında', String(tablo.ozet.davaAsamasinda)],
+    ['Teyitsiz bilgi olan satır', String(tablo.ozet.teyitsizSatir)],
+    ['Hazırlayan', `${p.kullanici.ad} (${ROL_ETIKET[p.kullanici.rol] ?? p.kullanici.rol})`],
+    ['Gönderim', avukat
+      ? 'Program göndermez. Avukat kontrol eder ve kendi e-postasından elle gönderir.'
+      : 'TASLAK: göndermeden önce avukatın kontrolü gerekir. Program göndermez.'],
+    ['E-posta konusu (taslak)', taslak.konu],
+    ['E-posta metni (taslak)', taslak.govde],
+  ]
+  for (const [k, v] of bilgiSatirlari) {
+    const r = bilgi.addRow([k, v])
+    r.getCell(1).font = { bold: true, color: { argb: INK } }
+    r.getCell(2).alignment = { wrapText: true, vertical: 'top' }
+  }
+
+  // Denetim izi: kim, hangi kümeyi indirdi (kişisel veri yok; yalnız sayılar ve süzgeç)
+  try {
+    await prisma.aktivite.create({
+      data: {
+        kullaniciId: p.kullanici.id,
+        eylem: 'Ray raporu indirildi (30 sütun)',
+        detayJson: { musteriId: p.musteriId, dosya: tablo.ozet.dosya, davaAsamasinda: tablo.ozet.davaAsamasinda, teyitsizSatir: tablo.ozet.teyitsizSatir, suzgec: p.filtreOzet },
+      },
+    })
+  } catch {
+    // iz yazılamadı diye rapor engellenmez
+  }
+
+  const buf = await wb.xlsx.writeBuffer()
+  const gun = new Date(simdi.getTime() + 3 * 3_600_000).toISOString().slice(0, 10)
+  return new Response(buf, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="Ray-Raporu-30-Sutun-${gun}.xlsx"`,
       'Cache-Control': 'no-store',
     },
   })

@@ -8,15 +8,17 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronsUpDown, ShieldCheck, Zap } from 'lucide-react'
-import { RAIL_NAV, type ShellTenant, type NavCounts } from '@/lib/konsrucu/nav'
+import { RAIL_NAV, aktifNav, navGorunur, type ShellTenant, type NavCounts } from '@/lib/konsrucu/nav'
 import { KonsRucuWordmark } from '@/components/brand/konsrucu-mark'
 
 function GLabel({ children }: { children: React.ReactNode }) {
   return <div className="font-mono px-2.5 pb-1.5 pt-3 text-[9px] uppercase tracking-[0.14em] text-muted-foreground">{children}</div>
 }
 
-export function Sidebar({ tenant, counts, superadmin }: { tenant: ShellTenant | null; counts?: NavCounts; superadmin?: boolean }) {
+export function Sidebar({ tenant, counts, superadmin, rol }: { tenant: ShellTenant | null; counts?: NavCounts; superadmin?: boolean; rol?: string }) {
   const pathname = usePathname()
+  const aktifId = aktifNav(pathname)?.id
+  const yonetimAktif = pathname.startsWith('/yonetim') && !aktifId // Veri Onarımı kendi öğesinde yanar
   const item = 'flex w-full items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-[13.5px] font-medium transition'
   const off = 'text-foreground hover:bg-surface-muted'
   const on = 'bg-kr/10 font-semibold text-kr'
@@ -30,12 +32,12 @@ export function Sidebar({ tenant, counts, superadmin }: { tenant: ShellTenant | 
 
       <div className="flex-1 overflow-y-auto p-3">
         <GLabel>Menü</GLabel>
-        {RAIL_NAV.map((n) => {
+        {RAIL_NAV.filter((n) => navGorunur(n, rol)).map((n) => {
           const Icon = n.icon
-          const aktif = pathname.startsWith(n.href)
+          const aktif = n.id === aktifId
           const rozet = n.id === 'onemli' ? counts?.onemli ?? 0 : 0
           return (
-            <Link key={n.id} href={n.href} className={`${item} ${aktif ? on : off}`}>
+            <Link key={n.id} href={n.href} aria-current={aktif ? 'page' : undefined} className={`${item} ${aktif ? on : off} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50`}>
               <Icon className={`h-[17px] w-[17px] ${aktif ? 'text-kr' : 'text-muted-foreground'}`} />
               <span className="min-w-0 flex-1 truncate">{n.label}</span>
               {rozet > 0 && (
@@ -50,8 +52,8 @@ export function Sidebar({ tenant, counts, superadmin }: { tenant: ShellTenant | 
 
       <div className="border-t border-border-subtle p-3">
         {superadmin && (
-          <Link href="/yonetim" className={`${item} mb-1.5 ${pathname.startsWith('/yonetim') ? on : off}`}>
-            <ShieldCheck className={`h-[17px] w-[17px] ${pathname.startsWith('/yonetim') ? 'text-kr' : 'text-muted-foreground'}`} />
+          <Link href="/yonetim" className={`${item} mb-1.5 ${yonetimAktif ? on : off}`}>
+            <ShieldCheck className={`h-[17px] w-[17px] ${yonetimAktif ? 'text-kr' : 'text-muted-foreground'}`} />
             <span className="min-w-0 flex-1 truncate">Yönetim</span>
           </Link>
         )}
