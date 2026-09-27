@@ -8,12 +8,15 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
+import { usePathname } from 'next/navigation'
 import { Sun, Moon, Bell, LogOut, ChevronDown } from 'lucide-react'
 import { signOutAction } from '@/app/actions/auth'
 import type { ShellUser, NavCounts } from '@/lib/konsrucu/nav'
 import { KomutPaleti } from './komut-paleti'
 
 export function GlobalHeader({ crumb = 'Gelen Kutusu', user, counts }: { crumb?: string; user: ShellUser; counts?: NavCounts }) {
+  const pathname = usePathname()
+  const aktifBaslik = pathname.startsWith('/dilekceler') ? 'Dilekçe masası' : crumb
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -23,7 +26,7 @@ export function GlobalHeader({ crumb = 'Gelen Kutusu', user, counts }: { crumb?:
   return (
     <header className="flex flex-shrink-0 items-center gap-4 border-b border-border bg-surface/80 px-7 py-3.5 backdrop-blur-md">
       <div className="font-mono flex items-center gap-2 text-[11px] tracking-[0.04em] text-muted-foreground">
-        <span>KONSRÜCÜ</span><span>›</span><b className="font-semibold text-foreground">{crumb}</b>
+        <span>KONSRÜCÜ</span><span>›</span><b className="font-semibold text-foreground">{aktifBaslik}</b>
       </div>
 
       <KomutPaleti />

@@ -13,6 +13,7 @@ import { Search, Loader2, FileText, CornerDownLeft, Sunrise, CalendarDays, ListT
 type Sonuc = { id: string; hukukNo: string | null; hasarNo: string | null; icraNo: string | null; borclu: string | null; durum: string }
 
 const HIZLI = [
+  { href: '/dilekceler', label: 'Dilekçe masası', Icon: FileText },
   { href: '/bugun', label: 'Bugün panosu', Icon: Sunrise },
   { href: '/takvim', label: 'Takvim', Icon: CalendarDays },
   { href: '/gorevler', label: 'Görevler', Icon: ListTodo },
@@ -87,7 +88,7 @@ export function KomutPaleti() {
       ? sonuclar.map((s) => ({
           tip: 'dosya' as const,
           key: s.id,
-          href: `/akilli-giris/${s.id}`,
+          href: `/dilekceler?dosya=${s.id}`,
           ust: s.borclu ?? s.hukukNo ?? '—',
           alt: [s.hukukNo, s.icraNo].filter(Boolean).join(' · ') || s.hasarNo,
           Icon: FileText,
