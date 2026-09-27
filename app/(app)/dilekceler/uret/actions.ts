@@ -25,12 +25,14 @@ import { davaDegeriOnerisi } from '@/lib/konsrucu/dilekce-v2/kart'
 import { icerikOku, kartVerisiniYukle } from '@/lib/konsrucu/dilekce-v2/kart-veri'
 import { baglamKur, dilekceyiOlustur, type AiParagrafGirdi, type ComposerGirdisi } from '@/lib/konsrucu/dilekce-v2/composer'
 import { iskeletSec, type SablonKaydi } from '@/lib/konsrucu/dilekce-v2/iskelet'
+import { kaliteRaporu, type AtifOnayKaydi, type KaliteRaporu } from '@/lib/konsrucu/dilekce-v2/kapilar'
+import { kaliteGirdisiOlustur } from '@/lib/konsrucu/dilekce-v2/kalite-veri'
 import { COMPOSER_MODEL, COMPOSER_PROMPT_SURUM, composerUretici } from '@/lib/konsrucu/dilekce-v2/model'
 import { aciklamaParagraflariniUret } from '@/lib/konsrucu/dilekce-v2/paragraf'
 import { blokIsle } from '@/lib/konsrucu/dilekce-v2/sablon-dil'
-import { KART_TUR_ADI, KART_TURLERI, type KartTuru } from '@/lib/konsrucu/dilekce-v2/tipler'
+import { KART_TUR_ADI, KART_TURLERI, kartTuruMu, type KartTuru } from '@/lib/konsrucu/dilekce-v2/tipler'
 import { uslupIstemi, type UslupKuraliKaydi } from '@/lib/konsrucu/dilekce-v2/uslup'
-import type { KutuphaneKaydi } from '@/lib/konsrucu/mevzuat/atif'
+import { atifKapisi, type KutuphaneKaydi } from '@/lib/konsrucu/mevzuat/atif'
 
 type Hata = { ok: false; error: string }
 const uuid = z.string().uuid()
@@ -201,14 +203,35 @@ export async function dilekceV2TaslakKaydet(input: z.input<typeof kaydetGirdi>):
   if (hataMi(o)) return o
   const surum = await prisma.dilekceSurum.findFirst({
     where: { id: p.data.surumId, kaynak: 'AVUKAT', silindiAt: null, dosya: { musteriId: o.musteriId } },
-    select: { id: true, dosyaId: true, durum: true },
+    select: { id: true, dosyaId: true, durum: true, kartId: true, atifJson: true, cikti: { select: { tur: true } } },
   })
   if (!surum) return { ok: false, error: 'Dilekçe sürümü bulunamadı veya erişiminiz yok.' }
   if (surum.durum === 'GONDERILDI_UYAP') return { ok: false, error: 'UYAP\'a gönderildi olarak kilitlenmiş sürüm değiştirilemez.' }
+
+  // S37 (06 §7.4): "İmzaya hazır" yalnız kırmızı kalite kapısı yokken kabul edilir; rol kapısı yukarıda (oturumAl).
+  let kaliteJson: Prisma.InputJsonValue | undefined
+  if (p.data.imzayaHazir) {
+    const tur: KartTuru = kartTuruMu(surum.cikti.tur) ? surum.cikti.tur : 'DAVA'
+    const girdi = await kaliteGirdisiOlustur({
+      musteriId: o.musteriId, kullaniciId: o.kullaniciId, dosyaId: surum.dosyaId, kartId: surum.kartId, tur,
+      metin: p.data.icerik, atifJsonHam: surum.atifJson,
+    })
+    const rapor = kaliteRaporu(girdi)
+    kaliteJson = jsonVeri({ kirmizi: rapor.kirmizi, sari: rapor.sari, kontrolAt: new Date().toISOString() })
+    if (!rapor.imzayaHazirOlabilir) {
+      const ilkler = rapor.kirmizi.slice(0, 3).map((b) => b.mesaj)
+      const kalan = rapor.kirmizi.length - ilkler.length
+      return { ok: false, error: `İmzaya hazır kilitli: ${ilkler.join(' ')}${kalan > 0 ? ` (+${kalan} bulgu daha)` : ''}` }
+    }
+  }
+
   try {
     const r = await prisma.dilekceSurum.updateMany({
       where: { id: surum.id, icerik: p.data.beklenenIcerik, durum: { not: 'GONDERILDI_UYAP' } },
-      data: { icerik: p.data.icerik, ...(p.data.imzayaHazir ? { durum: 'IMZAYA_HAZIR', kilitAt: new Date() } : {}) },
+      data: {
+        icerik: p.data.icerik,
+        ...(p.data.imzayaHazir ? { durum: 'IMZAYA_HAZIR', kilitAt: new Date(), ...(kaliteJson ? { kaliteJson } : {}) } : {}),
+      },
     })
     if (r.count !== 1) return { ok: false, error: CAKISMA }
     await prisma.aktivite.create({ data: { dosyaId: surum.dosyaId, kullaniciId: o.kullaniciId, eylem: p.data.imzayaHazir ? 'Dilekçe imzaya hazır olarak kaydedildi' : 'Dilekçe taslağı düzenlendi', detayJson: { surumId: surum.id } } })
@@ -216,5 +239,90 @@ export async function dilekceV2TaslakKaydet(input: z.input<typeof kaydetGirdi>):
     return { ok: true }
   } catch {
     return { ok: false, error: 'Dilekçe kaydedilemedi. Düzenlediğiniz metni koruyup tekrar deneyin.' }
+  }
+}
+
+// ───────────────────────── kalite raporu (S37) ─────────────────────────
+
+const kaliteGirdi = z.object({ surumId: uuid, metin: z.string().min(1).max(200_000) })
+
+/** Ekranda "Kaliteyi kontrol et": kaydetmeden, o an düzenlenen metin için kalite raporu döner (06 §7.4). */
+export async function dilekceV2KaliteKontrolEt(input: z.input<typeof kaliteGirdi>): Promise<{ ok: true; rapor: KaliteRaporu } | Hata> {
+  const p = kaliteGirdi.safeParse(input)
+  if (!p.success) return { ok: false, error: 'Dilekçe metni geçersiz.' }
+  const o = await oturumAl({ avukatGerekli: false })
+  if (hataMi(o)) return o
+  const surum = await prisma.dilekceSurum.findFirst({
+    where: { id: p.data.surumId, kaynak: 'AVUKAT', silindiAt: null, dosya: { musteriId: o.musteriId } },
+    select: { dosyaId: true, kartId: true, atifJson: true, cikti: { select: { tur: true } } },
+  })
+  if (!surum) return { ok: false, error: 'Dilekçe sürümü bulunamadı veya erişiminiz yok.' }
+  const tur: KartTuru = kartTuruMu(surum.cikti.tur) ? surum.cikti.tur : 'DAVA'
+  const girdi = await kaliteGirdisiOlustur({
+    musteriId: o.musteriId, kullaniciId: o.kullaniciId, dosyaId: surum.dosyaId, kartId: surum.kartId, tur,
+    metin: p.data.metin, atifJsonHam: surum.atifJson,
+  })
+  return { ok: true, rapor: kaliteRaporu(girdi) }
+}
+
+// ───────────────────────── atıf onayı (S37, 06 §7.4-1) ─────────────────────────
+
+const atifOnayGirdi = z.object({
+  surumId: uuid, anahtar: z.string().min(1).max(300),
+  resmiUrl: z.string().trim().max(500).optional(), gerekce: z.string().trim().max(500).optional(),
+})
+
+/**
+ * Doğrulanmamış (ya da kütüphanede teyit gerekli/kullanma işaretli) tek bir atfı, avukatın kayıtlı onayıyla
+ * geçirir (kim, ne zaman, resmî bağlantı; 06 §7.4-1). Yasak cümleler (kalıp ihlali) bu yolla onaylanamaz —
+ * kapilar.ts onlara `atif` alanı vermez, yalnız metnin düzeltilmesiyle geçer. Onay Aktivite'ye yazılır.
+ */
+export async function dilekceV2AtifOnayla(input: z.input<typeof atifOnayGirdi>): Promise<{ ok: true } | Hata> {
+  const p = atifOnayGirdi.safeParse(input)
+  if (!p.success) return { ok: false, error: 'Atıf onayı geçersiz.' }
+  const o = await oturumAl({ avukatGerekli: true })
+  if (hataMi(o)) return o
+  const surum = await prisma.dilekceSurum.findFirst({
+    where: { id: p.data.surumId, kaynak: 'AVUKAT', silindiAt: null, dosya: { musteriId: o.musteriId } },
+    select: { id: true, dosyaId: true, durum: true, icerik: true, atifJson: true },
+  })
+  if (!surum) return { ok: false, error: 'Dilekçe sürümü bulunamadı veya erişiminiz yok.' }
+  if (surum.durum === 'GONDERILDI_UYAP') return { ok: false, error: 'UYAP\'a gönderildi olarak kilitlenmiş sürümde atıf onayı değiştirilemez.' }
+
+  const kutuphaneKayitlari = await prisma.mevzuatKaynak.findMany({
+    where: { musteriId: o.musteriId, aktif: true },
+    select: { id: true, kunye: true, tur: true, alinti: true, durum: true, etiket: true, resmiUrl: true, kapsamNotu: true, rucuSebebiKodlari: true },
+  })
+  const kutuphane: KutuphaneKaydi[] = kutuphaneKayitlari.map((k) => ({
+    id: k.id, kunye: k.kunye, tur: k.tur, alinti: k.alinti, durum: k.durum, etiket: k.etiket, aktif: true,
+    resmiUrl: k.resmiUrl, kapsamNotu: k.kapsamNotu, rucuSebebiKodlari: k.rucuSebebiKodlari,
+  }))
+  const sonuc = atifKapisi(surum.icerik, kutuphane)
+  const bulunan = sonuc.atiflar.find((a) => a.anahtar === p.data.anahtar && a.kirmizi)
+  if (!bulunan) return { ok: false, error: 'Bu atıf metinde bulunamadı ya da zaten doğrulanmış görünüyor; sayfayı yenileyip tekrar deneyin.' }
+
+  const mevcut: AtifOnayKaydi[] = Array.isArray(surum.atifJson)
+    ? (surum.atifJson as unknown[]).filter((x): x is AtifOnayKaydi => !!x && typeof x === 'object' && typeof (x as AtifOnayKaydi).anahtar === 'string')
+    : []
+  const yeniKayit: AtifOnayKaydi = {
+    anahtar: p.data.anahtar, metin: bulunan.metin, onaylayanId: o.kullaniciId, at: new Date().toISOString(),
+    resmiUrl: p.data.resmiUrl?.trim() || null, gerekce: p.data.gerekce?.trim() || null,
+  }
+  const yeniListe = [...mevcut.filter((x) => x.anahtar !== p.data.anahtar), yeniKayit]
+
+  try {
+    await prisma.$transaction([
+      prisma.dilekceSurum.update({ where: { id: surum.id }, data: { atifJson: jsonVeri(yeniListe) } }),
+      prisma.aktivite.create({
+        data: {
+          dosyaId: surum.dosyaId, kullaniciId: o.kullaniciId, eylem: `Atıf onaylandı (elle): ${p.data.anahtar}`,
+          detayJson: { surumId: surum.id, anahtar: p.data.anahtar, resmiUrl: yeniKayit.resmiUrl, gerekce: yeniKayit.gerekce },
+        },
+      }),
+    ])
+    yenile(surum.dosyaId)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Atıf onayı kaydedilemedi. Tekrar deneyin.' }
   }
 }

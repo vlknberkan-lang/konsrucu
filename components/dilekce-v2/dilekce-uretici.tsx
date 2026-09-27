@@ -14,6 +14,7 @@ import { Badge } from '@/components/konsrucu/ui'
 import { dilekceV2TaslakKaydet, dilekceV2TaslakUret } from '@/app/(app)/dilekceler/uret/actions'
 import { KART_TUR_ADI, type KartTuru } from '@/lib/konsrucu/dilekce-v2/tipler'
 import { tarihSaatTR } from '@/lib/konsrucu/format'
+import { KaliteRaporu } from './kalite-raporu'
 import { birincilDugme, ikincilDugme, kart as kartCls, kucukDugme, odak, sessizDugme } from './stil'
 
 export type DilekceSurumGorunumu = {
@@ -234,6 +235,12 @@ export function DilekceUretici({ dosya, tur, kartKilitli, olgular, surumler, yaz
                 <div role="status" className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs leading-5">
                   <span className="font-mono font-bold text-primary">{secidiOlguDetay.id}</span> · <span className="text-muted-foreground">{secidiOlguDetay.kaynakEtiketi}</span>
                   <p className="mt-1">{secidiOlguDetay.metin}</p>
+                </div>
+              )}
+
+              {!kilitliGonderildi && (
+                <div className="mt-4">
+                  <KaliteRaporu surumId={cari.avukatId} metin={metin} avukat={avukat} />
                 </div>
               )}
             </>
