@@ -12,9 +12,10 @@ export async function ctx() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
-  const dbUser = await prisma.kullanici.findUnique({ where: { id: user.id }, include: { musteriler: true } })
+  const dbUser = await prisma.kullanici.findUnique({ where: { id: user.id }, include: { musteriler: { include: { musteri: { select: { aktif: true } } } } } })
   if (!dbUser) redirect('/login')
-  const izinli = dbUser.musteriler.map((m) => m.musteriId)
+  // Pasif (dondurulmuş) şirket kapsam dışı — kabuk (app/(app)/layout.tsx) ile aynı kural; eski çerez onu seçemez.
+  const izinli = dbUser.musteriler.filter((m) => m.musteri.aktif).map((m) => m.musteriId)
   const aktifId = cookies().get('aktif_musteri')?.value
   const aktifMusteriId = aktifId && izinli.includes(aktifId) ? aktifId : (izinli[0] ?? null)
   return { dbUser, izinli, aktifMusteriId }

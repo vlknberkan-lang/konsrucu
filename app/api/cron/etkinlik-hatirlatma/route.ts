@@ -80,7 +80,7 @@ async function handle(req: Request) {
           zamanasimi: za ? za.toISOString() : null,
           zamanasimiKalan: za ? kalanGun(za, now) : null,
         },
-        dosyaUrl: `${BASE}/akilli-giris/${d.id}`,
+        dosyaUrl: `${BASE}/dosya/${d.id}`,
       })
       const konuT = tenantlar.length > 1 ? konuTenantli(konu, t.musteriAd) : konu
       if (dry) { detay.push({ tenant: t.musteriAd, id: e.id, baslik: e.baslik, baslar: e.baslar.toISOString(), ok: true }); continue }

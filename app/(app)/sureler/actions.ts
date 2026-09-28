@@ -447,7 +447,7 @@ export async function sureTestHatirlatmasi(input: { sureId: string }): Promise<S
       aliciAd: kullanici.ad.split(/\s+/)[0] || 'Avukat',
       sure: { turEtiket: t.etiket, turAd: t.ad, dayanak: s.dayanak, hedefTarih: hedef, hedefKaynak: s.onaylananSonGun ? 'ONAYLANAN' : 'IHTIYATLI', kalanGun: kalanGun(hedef) },
       dosya: { dosyaNo: s.dosya.hukukDosyaNo ?? s.dosya.hasarDosyaNo ?? s.dosyaId.slice(0, 8), icraNo: s.dosya.icraDosyaNo },
-      dosyaUrl: `${BASE}/akilli-giris/${s.dosyaId}`,
+      dosyaUrl: `${BASE}/dosya/${s.dosyaId}`,
       test: true,
     })
     const kip = epostaKipi()

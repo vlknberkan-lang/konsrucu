@@ -30,5 +30,5 @@ export async function secMusteri(formData: FormData) {
     path: '/',
     maxAge: 60 * 60 * 24 * 30,
   })
-  redirect('/dilekceler')
+  redirect('/bugun')
 }

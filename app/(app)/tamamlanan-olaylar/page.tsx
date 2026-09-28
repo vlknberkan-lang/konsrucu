@@ -82,7 +82,7 @@ export default async function TamamlananOlaylarPage() {
               return (
                 <div key={r.id} className={`grid ${COLS} ${MINW} items-center gap-2 border-b border-border-subtle px-5 py-3 text-[13px] transition last:border-0 hover:bg-surface-muted/50`}>
                   <div className="min-w-0">
-                    <Link href={`/akilli-giris/${r.dosya.id}`} className="font-mono block truncate rounded text-[12.5px] font-bold text-foreground transition hover:text-kr hover:underline">
+                    <Link href={`/dosya/${r.dosya.id}`} className="font-mono block truncate rounded text-[12.5px] font-bold text-foreground transition hover:text-kr hover:underline">
                       {r.dosya.hukukDosyaNo ?? r.dosya.hasarDosyaNo ?? r.dosya.id.slice(0, 8)}
                     </Link>
                     <div className="font-mono truncate text-[10.5px] text-muted-foreground">{r.dosya.icraDosyaNo ?? '—'}</div>

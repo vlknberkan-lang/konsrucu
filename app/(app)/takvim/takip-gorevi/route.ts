@@ -63,7 +63,7 @@ export async function GET(req: Request) {
       zamanasimi: za ? za.toISOString() : null,
       zamanasimiKalan: za ? kalanGun(za) : null,
     },
-    dosyaUrl: new URL(`/akilli-giris/${d.id}`, req.url).toString(),
+    dosyaUrl: new URL(`/dosya/${d.id}`, req.url).toString(),
   }
   const { html } = takipGoreviMail(girdi)
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } })

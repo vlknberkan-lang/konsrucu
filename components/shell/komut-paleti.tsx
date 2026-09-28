@@ -90,7 +90,7 @@ export function KomutPaleti() {
       ? sonuclar.map((s) => ({
           tip: 'dosya' as const,
           key: s.id,
-          href: `/dilekceler?dosya=${s.id}`,
+          href: `/dosya/${s.id}`,
           ust: s.borclu ?? s.hukukNo ?? '—',
           alt: [s.hukukNo, s.icraNo].filter(Boolean).join(' · ') || s.hasarNo,
           Icon: FileText,

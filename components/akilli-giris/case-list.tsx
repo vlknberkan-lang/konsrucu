@@ -28,7 +28,7 @@ function CardView({ list }: { list: CaseT[] }) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {list.map((c) => (
-        <Link key={c.id} href={`/akilli-giris/${c.id}`} className="flex flex-col rounded-2xl border border-border bg-surface shadow-card transition hover:-translate-y-0.5 hover:border-kr/45 hover:shadow-pop">
+        <Link key={c.id} href={`/dosya/${c.id}`} className="flex flex-col rounded-2xl border border-border bg-surface shadow-card transition hover:-translate-y-0.5 hover:border-kr/45 hover:shadow-pop">
           <div className="flex items-start gap-3 p-[18px_18px_12px]">
             <div className="font-mono grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#0a1628] to-kr/70 text-[11px] font-bold text-white">{c.foto}<span className="text-[7px] opacity-80">foto</span></div>
             <div className="min-w-0 flex-1">
@@ -62,7 +62,7 @@ function TableView({ list }: { list: CaseT[] }) {
         <span>Hasar No</span><span>Sigortalı / Muhatap</span><span>Yol</span><span>Süreç</span><span>Durum</span><span className="text-right">Teyit</span><span className="text-right">Tutar</span>
       </div>
       {list.map((c) => (
-        <Link key={c.id} href={`/akilli-giris/${c.id}`} className={`grid ${cols} items-center border-b border-border-subtle px-5 py-3.5 text-[13px] transition last:border-0 hover:bg-surface-muted/60`}>
+        <Link key={c.id} href={`/dosya/${c.id}`} className={`grid ${cols} items-center border-b border-border-subtle px-5 py-3.5 text-[13px] transition last:border-0 hover:bg-surface-muted/60`}>
           <span className="font-mono text-[12.5px] font-bold">{c.hasarNo}</span>
           <div className="min-w-0"><div className="truncate font-semibold">{c.sigortali}</div><div className="font-mono truncate text-[10px] text-muted-foreground">{c.muhatap}</div></div>
           <span><YolBadge yol={c.yol} /></span>
@@ -85,7 +85,7 @@ function TimelineView({ list }: { list: CaseT[] }) {
             <span className={`mt-1 h-3.5 w-3.5 rounded-full border-2 ${['takibeHazir', 'gonderildi'].includes(c.durum) ? 'border-success bg-success' : c.durum === 'isleniyor' ? 'border-kr bg-kr' : 'border-border bg-surface'}`} />
             {i < list.length - 1 && <span className="w-0.5 flex-1 bg-border" />}
           </div>
-          <Link href={`/akilli-giris/${c.id}`} className="flex-1 pb-5">
+          <Link href={`/dosya/${c.id}`} className="flex-1 pb-5">
             <div className="flex items-center gap-2.5">
               <span className="font-mono text-[13px] font-bold">{c.hasarNo}</span>
               <YolBadge yol={c.yol} /><Badge tone={DURUM[c.durum].tone as Tone} dot>{DURUM[c.durum].label}</Badge>

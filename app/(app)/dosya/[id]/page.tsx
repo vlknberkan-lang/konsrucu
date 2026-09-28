@@ -15,6 +15,7 @@ import { yolHaritasiYukle } from '@/lib/konsrucu/yol-haritasi/yukle'
 import type { DurakNo, EylemHedef } from '@/lib/konsrucu/yol-haritasi/tipler'
 import type { YolHaritasiGorunum } from '@/lib/konsrucu/yol-haritasi/gorunum'
 import { DurakPaneli } from '@/components/dosya/durak-paneli'
+import { SiraGecis } from '@/components/dosya/sira-gecis'
 import { oneriPaneliYukle } from '@/lib/konsrucu/oneri/yukle'
 import { olayPaneliYukle } from '@/lib/konsrucu/eksen/yukle'
 import { arabuluculukPaneli } from '@/lib/konsrucu/arabuluculuk/veri'
@@ -34,6 +35,13 @@ const CAPA_DURAK: Record<string, DurakNo> = {
   'yh-sonuc': 8, 'yh-taksit': 8,
 }
 
+/** Bu ekranda kendi paneli olmayan çapalar → aynı duraktaki en yakın panel (düğme boşa gitmesin). */
+const CAPA_ESI: Record<string, string> = {
+  'yh-hazirlik': 'yh-takip', 'yh-onaylar': 'yh-teblig-itiraz', 'yh-yol-secimi': 'yh-arabuluculuk', 'yh-muvekkil-onayi': 'yh-arabuluculuk',
+}
+/** Yalnız ayrıntılı görünümde yaşayan paneller (idari yol önerisi, taksit planı). */
+const ESKI_EKRAN_CAPA: Record<string, string> = { 'yh-idari-yol': '?asama=oncesi', 'yh-taksit': '?belge=taksit' }
+
 /** `?durak` yoksa: görünümdeki SIMDI durağı, yoksa DEVAM eden, yoksa 1. */
 function seciliDuraktanCoz(gorunum: YolHaritasiGorunum, durakParam: string | undefined): DurakNo {
   const n = Number(durakParam)
@@ -52,9 +60,10 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
-  const dbUser = await prisma.kullanici.findUnique({ where: { id: user.id }, include: { musteriler: true } })
+  const dbUser = await prisma.kullanici.findUnique({ where: { id: user.id }, include: { musteriler: { include: { musteri: { select: { aktif: true } } } } } })
   if (!dbUser) redirect('/login')
-  const izinli = dbUser.musteriler.map((m) => m.musteriId)
+  // pasif (dondurulmuş) şirketin dosyası açılmaz — ctx() ve kabukla aynı kural
+  const izinli = dbUser.musteriler.filter((m) => m.musteri.aktif).map((m) => m.musteriId)
 
   const dosya = await prisma.rucuDosyasi.findFirst({
     where: { musteriId: { in: izinli }, OR: [{ id: params.id }, { hasarDosyaNo: params.id }, { hukukDosyaNo: params.id }, { id: { startsWith: params.id } }] },
@@ -87,11 +96,15 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
   const eskiGorunumHref = `/akilli-giris/${dosya.id}`
   const provaQS = searchParams.prova ? `&prova=${encodeURIComponent(searchParams.prova)}` : ''
   const durakHref = (no: number) => `/dosya/${dosya.id}?durak=${no}${provaQS}`
-  const capaHedef = (capa: string) => (capa === 'yh-onarim' ? '/yonetim/veri-onarim' : `/dosya/${dosya.id}?durak=${CAPA_DURAK[capa] ?? seciliDurak}${provaQS}#${capa}`)
+  const capaHedef = (capa: string) =>
+    capa === 'yh-onarim' ? '/yonetim/veri-onarim'
+      : ESKI_EKRAN_CAPA[capa] ? `${eskiGorunumHref}${ESKI_EKRAN_CAPA[capa]}`
+        : `/dosya/${dosya.id}?durak=${CAPA_DURAK[capa] ?? seciliDurak}${provaQS}#${CAPA_ESI[capa] ?? capa}`
   const eylemHrefleri = Object.fromEntries(Object.entries(EYLEM_CAPA).map(([hedef, capa]) => [hedef, capaHedef(capa)])) as Partial<Record<EylemHedef, string>>
 
   return (
     <div className="mx-auto max-w-[1024px] px-6 pb-16 pt-5">
+      <SiraGecis dosyaId={dosya.id} />
       <DosyaYolHaritasi
         gorunum={gorunum}
         kullaniciRol={dbUser.rol}
@@ -126,8 +139,8 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
         <Link href={`/dosya/${dosya.id}?durak=7#yh-sureler`} className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground transition hover:text-kr">
           <Timer className="h-3.5 w-3.5" aria-hidden />Süreler
         </Link>
-        <Link href={`/akilli-giris/${dosya.id}`} className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground transition hover:text-kr">
-          <History className="h-3.5 w-3.5" aria-hidden />Geçmiş
+        <Link href={`/akilli-giris/${dosya.id}?asama=oncesi`} className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground transition hover:text-kr">
+          <History className="h-3.5 w-3.5" aria-hidden />Borçlular, künye, faiz ve notlar
         </Link>
       </nav>
     </div>

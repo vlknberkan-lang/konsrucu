@@ -19,6 +19,7 @@ import { Badge, PageHeader, type Tone } from '@/components/konsrucu/ui'
 import { tarihTR, saatTR, kalanGun, bugunIstBasi, paraTR } from '@/lib/konsrucu/format'
 import { zamanasimiRadarinda, ZAMANASIMI_RADARI, OTOMASYON_DISI, HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
 import { dosyaHref } from '@/lib/konsrucu/nav'
+import { SiraKaydet } from '@/components/dosya/sira-gecis'
 import {
   masaTablosu, masaSuz, masaSayac, masaSuzgecOku, MASA_SUZGECLERI, MASA_ROL_ETIKET,
   type MasaSatir, type MasaSuzgec,
@@ -223,6 +224,7 @@ export default async function BugunPage({ searchParams }: { searchParams?: { [k:
           <MasaBos suzgec={suzgec} herkes={sayac.herkes} bekleyen={sayac.bekleyen} />
         ) : (
           <ol className="divide-y divide-border-subtle">
+            <SiraKaydet ids={gorunen.map((s) => s.dosyaId)} kaynak="Bugün" href="/bugun" />
             {gorunen.map((s, i) => (
               <MasaSatiri key={s.dosyaId} s={s} sira={i + 1} birincil={i === 0 && !!s.simdi} suzgec={suzgec} simdi={simdi} rol={dbUser.rol} />
             ))}

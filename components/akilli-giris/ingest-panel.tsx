@@ -172,7 +172,7 @@ export function IngestPanel({ autoStart = false }: { autoStart?: boolean }) {
         dosyalar: rows.map((r) => ({ name: r.name, kind: r.kind, w: r.w, h: r.h, exifDate: r.exifDate, kamera: r.kamera, textLen: r.textLen })),
       }
       const { id } = await dosyaOlustur(payload)
-      router.push(`/akilli-giris/${id}`)
+      router.push(`/dosya/${id}`)
     } catch {
       setSaving(false)
     }

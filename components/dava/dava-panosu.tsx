@@ -26,7 +26,7 @@ export function DavaPanosuTablo({ satirlar }: { satirlar: PanoSatiriUI[] }) {
           const sureTon: Tone = s.sureKalanGun == null ? 'steel' : s.sureKalanGun <= 7 || s.sureOnaysiz ? 'danger' : s.sureKalanGun <= 30 ? 'warning' : 'steel'
           return (
             <div key={s.anahtar} className={`grid ${COLS} min-w-[960px] items-center gap-2 border-b border-border-subtle px-5 py-2.5 text-[13px] last:border-0 hover:bg-surface-muted/50`}>
-              <Link href={`/akilli-giris/${s.dosyaId}`} className="font-mono truncate text-[12.5px] font-bold hover:text-kr hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50">{s.dosya}</Link>
+              <Link href={`/dosya/${s.dosyaId}`} className="font-mono truncate text-[12.5px] font-bold hover:text-kr hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50">{s.dosya}</Link>
               <span className="truncate">{s.mahkemeEsas}{s.karsiTaraf && <span className="ml-1.5"><Badge tone="danger">karşı taraf</Badge></span>}</span>
               <span className="truncate">{s.evre}{s.evreTuretildi && <span className="text-[10.5px] text-muted-foreground"> (türetilmiş)</span>}</span>
               <span className="font-mono text-[12px]">{s.sonrakiEtiket}</span>

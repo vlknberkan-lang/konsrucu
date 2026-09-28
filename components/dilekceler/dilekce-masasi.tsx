@@ -141,7 +141,7 @@ export function DilekceMasasi({ dosyalar, secili, toplam, arama, demo = false }:
     {secili ? <div id="calisma-alani">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-primary/5 px-4 py-4">
         <div><div className="mb-1 font-mono text-xs text-primary">{secili.no}</div><h2 className="font-display text-xl font-extrabold">{secili.taraf}</h2><p className="mt-1 text-xs text-muted-foreground">{secili.mahkeme || 'Mahkeme bilgisi henüz kaydedilmedi'}</p></div>
-        {!demo && <Link href={`/akilli-giris/${secili.id}?asama=dava`} className={`inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/10 ${focus}`}>Dosya ayrıntıları <ArrowUpRight className="h-4 w-4" /></Link>}
+        {!demo && <Link href={`/dosya/${secili.id}?durak=6`} className={`inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/10 ${focus}`}>Dosya ayrıntıları <ArrowUpRight className="h-4 w-4" /></Link>}
       </div>
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.6fr)]">
         <div className="order-2 space-y-5 xl:order-1"><DosyaBaglami key={secili.id} dosya={secili} demo={demo} /><Sureler dosya={secili} demo={demo} /></div>

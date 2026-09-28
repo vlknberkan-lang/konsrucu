@@ -2,13 +2,13 @@
 
 /**
  * KonsRücü — bağlam paneli (sidebar) · components/shell/sidebar.tsx
- * Aktif destinasyonlar (rail ile aynı: Atanan Dosyalar + Hugo İçe Aktar) + Son Dosyalar
- * + altta tenant switcher (→ /dashboard).
+ * Etkin bölümün sayfaları (rail bölümü seçer, burası o bölümün içini gösterir) + altta şirket kartı;
+ * tek aktif şirket varsa kart seçici değil, yalnız etikettir.
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronsUpDown, ShieldCheck, Zap } from 'lucide-react'
-import { RAIL_NAV, aktifNav, navGorunur, type ShellTenant, type NavCounts } from '@/lib/konsrucu/nav'
+import { BOLUMLER, aktifNav, aktifBolum, navGorunur, type ShellTenant, type NavCounts } from '@/lib/konsrucu/nav'
 import { KonsRucuWordmark } from '@/components/brand/konsrucu-mark'
 
 function GLabel({ children }: { children: React.ReactNode }) {
@@ -18,6 +18,7 @@ function GLabel({ children }: { children: React.ReactNode }) {
 export function Sidebar({ tenant, counts, superadmin, rol }: { tenant: ShellTenant | null; counts?: NavCounts; superadmin?: boolean; rol?: string }) {
   const pathname = usePathname()
   const aktifId = aktifNav(pathname)?.id
+  const bolum = aktifBolum(pathname)
   const yonetimAktif = pathname.startsWith('/yonetim') && !aktifId // Veri Onarımı kendi öğesinde yanar
   const item = 'flex w-full items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-[13.5px] font-medium transition'
   const off = 'text-foreground hover:bg-surface-muted'
@@ -31,17 +32,17 @@ export function Sidebar({ tenant, counts, superadmin, rol }: { tenant: ShellTena
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        <GLabel>Menü</GLabel>
-        {RAIL_NAV.filter((n) => navGorunur(n, rol)).map((n) => {
+        <GLabel>{bolum?.label ?? 'Menü'}</GLabel>
+        {(bolum ? bolum.sayfalar : BOLUMLER.map((b) => ({ ...b, ready: true }))).filter((n) => navGorunur(n, rol)).map((n) => {
           const Icon = n.icon
           const aktif = n.id === aktifId
-          const rozet = n.id === 'onemli' ? counts?.onemli ?? 0 : 0
+          const rozet = n.id === 'onemli' ? counts?.onemli ?? 0 : n.id === 'gorevler' ? counts?.gorevler ?? 0 : 0
           return (
             <Link key={n.id} href={n.href} aria-current={aktif ? 'page' : undefined} className={`${item} ${aktif ? on : off} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50`}>
               <Icon className={`h-[17px] w-[17px] ${aktif ? 'text-kr' : 'text-muted-foreground'}`} />
               <span className="min-w-0 flex-1 truncate">{n.label}</span>
               {rozet > 0 && (
-                <span className="font-mono ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger px-1.5 text-[10.5px] font-bold text-white" title={`${rozet} açık önemli olay`}>
+                <span className="font-mono ml-auto inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger px-1.5 text-[10.5px] font-bold text-white" title={n.id === 'gorevler' ? `${rozet} açık görev` : `${rozet} açık önemli olay`}>
                   {rozet > 99 ? '99+' : rozet}
                 </span>
               )}
@@ -70,6 +71,15 @@ export function Sidebar({ tenant, counts, superadmin, rol }: { tenant: ShellTena
             </span>
           </Link>
         )}
+        {tenant?.tekSirket ? (
+          <div className="flex w-full items-center gap-2.5 rounded-xl border border-border-subtle bg-surface-muted p-2.5">
+            <div className="font-display grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[9px] bg-gradient-to-br from-kr to-[#0a1628] text-xs font-bold text-white">{tenant.init}</div>
+            <div className="min-w-0 flex-1">
+              <div className="font-display truncate text-[13.5px] font-bold tracking-[-0.01em]">{tenant.musteri}</div>
+              <div className="font-mono truncate text-[9.5px] text-muted-foreground">{tenant.ofis}</div>
+            </div>
+          </div>
+        ) : (
         <Link href="/dashboard" className="flex w-full items-center gap-2.5 rounded-xl border border-border-subtle bg-surface-muted p-2.5 text-left transition hover:border-kr/50">
           {tenant ? (
             <>
@@ -87,6 +97,7 @@ export function Sidebar({ tenant, counts, superadmin, rol }: { tenant: ShellTena
             </>
           )}
         </Link>
+        )}
       </div>
     </nav>
   )

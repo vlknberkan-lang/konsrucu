@@ -112,7 +112,7 @@ export default async function VeriOnarimPage({ searchParams }: { searchParams: {
                       return (
                         <tr key={s.id} className="border-t border-border-subtle">
                           <td className={TD}>
-                            <Link href={`/akilli-giris/${s.dosyaId}`} className="font-mono font-bold hover:text-kr hover:underline">{s.dosyaNo}</Link>
+                            <Link href={`/dosya/${s.dosyaId}`} className="font-mono font-bold hover:text-kr hover:underline">{s.dosyaNo}</Link>
                           </td>
                           <td className={TD}>{g.alan}</td>
                           <td className={`${TD} font-mono`}>{g.simdi}</td>

@@ -11,6 +11,7 @@ import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { money } from '@/lib/konsrucu/map'
 import { dosyaHref } from '@/lib/konsrucu/nav'
+import { SiraKaydet } from '@/components/dosya/sira-gecis'
 import { durumAsama, ASAMA_META, ASAMA_DURUMLAR, ASAMA_SIRA, type AsamaKey } from '@/lib/konsrucu/asama'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
 import { FiltreBar } from '@/components/atanan-dosyalar/filtre-bar'
@@ -218,6 +219,11 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
                   <span className="sr-only">İşlem</span>
                 </div>
 
+                <SiraKaydet
+                  ids={rows.map((r) => r.id)}
+                  kaynak="Tüm Dosyalar"
+                  href={`/atanan-dosyalar?${new URLSearchParams(Object.entries(searchParams).filter((e): e is [string, string] => typeof e[1] === 'string')).toString()}`}
+                />
                 {rows.map((r) => {
                   const za = zamanasimiMeta(r.zamanasimi)
                   const tutar = r.davaMiktari ?? r.rucuTutari

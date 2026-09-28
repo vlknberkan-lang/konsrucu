@@ -92,7 +92,7 @@ async function handle(req: Request) {
           icraNo: d.icraDosyaNo ?? null,
           yetkiliIcra: d.yetkiliIcra ?? null,
         },
-        dosyaUrl: `${BASE}/akilli-giris/${d.id}`,
+        dosyaUrl: `${BASE}/dosya/${d.id}`,
       })
       const konuT = tenantlar.length > 1 ? konuTenantli(konu, tn.musteriAd) : konu
 

@@ -4,7 +4,7 @@
  * (06 §6.3: "yalnız avukat ve admin"); başlık ve etkin öğe en uzun eşleşen adresten.
  */
 import { describe, it, expect } from 'vitest'
-import { RAIL_NAV, navGorunur, aktifNav, rolKodu, dosyaHref } from '@/lib/konsrucu/nav'
+import { RAIL_NAV, BOLUMLER, navGorunur, aktifNav, aktifBolum, rolKodu, dosyaHref } from '@/lib/konsrucu/nav'
 
 const bul = (id: string) => RAIL_NAV.find((n) => n.id === id)!
 
@@ -49,5 +49,19 @@ describe('etkin menü öğesi ve dosya bağlantısı', () => {
   })
   it('dosya ekranı adresi tek yerden', () => {
     expect(dosyaHref('abc')).toBe('/dosya/abc')
+  })
+})
+
+describe('iki katlı menü (5 bölüm)', () => {
+  it('beş bölüm, iş sırasıyla; her sayfa tek bölümde', () => {
+    expect(BOLUMLER.map((b) => b.label)).toEqual(['İşlerim', 'Dosyalar', 'Takvim', 'Dilekçeler', 'Ayarlar'])
+    for (const n of RAIL_NAV) expect(BOLUMLER.filter((b) => b.sayfalar.includes(n)).length, n.id).toBe(1)
+  })
+  it('etkin bölüm sayfadan, dosya ekranları Dosyalar bölümünde', () => {
+    expect(aktifBolum('/gorevler')?.id).toBe('islerim')
+    expect(aktifBolum('/yonetim/veri-onarim')?.id).toBe('ayarlar-bolum')
+    expect(aktifBolum('/dosya/abc')?.id).toBe('dosyalar')
+    expect(aktifBolum('/akilli-giris/abc')?.id).toBe('dosyalar')
+    expect(aktifBolum('/abonelik')).toBeNull()
   })
 })

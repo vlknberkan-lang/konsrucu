@@ -74,6 +74,7 @@ export default async function AppGroupLayout({ children }: { children: React.Rea
         ofis: dbUser.ad,
         init: initials(aktif.ad),
         kredi: aktif.plan === 'KURUMSAL' ? null : { plan: aktif.plan, aiKredi: aktif.aiKredi },
+        tekSirket: musteriler.length <= 1,
       } : null}
       superadmin={superadminMi(dbUser.eposta)}
       navCounts={{ onemli: onemliSayi, gorevler: gorevSayi }}
