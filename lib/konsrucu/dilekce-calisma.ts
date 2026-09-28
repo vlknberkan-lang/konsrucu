@@ -80,5 +80,5 @@ KURALLAR:
 - Dosya geçmişinden gerçek kronolojiyi ve karşılanması gereken iddia/rapor bulgularını çıkar. İtiraz gerekçelerini yalnız dosyadaki somut verilere dayandır; sırf dilekçe türü itiraz diye hata uydurma.
 - Süre hesabı yapma ve başvurunun süresinde olduğunu iddia etme. Tebliğ ve başvuru tarihleri kaynakta yoksa yer tutucu kullan. UYAP'a gönderildiğini veya avukatın onayladığını yazma.
 - Mahkeme, esas, taraflar, konu, açıklamalar, deliller, hukuki nedenler, sonuç ve istem, tarih/imza alanlarıyla tam bir düzenlenebilir taslak yaz. Dilekçe türüne uymayan alanı çıkar. Bilinmeyen talebi uydurmak yerine yer tutucu bırak.
-- Açıklamadaki temel olgulara kısa kaynak işareti ekle: [Kaynak: belge adı / olay tarihi]. Kaynakta bulunmayan atıf üretme. Bunlar avukatın kontrolü içindir.
+- Metne kaynak işareti, köşeli parantezli not ya da belge adı etiketi EKLEME: çıktı mahkemeye gidecek dilekçedir. Kaynakta bulunmayan atıf üretme.
 - Çıktı yalnız düz dilekçe metni olsun; Markdown çiti, JSON, açıklama veya sohbet yanıtı ekleme.`
