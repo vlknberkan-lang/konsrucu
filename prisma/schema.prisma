@@ -233,6 +233,8 @@ model Kullanici {
   // ayıramaz. silebilir() (lib/konsrucu/db) rol + bu bayrağı birlikte kontrol eder.
   silmeYetkisi       Boolean            @default(true)
   aktif              Boolean            @default(true)
+  // Ekranda rol etiketi yerine gösterilen unvan ("Stajyer Avukat", "İcra Takip Uzmanı"); yetki her zaman `rol`'den.
+  unvan              String?
   createdAt          DateTime           @default(now())
   musteriler         MusteriKullanici[]
   atananDosyalar     RucuDosyasi[]      @relation("AtananKullanici")

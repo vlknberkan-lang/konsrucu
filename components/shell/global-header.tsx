@@ -70,7 +70,7 @@ export function GlobalHeader({ crumb = 'KonsLaw', user, counts }: { crumb?: stri
         <div className="font-display grid h-[30px] w-[30px] place-items-center rounded-[9px] bg-gradient-to-br from-kr to-[#0a1628] text-xs font-bold text-white">{user.init}</div>
         <div className="text-left">
           <div className="text-[12.5px] font-semibold leading-tight">{user.ad}</div>
-          <div className="font-mono text-[9px] text-muted-foreground">{user.rol}</div>
+          <div className="font-mono text-[9px] text-muted-foreground">{user.unvan || user.rol}</div>
         </div>
         <ChevronDown className="h-[15px] w-[15px] text-muted-foreground" />
       </div>

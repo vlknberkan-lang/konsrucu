@@ -119,7 +119,7 @@ export const DURUM: Record<Durum, { label: string; dot: string }> = {
 }
 
 // Gerçek veriden prop olarak geçer:
-export type ShellUser = { ad: string; rol: string; init: string }
+export type ShellUser = { ad: string; rol: string; init: string; /** Ekranda rol yerine gösterilir; yetkiyi hep `rol` belirler. */ unvan?: string | null }
 export type ShellTenant = {
   musteri: string
   ofis: string

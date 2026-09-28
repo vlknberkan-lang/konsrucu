@@ -68,7 +68,7 @@ export default async function AppGroupLayout({ children }: { children: React.Rea
 
   return (
     <AppShell
-      user={{ ad: dbUser.ad, rol: ROL_ETIKET[dbUser.rol] ?? dbUser.rol, init }}
+      user={{ ad: dbUser.ad, rol: ROL_ETIKET[dbUser.rol] ?? dbUser.rol, init, unvan: dbUser.unvan }}
       tenant={aktif ? {
         musteri: aktif.ad,
         ofis: dbUser.ad,
