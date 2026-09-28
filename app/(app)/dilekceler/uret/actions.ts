@@ -25,6 +25,7 @@ import { davaDegeriOnerisi } from '@/lib/konsrucu/dilekce-v2/kart'
 import { icerikOku, kartVerisiniYukle } from '@/lib/konsrucu/dilekce-v2/kart-veri'
 import { baglamKur, dilekceyiOlustur, type AiParagrafGirdi, type ComposerGirdisi } from '@/lib/konsrucu/dilekce-v2/composer'
 import { iskeletSec, type SablonKaydi } from '@/lib/konsrucu/dilekce-v2/iskelet'
+import { varyantIstegi } from '@/lib/konsrucu/dilekce-v2/varyant'
 import { kaliteRaporu, type AtifOnayKaydi, type KaliteRaporu } from '@/lib/konsrucu/dilekce-v2/kapilar'
 import { kaliteGirdisiOlustur } from '@/lib/konsrucu/dilekce-v2/kalite-veri'
 import { COMPOSER_MODEL, COMPOSER_PROMPT_SURUM, composerUretici } from '@/lib/konsrucu/dilekce-v2/model'
@@ -123,9 +124,11 @@ export async function dilekceV2TaslakUret(input: { dosyaId: string; tur: KartTur
       kutuphane,
     }
 
-    const iskelet = iskeletSec(sablonlar as SablonKaydi[], tur, {
-      rucuSebebiKod: veri.girdi.dosya.rucuSebebiKod, mahkemeTuru: null, usul: secimler.usul, davaliTur: null,
-    })
+    const seciliDavalilar = new Set(secimler.davalilar)
+    const iskelet = iskeletSec(sablonlar as SablonKaydi[], tur, varyantIstegi({
+      rucuSebebiKod: veri.girdi.dosya.rucuSebebiKod, davaMahkemeTuru: veri.girdi.dava?.mahkemeTuru ?? null, mahkemeAdi,
+      usul: secimler.usul, davaliAdlari: kartIcerikVal.davaliAdaylari.filter((a) => seciliDavalilar.has(a.borcluId)).map((a) => a.ad),
+    }))
     const baglam = baglamKur(composerGirdi)
     const yuvalar = iskelet.bloklar.flatMap((b) => blokIsle(b, baglam).aiYuvalari)
 

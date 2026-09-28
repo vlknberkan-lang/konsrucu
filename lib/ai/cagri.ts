@@ -227,15 +227,20 @@ export class AiOturumu {
 
     // 4) ÇAĞRI — kredi + AiKullanim defteri ai-util'de; işaret yalnız burada konur
     if (!this.istemci) this.istemci = anthropic(key, { yuzey: this.yuzey, ...this.ai, maskeli: MASKELI_ISARET })
+    // Zorunlu araç seçimi (tool_choice tool/any) yeni modellerde 400 döner ("not supported for this model"):
+    // orada araç serbest (auto) bırakılır ve istemde yalnız bu araçla yanıt vermesi söylenir. Araç çağrılmazsa
+    // aracGirdisi null döner; çağıranlar bunu "geçerli yanıt yok" olarak zaten karşılıyor.
+    const zorlanabilir = zorunluAracDesteklerMi(istek.model)
+    const aracTalimati = istek.arac && !zorlanabilir ? `\n\nYanıtını YALNIZ "${istek.arac.ad}" aracını bir kez çağırarak ver; araç dışında metin yazma.` : ''
     const res = await this.istemci.messages.create({
       model: istek.model,
       max_tokens: istek.maxTokens,
-      system: `${istek.sistem}${sistemEk ? `\n${sistemEk}` : ''}\n\n${GUVENLIK_BLOGU}`,
+      system: `${istek.sistem}${sistemEk ? `\n${sistemEk}` : ''}${aracTalimati}\n\n${GUVENLIK_BLOGU}`,
       messages: [{ role: 'user', content: bloklar }],
       ...(istek.arac
         ? {
             tools: [{ name: istek.arac.ad, description: istek.arac.aciklama, input_schema: istek.arac.sema }],
-            tool_choice: { type: 'tool' as const, name: istek.arac.ad },
+            tool_choice: zorlanabilir ? { type: 'tool' as const, name: istek.arac.ad } : { type: 'auto' as const },
           }
         : {}),
     })
@@ -282,4 +287,9 @@ export function acilamayanUyarisi(jetonlar: readonly string[]): string | null {
 /** Metin alanlarında kalmış jeton biçimindeki değerleri temizler (DB'ye jeton yazılmasın). */
 export function jetonluMu(s: unknown): boolean {
   return typeof s === 'string' && new RegExp(`\\[(?:${JETON_TURLERI.join('|')})-\\d+\\]`, 'u').test(s)
+}
+
+/** Model zorunlu araç seçimini (tool_choice tool/any) destekliyor mu? Opus 5.5 ve Fable/Mythos 5.1 desteklemiyor (400). */
+export function zorunluAracDesteklerMi(model: string): boolean {
+  return !/^claude-(opus-5-5|fable-5-1|mythos-5-1)\b/.test(model.trim())
 }
