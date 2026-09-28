@@ -457,8 +457,10 @@ const EV: Kural[] = [
       // evrak okunmadan ve öneri yokken sormaz (önce evrak gelir; 06 2(a))
       if (!o && !evrakHazir(g)) return null
       const oneri = o && typeof o.deger === 'string' ? o.deger : null
+      // GŞ (Genel Şartlar) yalnız ZMSS'de vardır; kasko ve oto dışı dosyalarda genel "teyit gerekli" yazılır.
+      const teyitMetni = g.dosya.brans === 'ZMMS' || !g.dosya.brans ? 'GŞ sürümü teyit gerekli' : 'teyit gerekli'
       return {
-        metin: `Rücu sebebini seçin (${oneri ? `öneri: ${oneri}; ` : ''}GŞ sürümü teyit gerekli)`,
+        metin: `Rücu sebebini seçin (${oneri ? `öneri: ${oneri}; ` : ''}${teyitMetni})`,
         neden: 'Eksik evrak listesi ve dilekçe şablonu rücu sebebi koduna bağlı; kodu avukat seçer.',
         kanit: o ? [alanKaniti(o)] : [],
       }

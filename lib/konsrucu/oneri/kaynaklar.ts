@@ -32,6 +32,20 @@ export function listeKaynagi(kaynakJson: unknown): 'hugo' | 'zurich' | null {
   return kaynakJson.kaynak === 'hugo' || kaynakJson.kaynak === 'zurich' ? kaynakJson.kaynak : null
 }
 
+/**
+ * Oto dışı (OTO_DISI) dosyalarda tek başına "Rücu Nedeni" hücresi (ör. "Diğer Nedenler") yetersiz kalabilir;
+ * Zurich'in "Rücu Nedeni Detay" hücresi `kaynakJson.aciklama`'ya yazılır (bkz. lib/import/hugo.ts). Eşleştiriciye
+ * (`hugoRucuNedeniEsle`) geçirilecek metni bu ikisini birleştirerek kurar. ZMSS/kasko dosyalarında dokunmaz —
+ * o davranış "Rücu Nedeni" hücresiyle byte-for-byte aynı kalır.
+ */
+export function hugoMetniGenislet(rucuSebebi: string | null | undefined, brans: string | null | undefined, kaynakJson: unknown): string | null {
+  if (brans !== 'OTO_DISI') return rucuSebebi ?? null
+  const ana = String(rucuSebebi ?? '').trim()
+  const aciklama = objeMi(kaynakJson) && typeof kaynakJson.aciklama === 'string' ? kaynakJson.aciklama.trim() : ''
+  if (!aciklama || ana.includes(aciklama)) return rucuSebebi ?? null
+  return ana ? `${ana} ${aciklama}` : aciklama
+}
+
 const hamHucre = (kaynakJson: unknown, ...basliklar: string[]): string | null => {
   if (!objeMi(kaynakJson) || !objeMi(kaynakJson.ham)) return null
   const ham = kaynakJson.ham as Record<string, unknown>
@@ -53,7 +67,7 @@ export function hugoOnerileri(d: HugoDosyaGirdisi): YeniOneri[] {
   const onek = liste === 'zurich' ? 'ZURICH' : 'HUGO'
   const out: YeniOneri[] = []
 
-  const esle = hugoRucuNedeniEsle(d.rucuSebebi, d.brans)
+  const esle = hugoRucuNedeniEsle(hugoMetniGenislet(d.rucuSebebi, d.brans, d.kaynakJson), d.brans)
   if (esle.kod) {
     out.push({
       alan: 'rucuSebebiKod', deger: esle.kod, kaynakTuru, guven: esle.guven,

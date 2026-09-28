@@ -29,12 +29,14 @@
 export const RUCU_SEBEBI_KODLARI = [
   'B4_A', 'B4_B', 'B4_C_ALKOL', 'B4_C_UYUSTURUCU', 'B4_CC', 'B4_D', 'B4_E', 'B4_F', 'GS_DIGER',
   'KASKO_HALEFIYET', 'KASKO_HIZMET_KUSURU', 'KASKO_YID',
+  'OD_AYIPLI_HIZMET', 'OD_AYIPLI_URUN', 'OD_KOMSU_SU', 'OD_YONETIM_ORTAK_ALAN', 'OD_INSAAT_UCUNCU_KISI', 'OD_ALTYAPI_ISLETMECI', 'OD_KIRACI', 'OD_DIGER',
 ] as const
 export type RucuSebebiKodu = (typeof RUCU_SEBEBI_KODLARI)[number]
 
 /** Asgari evrak setinin öğeleri. `otomatik = false` olanlar belge türünden anlaşılamaz; avukat kontrol eder. */
 export const EVRAK_TURLERI = [
   'POLICE', 'KTT', 'DEKONT', 'EKSPERTIZ', 'ALKOL_RAPORU', 'EHLIYET', 'TERK_KANITI', 'OLAY_YERI_FOTO', 'YOL_ISLETENI', 'KOLLUK_KAYDI',
+  'SERVIS_KAYDI', 'TESPIT_TUTANAGI', 'TEKNIK_RAPOR',
 ] as const
 export type EvrakTuru = (typeof EVRAK_TURLERI)[number]
 
@@ -68,6 +70,18 @@ export const EVRAK_TURU_TANIM: Record<EvrakTuru, EvrakTuruTanimi> = {
     aciklama: 'KGM, belediye ya da YİD işletmecisi; büro araştırır.',
   },
   KOLLUK_KAYDI: { ad: 'Kolluk ya da şikâyet kaydı', kategoriler: [], altTurParcalari: [], otomatik: false, rayIstenir: true, aciklama: 'Çalınma ya da gasp olayını gösteren kayıt.' },
+  SERVIS_KAYDI: {
+    ad: 'Servis, bakım ya da montaj kaydı / fatura', kategoriler: [], altTurParcalari: [], otomatik: false, rayIstenir: true,
+    aciklama: 'Oto dışı halefiyet · ayıplı hizmet ya da ürün kodlarında; BelgeKategori\'de karşılığı yok, avukat kontrol eder.',
+  },
+  TESPIT_TUTANAGI: {
+    ad: 'Olay tespit tutanağı (yönetim, itfaiye, kolluk ya da ekspertiz ekinde)', kategoriler: [], altTurParcalari: [], otomatik: false, rayIstenir: true,
+    aciklama: 'Trafik KTT\'siyle karıştırılmaz (oto dışı olayda KTT yok); avukat kontrol eder.',
+  },
+  TEKNIK_RAPOR: {
+    ad: 'Hasarın nedenine ilişkin teknik rapor', kategoriler: [], altTurParcalari: [], otomatik: false, rayIstenir: true,
+    aciklama: 'BelgeKategori\'de karşılığı yok, avukat kontrol eder.',
+  },
 }
 
 export type Dayanak = { etiket: string; not?: string }
@@ -75,8 +89,8 @@ export type Dayanak = { etiket: string; not?: string }
 export type RucuSebebiTanimi = {
   kod: RucuSebebiKodu
   ad: string
-  /** Kodun ait olduğu branş (Prisma `Brans`: ZMMS = ZMSS). */
-  brans: 'ZMMS' | 'KASKO'
+  /** Kodun ait olduğu branş (Prisma `Brans`: ZMMS = ZMSS; OTO_DISI = konut/işyeri/yangın vb.). */
+  brans: 'ZMMS' | 'KASKO' | 'OTO_DISI'
   /** ZMSS GŞ B.4 bent harfi (yalnız ZMSS kodlarında). */
   bent?: 'a' | 'b' | 'c' | 'ç' | 'd' | 'e' | 'f'
   /** Kısa tanım (bilgi bankası özetinden; birebir GŞ metni DEĞİL). */
@@ -97,9 +111,13 @@ export type RucuSebebiTanimi = {
 
 const ZMSS_TEMEL: readonly EvrakTuru[] = ['POLICE', 'KTT', 'DEKONT']
 const KASKO_TEMEL: readonly EvrakTuru[] = ['POLICE', 'KTT', 'DEKONT', 'EKSPERTIZ']
+/** Oto dışı (konut/işyeri/yangın vb.) asgari set: KTT yok (trafik kazası değildir). */
+const OTO_DISI_TEMEL: readonly EvrakTuru[] = ['POLICE', 'DEKONT', 'EKSPERTIZ', 'OLAY_YERI_FOTO']
 const ZMSS_DAYANAK: Dayanak = { etiket: 'KTK m.95/2 (sigortacının sigorta ettirene başvurusu)', not: 'teyit gerekli' }
+/** TTK m.1472/1 halefiyeti — kasko VE oto dışı halefiyet kodlarının ortak dayanağı. */
+const TTK_1472_DAYANAK: Dayanak = { etiket: 'TTK m.1472/1 (halefiyet)', not: 'teyit gerekli' }
 const KASKO_DAYANAK: readonly Dayanak[] = [
-  { etiket: 'TTK m.1472/1 (halefiyet)', not: 'teyit gerekli' },
+  TTK_1472_DAYANAK,
   { etiket: 'Kara Araçları Kasko Sigortası GŞ B.4.3 (halefiyet)', not: 'teyit gerekli; eski ad "Kara Taşıtları" kullanılmaz' },
 ]
 const bentDayanak = (bent: string, konu: string): Dayanak => ({ etiket: `ZMSS GŞ B.4/${bent} (${konu})`, not: 'GŞ sürümü ve bent metni teyit gerekli' })
@@ -197,6 +215,100 @@ export const RUCU_SEBEBI_TANIM: Record<RucuSebebiKodu, RucuSebebiTanimi> = {
     asgariSet: [...KASKO_TEMEL, 'OLAY_YERI_FOTO', 'YOL_ISLETENI'], k1: 'BEKLIYOR',
     notlar: ['YİD işletmecisi özel hukuk kişisidir; idari yol sorusu sorulmaz (06 §2(c) adım 5).'],
   },
+  OD_AYIPLI_HIZMET: {
+    kod: 'OD_AYIPLI_HIZMET', ad: 'Oto dışı halefiyet · ayıplı hizmet (servis, bakım, montaj, onarım)', brans: 'OTO_DISI',
+    tanim: 'Sigortalıya verilen bir hizmetin (servis, bakım, montaj, onarım) ayıplı ifasından doğan zarara halefiyetle başvuru.',
+    dayanaklar: [
+      TTK_1472_DAYANAK,
+      { etiket: 'TBK m.112 (borca aykırılık)', not: 'teyit gerekli' },
+      { etiket: '6502 s. Kanun m.13 (ayıplı hizmet)', not: 'teyit gerekli' },
+      { etiket: 'TBK m.49 (haksız fiil)', not: 'teyit gerekli' },
+    ],
+    halefiyet: true, rejimDuyarli: false, gerekceZorunlu: false,
+    asgariSet: [...OTO_DISI_TEMEL, 'SERVIS_KAYDI'], k1: 'BEKLIYOR',
+    notlar: [
+      'Sigortalı tüketiciyse görevli mahkeme tüketici mahkemesi olabilir (6502 m.73, teyit gerekli); yerde yoksa Asliye Hukuk "Tüketici Mahkemesi sıfatıyla".',
+      'Örnek: su arıtma cihazı servisi, elektrik tesisatı servisi.',
+    ],
+  },
+  OD_AYIPLI_URUN: {
+    kod: 'OD_AYIPLI_URUN', ad: 'Oto dışı halefiyet · ayıplı ürün (üretici, satıcı)', brans: 'OTO_DISI',
+    tanim: 'Ayıplı (kusurlu) bir ürünün üreticisine ya da satıcısına halefiyetle başvuru.',
+    dayanaklar: [
+      TTK_1472_DAYANAK,
+      { etiket: '6502 s. Kanun m.8 (ayıplı mal)', not: 'teyit gerekli' },
+      { etiket: '7223 s. Ürün Güvenliği ve Teknik Düzenlemeler Kanunu (üreticinin sorumluluğu)', not: 'madde teyit gerekli' },
+      { etiket: 'TBK m.49', not: 'teyit gerekli' },
+    ],
+    halefiyet: true, rejimDuyarli: false, gerekceZorunlu: false,
+    asgariSet: [...OTO_DISI_TEMEL, 'SERVIS_KAYDI', 'TEKNIK_RAPOR'], k1: 'BEKLIYOR', notlar: [],
+  },
+  OD_KOMSU_SU: {
+    kod: 'OD_KOMSU_SU', ad: 'Oto dışı halefiyet · komşu ya da üst kattan su sızıntısı', brans: 'OTO_DISI',
+    tanim: 'Komşu bağımsız bölümden ya da üst kattan kaynaklanan su sızıntısı/sirayeti zararına halefiyetle başvuru.',
+    dayanaklar: [
+      TTK_1472_DAYANAK,
+      { etiket: 'TMK m.730 (malikin sorumluluğu)', not: 'teyit gerekli' },
+      { etiket: 'TMK m.737 (komşuluk hukuku)', not: 'teyit gerekli' },
+      { etiket: '634 s. Kat Mülkiyeti Kanunu m.18', not: 'teyit gerekli' },
+      { etiket: 'TBK m.49', not: 'teyit gerekli' },
+    ],
+    halefiyet: true, rejimDuyarli: false, gerekceZorunlu: false,
+    asgariSet: [...OTO_DISI_TEMEL, 'TESPIT_TUTANAGI'], k1: 'BEKLIYOR', notlar: [],
+  },
+  OD_YONETIM_ORTAK_ALAN: {
+    kod: 'OD_YONETIM_ORTAK_ALAN', ad: 'Oto dışı halefiyet · apartman yönetimi / ortak alan (tesisat, çatı, gider)', brans: 'OTO_DISI',
+    tanim: 'Ortak alana (çatı, ana tesisat) ilişkin bakım/onarım yükümlülüğünün ihlalinden doğan zarara apartman yönetimine halefiyetle başvuru.',
+    dayanaklar: [
+      TTK_1472_DAYANAK,
+      { etiket: '634 s. Kat Mülkiyeti Kanunu (yönetici ve kat malikleri kurulunun sorumluluğu)', not: 'madde teyit gerekli' },
+      { etiket: 'TBK m.49', not: 'teyit gerekli' },
+    ],
+    halefiyet: true, rejimDuyarli: false, gerekceZorunlu: false,
+    asgariSet: [...OTO_DISI_TEMEL, 'TESPIT_TUTANAGI'], k1: 'BEKLIYOR', notlar: [],
+  },
+  OD_INSAAT_UCUNCU_KISI: {
+    kod: 'OD_INSAAT_UCUNCU_KISI', ad: 'Oto dışı halefiyet · inşaat, yapı işi ya da üçüncü kişinin eylemi', brans: 'OTO_DISI',
+    tanim: 'Yakın bir inşaat/yapı işinden ya da üçüncü bir kişinin eyleminden doğan zarara halefiyetle başvuru.',
+    dayanaklar: [
+      TTK_1472_DAYANAK,
+      { etiket: 'TBK m.49', not: 'teyit gerekli' },
+      { etiket: 'TBK m.66 (adam çalıştıranın sorumluluğu)', not: 'teyit gerekli' },
+      { etiket: 'TBK m.71 (tehlike sorumluluğu)', not: 'teyit gerekli' },
+    ],
+    halefiyet: true, rejimDuyarli: false, gerekceZorunlu: false,
+    asgariSet: [...OTO_DISI_TEMEL, 'TESPIT_TUTANAGI'], k1: 'BEKLIYOR', notlar: [],
+  },
+  OD_ALTYAPI_ISLETMECI: {
+    kod: 'OD_ALTYAPI_ISLETMECI', ad: 'Oto dışı halefiyet · altyapı işletmecisi (su, kanalizasyon, elektrik, doğalgaz şebekesi)', brans: 'OTO_DISI',
+    tanim: 'Su, kanalizasyon, elektrik ya da doğalgaz şebekesi işletmecisinin kusurundan doğan zarara halefiyetle başvuru.',
+    dayanaklar: [
+      TTK_1472_DAYANAK,
+      { etiket: 'TBK m.49 / m.71', not: 'teyit gerekli' },
+      { etiket: 'İYUK m.13 (işletmeci kamu idaresiyse önce idareye başvuru)', not: 'teyit gerekli' },
+    ],
+    halefiyet: true, rejimDuyarli: false, gerekceZorunlu: false,
+    asgariSet: [...OTO_DISI_TEMEL, 'TESPIT_TUTANAGI', 'TEKNIK_RAPOR'], k1: 'BEKLIYOR',
+    notlar: ['Kamu idaresiyse yol (icra takibi ya da idari yol) avukat kararıdır; dağıtım şirketi özel hukuk kişisiyse adli yol.'],
+  },
+  OD_KIRACI: {
+    kod: 'OD_KIRACI', ad: 'Oto dışı halefiyet · kiracı ya da kullanıcının kusuru', brans: 'OTO_DISI',
+    tanim: 'Kiracının ya da kullanıcının özenle kullanma borcunu ihlalinden doğan zarara halefiyetle başvuru.',
+    dayanaklar: [
+      TTK_1472_DAYANAK,
+      { etiket: 'TBK m.316 (kiracının özenle kullanma borcu)', not: 'teyit gerekli' },
+      { etiket: 'TBK m.49', not: 'teyit gerekli' },
+    ],
+    halefiyet: true, rejimDuyarli: false, gerekceZorunlu: false,
+    asgariSet: OTO_DISI_TEMEL, k1: 'BEKLIYOR', notlar: [],
+  },
+  OD_DIGER: {
+    kod: 'OD_DIGER', ad: 'Oto dışı halefiyet · diğer (avukat gerekçesiyle)', brans: 'OTO_DISI',
+    tanim: 'Listede olmayan bir oto dışı halefiyet hâli; avukat gerekçesi zorunlu.',
+    dayanaklar: [TTK_1472_DAYANAK, { etiket: 'Oto dışı halefiyet dayanağı (avukat tarafından yazılır)', not: 'teyit gerekli' }],
+    halefiyet: true, rejimDuyarli: false, gerekceZorunlu: true,
+    asgariSet: OTO_DISI_TEMEL, k1: 'BEKLIYOR', notlar: [],
+  },
 }
 
 export const rucuSebebiKoduMu = (v: unknown): v is RucuSebebiKodu =>
@@ -208,13 +320,13 @@ export function rucuSebebiTanimi(kod: string | null | undefined): RucuSebebiTani
 
 /** Branşa uygun kodlar (branş bilinmiyorsa hepsi). Prisma `Brans`: ZMMS | KASKO | OTO_DISI. */
 export function bransKodlari(brans: string | null | undefined): RucuSebebiKodu[] {
-  if (brans === 'ZMMS' || brans === 'KASKO') return RUCU_SEBEBI_KODLARI.filter((k) => RUCU_SEBEBI_TANIM[k].brans === brans)
+  if (brans === 'ZMMS' || brans === 'KASKO' || brans === 'OTO_DISI') return RUCU_SEBEBI_KODLARI.filter((k) => RUCU_SEBEBI_TANIM[k].brans === brans)
   return [...RUCU_SEBEBI_KODLARI]
 }
 
 /** Kod dosyanın branşıyla çelişiyor mu? (branş yoksa çelişki yok sayılır, ama uyarı ekrandadır) */
 export function kodBransaUygunMu(kod: RucuSebebiKodu, brans: string | null | undefined): boolean {
-  if (brans !== 'ZMMS' && brans !== 'KASKO') return true
+  if (brans !== 'ZMMS' && brans !== 'KASKO' && brans !== 'OTO_DISI') return true
   return RUCU_SEBEBI_TANIM[kod].brans === brans
 }
 
@@ -267,12 +379,12 @@ export const GS_REJIM_ETIKET: Record<GsRejimi, string> = {
   GS_2015: 'GŞ 2015 metni (RG 14.05.2015)',
   GS_2026: 'GŞ 2026 değişikliği sonrası (RG 12.06.2026)',
   BILINMIYOR: 'GŞ sürümü belirlenemedi',
-  UYGULANMAZ: 'ZMSS GŞ uygulanmaz (kasko)',
+  UYGULANMAZ: 'ZMSS GŞ uygulanmaz (kasko / oto dışı)',
 }
 
 /**
  * ZMSS GŞ sürümü: poliçenin AKDEDİLDİĞİ (tanzim) tarihe göre (GŞ C.11/2; teyit gerekli). Tanzim tarihi yoksa poliçe
- * başlangıcı kullanılır ve bu ayrıca uyarılır. Kasko kodlarında ZMSS GŞ uygulanmaz.
+ * başlangıcı kullanılır ve bu ayrıca uyarılır. Kasko ve oto dışı kodlarında ZMSS GŞ uygulanmaz.
  */
 export function gsRejimi(g: {
   kod?: string | null
@@ -280,7 +392,7 @@ export function gsRejimi(g: {
   policeBaslangic?: Date | string | null
 }): GsRejimSonucu {
   const t = rucuSebebiTanimi(g.kod)
-  if (t && t.brans === 'KASKO') {
+  if (t && t.brans !== 'ZMMS') {
     return { rejim: 'UYGULANMAZ', esasTarih: null, esasTur: null, etiket: GS_REJIM_ETIKET.UYGULANMAZ, uyarilar: [] }
   }
   const tanzim = gunIso(g.policeTanzim)
@@ -362,6 +474,34 @@ function ifadeVarMi(bosluklu: string, ifade: string): boolean {
   return ifade.length < 5 ? bosluklu.includes(` ${ifade} `) : bosluklu.includes(` ${ifade}`)
 }
 
+type OtoDisiHugoKural = { ifadeler: readonly string[]; kod: RucuSebebiKodu; guven: number }
+
+/**
+ * Oto dışı (Brans.OTO_DISI: konut, işyeri, yangın, dahili su…) anahtar kelime tablosu — Zurich "Rücu Nedeni" +
+ * "Rücu Nedeni Detay" metninden (ikisi birleştirilip çağıran taraf geçirir, bkz. oneri/kaynaklar.ts). Sıra
+ * önemlidir: "servis" içeren metin önce ayıplı hizmete düşer, "ayıplı ürün" kuralı yalnız servis YOKKEN yakalar.
+ */
+export const HUGO_OTO_DISI_KURALLARI: readonly OtoDisiHugoKural[] = [
+  { ifadeler: ['servis', 'bakim', 'montaj', 'su aritma', 'tesisat servis'], kod: 'OD_AYIPLI_HIZMET', guven: 0.7 },
+  { ifadeler: ['ayipli', 'uretici', 'imalat hatasi', 'patlayan cihaz'], kod: 'OD_AYIPLI_URUN', guven: 0.65 },
+  { ifadeler: ['dahili su', 'su sirayeti', 'su sizintisi', 'ust kat', 'komsu'], kod: 'OD_KOMSU_SU', guven: 0.7 },
+  { ifadeler: ['apartman yonetim', 'site yonetim', 'ortak alan', 'cati'], kod: 'OD_YONETIM_ORTAK_ALAN', guven: 0.7 },
+  { ifadeler: ['insaat', 'beton', 'mikser', 'yapi', 'kazi'], kod: 'OD_INSAAT_UCUNCU_KISI', guven: 0.65 },
+  { ifadeler: ['iski', 'belediye', 'kanalizasyon', 'altyapi', 'sebeke', 'bedas', 'ayedas', 'igdas', 'dagitim sirketi'], kod: 'OD_ALTYAPI_ISLETMECI', guven: 0.7 },
+  { ifadeler: ['kiraci'], kod: 'OD_KIRACI', guven: 0.6 },
+]
+
+/** Oto dışı eşleme: tek koda gider (ZMSS/kasko ikili haritası yok); bent atfı da aranmaz. */
+function otoDisiEsle(metin: string): HugoRucuNedeniSonucu {
+  const n = ` ${rucuNedeniNormal(metin)} `
+  for (const k of HUGO_OTO_DISI_KURALLARI) {
+    const ifade = k.ifadeler.find((i) => ifadeVarMi(n, i))
+    if (!ifade) continue
+    return { kod: k.kod, adaylar: [k.kod], guven: k.guven, eslesen: ifade, gerekce: `Hugo "Rücu Nedeni" metninde "${ifade}" geçiyor (oto dışı).` }
+  }
+  return { kod: null, adaylar: [], guven: 0, eslesen: null, gerekce: 'Hugo "Rücu Nedeni" metni kod listesiyle eşleşmedi; avukat seçer.' }
+}
+
 const BENT_KOD: Record<string, RucuSebebiKodu | null> ={ a: 'B4_A', b: 'B4_B', c: null, ç: 'B4_CC', d: 'B4_D', e: 'B4_E', f: 'B4_F' }
 
 export type HugoRucuNedeniSonucu = {
@@ -390,6 +530,8 @@ export function hugoRucuNedeniEsle(ham: string | null | undefined, brans?: strin
   const bos: HugoRucuNedeniSonucu = { kod: null, adaylar: [], guven: 0, eslesen: null, gerekce: 'Hugo "Rücu Nedeni" boş.' }
   const metin = String(ham ?? '').trim()
   if (!metin) return bos
+  // Oto dışı: ayrı tablo, ZMSS/kasko mantığına hiç girmez (ZMSS/kasko davranışı bu satırdan etkilenmez).
+  if (brans === 'OTO_DISI') return otoDisiEsle(metin)
   const bransBilinir = brans === 'ZMMS' || brans === 'KASKO'
 
   // 1) Açık bent atfı (yalnız ZMSS kodu; kasko dosyasında çelişki olarak bildirilir)
@@ -493,8 +635,12 @@ export type Ev07Durumu = {
   metin: string
 }
 
-/** EV-07: "Rücu sebebini seçin (öneri: …; GŞ sürümü teyit gerekli)". Onaysız kodla "teyit gerekli" etiketi. */
-export function ev07Durumu(g: { onayliKod?: string | null; oneriKod?: string | null }): Ev07Durumu {
+/**
+ * EV-07: "Rücu sebebini seçin (öneri: …; GŞ sürümü teyit gerekli)". Onaysız kodla "teyit gerekli" etiketi.
+ * "GŞ sürümü" ifadesi yalnız ZMSS'de yazılır (dosyanın branşı ya da öneri/onaylı kodun branşı); kasko ve oto dışı
+ * dosyalarda ZMSS GŞ uygulanmadığından yerine genel "teyit gerekli" yazılır.
+ */
+export function ev07Durumu(g: { onayliKod?: string | null; oneriKod?: string | null; brans?: string | null }): Ev07Durumu {
   const onayli = rucuSebebiKoduMu(g.onayliKod) ? g.onayliKod : null
   const oneri = rucuSebebiKoduMu(g.oneriKod) ? g.oneriKod : null
   if (onayli) {
@@ -502,5 +648,7 @@ export function ev07Durumu(g: { onayliKod?: string | null; oneriKod?: string | n
     return { gerekli: false, onayliKod: onayli, oneriKod: oneri, teyitGerekli: teyit, metin: `Rücu sebebi: ${RUCU_SEBEBI_TANIM[onayli].ad}${teyit ? ' (teyit gerekli)' : ''}` }
   }
   const oneriMetni = oneri ? `öneri: ${RUCU_SEBEBI_TANIM[oneri].ad}; ` : ''
-  return { gerekli: true, onayliKod: null, oneriKod: oneri, teyitGerekli: true, metin: `Rücu sebebini seçin (${oneriMetni}GŞ sürümü teyit gerekli)` }
+  const zmssMi = g.brans ? g.brans === 'ZMMS' : oneri ? RUCU_SEBEBI_TANIM[oneri].brans === 'ZMMS' : true
+  const teyitMetni = zmssMi ? 'GŞ sürümü teyit gerekli' : 'teyit gerekli'
+  return { gerekli: true, onayliKod: null, oneriKod: oneri, teyitGerekli: true, metin: `Rücu sebebini seçin (${oneriMetni}${teyitMetni})` }
 }

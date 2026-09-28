@@ -3,7 +3,7 @@
  * Ekranda maskeleme (TCKN, telefon, IBAN, plaka). Kurgusal değerler; kişisel veri yok.
  */
 import { describe, expect, it } from 'vitest'
-import { aiOnerileri, hugoOnerileri, listeKaynagi } from '@/lib/konsrucu/oneri/kaynaklar'
+import { aiOnerileri, hugoMetniGenislet, hugoOnerileri, listeKaynagi } from '@/lib/konsrucu/oneri/kaynaklar'
 import { rayEvrakIstekTaslagi } from '@/lib/konsrucu/oneri/ray-istek'
 import { ekranMaskele } from '@/lib/konsrucu/oneri/maske-gorunum'
 
@@ -32,6 +32,31 @@ describe('hugoOnerileri', () => {
   it('Zurich listesi "Ray Excel" değil EXCEL kaynağı; poliçe no da öneri olur', () => {
     const o = hugoOnerileri({ rucuSebebi: 'Karşı araç kusurlu', brans: 'KASKO', kaynakJson: { kaynak: 'zurich', policeNo: 'Z-9988' } })
     expect(o.map((x) => [x.alan, x.kaynakTuru])).toEqual([['rucuSebebiKod', 'EXCEL'], ['policeNo', 'EXCEL']])
+  })
+
+  it('oto dışı: "Rücu Nedeni" tek başına yetersizse kaynakJson.aciklama ("Rücu Nedeni Detay") eklenir', () => {
+    const o = hugoOnerileri({
+      rucuSebebi: 'Diğer Nedenler', brans: 'OTO_DISI',
+      kaynakJson: { kaynak: 'zurich', aciklama: 'ELEKTRİK TESİSATINDA MEYDANA GELEN ZARARIN SERVİSE RÜCUSU' },
+    })
+    expect(o.find((x) => x.alan === 'rucuSebebiKod')).toMatchObject({ deger: 'OD_AYIPLI_HIZMET', kaynakTuru: 'EXCEL' })
+  })
+
+  it('oto dışı: "Rücu Nedeni" hücresi tek başına yeterliyse aciklama eklenmeden de doğru kod çıkar', () => {
+    const o = hugoOnerileri({ rucuSebebi: 'Dahili Su(Su Sirayeti)', brans: 'OTO_DISI', kaynakJson: { kaynak: 'zurich' } })
+    expect(o.find((x) => x.alan === 'rucuSebebiKod')).toMatchObject({ deger: 'OD_KOMSU_SU' })
+  })
+
+  it('ZMSS/kasko dosyalarında aciklama eklenmez (davranış "Rücu Nedeni" hücresiyle aynı kalır)', () => {
+    expect(hugoMetniGenislet('Hizmet kusuru', 'KASKO', { kaynak: 'zurich', aciklama: 'apartman yönetimine' })).toBe('Hizmet kusuru')
+    expect(hugoMetniGenislet('Alkollü', 'ZMMS', { kaynak: 'hugo', aciklama: 'ilgisiz metin' })).toBe('Alkollü')
+    expect(hugoMetniGenislet('Alkollü', null, { aciklama: 'ilgisiz' })).toBe('Alkollü')
+  })
+
+  it('aciklama zaten ana metnin içindeyse tekrarlanmaz; boşsa dokunulmaz', () => {
+    expect(hugoMetniGenislet('Dahili Su su sirayeti', 'OTO_DISI', { aciklama: 'su sirayeti' })).toBe('Dahili Su su sirayeti')
+    expect(hugoMetniGenislet('Diğer Nedenler', 'OTO_DISI', { aciklama: '' })).toBe('Diğer Nedenler')
+    expect(hugoMetniGenislet(null, 'OTO_DISI', { aciklama: 'apartman yönetimine' })).toBe('apartman yönetimine')
   })
 })
 

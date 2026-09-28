@@ -11,7 +11,7 @@ export function bosGercekler(dosyaId = 'dosya-kurgu', olusturma: Date = new Date
     dosya: {
       id: dosyaId, hukukDosyaNo: null, muvekkilAd: 'Ray Sigorta A.Ş.', durum: 'INCELENIYOR', yol: null, yolGuven: null, yolNeden: null, yolOnayAt: null,
       icraEksen: null, arabEksen: null, davaEksen: null, eksenTeyit: { icra: null, arab: null, dava: null }, onarimDurumu: null, onarimBekleyen: 0,
-      rucuSebebiKod: null, zamanasimi: null, yetkiliIcra: null, icraDairesi: null, icraDosyaNo: null, takipTarihi: null,
+      rucuSebebiKod: null, brans: null, zamanasimi: null, yetkiliIcra: null, icraDairesi: null, icraDosyaNo: null, takipTarihi: null,
       uyapDurum: null, uyapSenkronAt: null, uyapEslesme: null, uyapEslesmeNot: null, rucuTutari: null, asilAlacak: null, uyapTahsilat: null,
       kapanisSebebi: null, kapanisAt: null, eskiOnay: null, tevzi: null, createdAt: olusturma,
     },

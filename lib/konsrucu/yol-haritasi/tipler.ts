@@ -104,6 +104,8 @@ export interface GDosya {
   /** Bekleyen (KURU/ONAYLI, uygulanmamış) VeriOnarim satırı sayısı. */
   onarimBekleyen: number
   rucuSebebiKod: string | null
+  /** Prisma `Brans` (ZMMS | KASKO | OTO_DISI) — EV-07'nin "GŞ sürümü teyit gerekli" ifadesi yalnız ZMMS'de yazılır. */
+  brans: string | null
   /** Ray'in zamanaşımı tarihi (K1'de bekleyen kural — "teyit gerekli"). */
   zamanasimi: Date | null
   yetkiliIcra: string | null

@@ -96,6 +96,8 @@ export type RucuSebebiSecenegi = {
   ad: string
   k1Etiketi: string
   bransUygun: boolean
+  /** GŞ-DİĞER ve OD-DİĞER gibi "diğer" kodlarında avukat gerekçesi zorunlu (RucuSebebiTanimi.gerekceZorunlu). */
+  gerekceZorunlu: boolean
 }
 
 export type RucuSebebiVerisi = {

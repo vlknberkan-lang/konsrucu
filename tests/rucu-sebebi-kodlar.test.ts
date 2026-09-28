@@ -41,10 +41,11 @@ describe('kod listesi', () => {
     expect(dilekceyeGirebilir(null)).toBe(false)
   })
 
-  it('B18: TTK m.1472 yalnız kasko halefiyeti kodlarında uygulanır', () => {
+  it('B18: TTK m.1472 yalnız halefiyet kodlarında (kasko + oto dışı) uygulanır, ZMSS B.4 kodlarında uygulanmaz', () => {
     expect(ttk1472Uygulanir('KASKO_HALEFIYET')).toBe(true)
     expect(ttk1472Uygulanir('KASKO_HIZMET_KUSURU')).toBe(true)
     expect(ttk1472Uygulanir('KASKO_YID')).toBe(true)
+    for (const k of RUCU_SEBEBI_KODLARI.filter((x) => x.startsWith('OD_'))) expect(ttk1472Uygulanir(k), k).toBe(true)
     for (const k of ['B4_A', 'B4_C_ALKOL', 'B4_F', 'GS_DIGER']) expect(ttk1472Uygulanir(k), k).toBe(false)
     expect(ttk1472Uygulanir(undefined)).toBe(false)
   })
@@ -63,27 +64,47 @@ describe('kod listesi', () => {
     expect(RUCU_SEBEBI_TANIM.B4_B.asgariSet).toContain('EHLIYET')
   })
 
-  it('GŞ-DİĞER gerekçe ister; diğerleri istemez', () => {
+  it('GŞ-DİĞER ve OD-DİĞER gerekçe ister; diğerleri istemez', () => {
     expect(RUCU_SEBEBI_TANIM.GS_DIGER.gerekceZorunlu).toBe(true)
-    expect(RUCU_SEBEBI_KODLARI.filter((k) => RUCU_SEBEBI_TANIM[k].gerekceZorunlu)).toEqual(['GS_DIGER'])
+    expect(RUCU_SEBEBI_TANIM.OD_DIGER.gerekceZorunlu).toBe(true)
+    expect(RUCU_SEBEBI_KODLARI.filter((k) => RUCU_SEBEBI_TANIM[k].gerekceZorunlu)).toEqual(['GS_DIGER', 'OD_DIGER'])
   })
 
-  it('branşa göre kodlar: ZMMS yalnız B.4 ailesi, KASKO yalnız halefiyet; branş yoksa hepsi', () => {
+  it('branşa göre kodlar: ZMMS yalnız B.4 ailesi, KASKO yalnız halefiyet, OTO_DISI yalnız OD_ ailesi; branş yoksa hepsi', () => {
     expect(bransKodlari('ZMMS').every((k) => k.startsWith('B4_') || k === 'GS_DIGER')).toBe(true)
     expect(bransKodlari('KASKO').every((k) => k.startsWith('KASKO_'))).toBe(true)
+    expect(bransKodlari('OTO_DISI').every((k) => k.startsWith('OD_'))).toBe(true)
+    expect(bransKodlari('OTO_DISI')).toHaveLength(8)
     expect(bransKodlari(null)).toHaveLength(RUCU_SEBEBI_KODLARI.length)
     expect(kodBransaUygunMu('B4_F', 'KASKO')).toBe(false)
     expect(kodBransaUygunMu('B4_F', null)).toBe(true)
+    expect(kodBransaUygunMu('OD_KOMSU_SU', 'OTO_DISI')).toBe(true)
+    expect(kodBransaUygunMu('OD_KOMSU_SU', 'ZMMS')).toBe(false)
   })
 })
 
 describe('EV-07 kartı', () => {
-  it('kod yoksa kart görünür ve "GŞ sürümü teyit gerekli" der; öneri adı yazılır', () => {
+  it('ZMSS önerisiyle kod yoksa kart görünür ve "GŞ sürümü teyit gerekli" der; öneri adı yazılır', () => {
+    const d = ev07Durumu({ onayliKod: null, oneriKod: 'B4_C_ALKOL', brans: 'ZMMS' })
+    expect(d.gerekli).toBe(true)
+    expect(d.teyitGerekli).toBe(true)
+    expect(d.metin).toContain('ZMSS B.4/c · alkol')
+    expect(d.metin).toContain('GŞ sürümü teyit gerekli')
+  })
+
+  it('kasko önerisiyle "GŞ sürümü" yazılmaz; genel "teyit gerekli" kalır (GŞ yalnız ZMSS\'de vardır)', () => {
     const d = ev07Durumu({ onayliKod: null, oneriKod: 'KASKO_HIZMET_KUSURU' })
     expect(d.gerekli).toBe(true)
     expect(d.teyitGerekli).toBe(true)
     expect(d.metin).toContain('Kasko halefiyeti · kamu idaresinin hizmet kusuru')
-    expect(d.metin).toContain('GŞ sürümü teyit gerekli')
+    expect(d.metin).not.toContain('GŞ sürümü')
+    expect(d.metin).toContain('teyit gerekli')
+  })
+
+  it('oto dışı önerisiyle "GŞ sürümü" yazılmaz', () => {
+    const d = ev07Durumu({ onayliKod: null, oneriKod: 'OD_KOMSU_SU', brans: 'OTO_DISI' })
+    expect(d.metin).not.toContain('GŞ sürümü')
+    expect(d.metin).toContain('teyit gerekli')
   })
 
   it('onaysız (K1 bekleyen) kodla seçilmiş dosyada "teyit gerekli" etiketi kalır', () => {

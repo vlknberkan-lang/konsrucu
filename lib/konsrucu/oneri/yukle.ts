@@ -71,6 +71,7 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
     rucuSebebi: rucuSebebiKur({
       dosyaId, yetki, hugoHam: dosya.rucuSebebi, brans: dosya.brans, satirlar,
       policeTanzim: typeof tanzim === 'string' ? tanzim : null, policeBaslangic: dosya.policeBaslangic, kullanicilar,
+      kaynakJson: dosya.kaynakJson,
     }),
     eksikEvrak: eksikEvrakKur({
       dosyaId, yetki, onayliKod, oneriKod, belgeler: dosya.belgeler,

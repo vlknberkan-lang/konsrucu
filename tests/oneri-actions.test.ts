@@ -137,6 +137,19 @@ describe('rücu sebebi ve yetkili icra', () => {
     expect((await rucuSebebiSecEylem({ dosyaId, kod: 'UYDURMA' as never, beklenenOnayliId: null })).ok).toBe(false)
   })
 
+  it('oto dışı OD-DİĞER de gerekçesiz seçilemez (zod enum yeni kodları otomatik kabul eder)', async () => {
+    expect((await rucuSebebiSecEylem({ dosyaId, kod: 'OD_DIGER', beklenenOnayliId: null })).ok).toBe(false)
+    expect(m.elleOnayla).not.toHaveBeenCalled()
+    const r = await rucuSebebiSecEylem({ dosyaId, kod: 'OD_DIGER', beklenenOnayliId: null, gerekce: 'Kurgusal gerekçe: apartman yönetimi sorumluluğu' })
+    expect(r).toEqual({ ok: true })
+    expect(m.elleOnayla).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ alan: 'rucuSebebiKod', deger: 'OD_DIGER', uretici: 'SECIM:RUCU_SEBEBI' }))
+  })
+
+  it('oto dışı halefiyet kodu (OD_KOMSU_SU) gerekçesiz seçilebilir', async () => {
+    const r = await rucuSebebiSecEylem({ dosyaId, kod: 'OD_KOMSU_SU', beklenenOnayliId: null })
+    expect(r).toEqual({ ok: true })
+  })
+
   it('yetkili icra: seçenek sunucuda dosya verisinden yeniden hesaplanır (istemcinin daire adına güvenilmez)', async () => {
     m.dosyaTek.mockResolvedValue({ kazaYeri: 'Seyhan', il: 'Adana', borclular: [] })
     expect(await yetkiliIcraSecEylem({ dosyaId, anahtar: 'KAZA_YERI', beklenenOnayliId: null })).toEqual({ ok: true })

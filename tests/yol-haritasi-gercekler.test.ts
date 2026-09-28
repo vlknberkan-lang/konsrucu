@@ -19,7 +19,7 @@ const ondalik = (n: number) => ({ toString: () => String(n), valueOf: () => Stri
 function ham(): HamDosya {
   return {
     id: 'd1', hukukDosyaNo: 'HK-2026-001', durum: 'ITIRAZ', yol: 'KLASIK', yolGuven: 0.7, yolNeden: null, yolOnayAt: null, yolOnaylayanId: null,
-    icraEksen: 'DURDU_ITIRAZ', arabEksen: null, davaEksen: null, eksenJson: { icra: { teyit: 'TEYITLI', kanitIds: [] } }, onarimDurumu: null, rucuSebebiKod: 'KOD',
+    icraEksen: 'DURDU_ITIRAZ', arabEksen: null, davaEksen: null, eksenJson: { icra: { teyit: 'TEYITLI', kanitIds: [] } }, onarimDurumu: null, rucuSebebiKod: 'KOD', brans: 'ZMMS',
     zamanasimi: null, yetkiliIcra: 'İstanbul', icraDairesi: 'İstanbul 5. İcra Dairesi', icraDosyaNo: '2026/5', takipTarihi: T('2026-01-10T06:00:00Z'),
     uyapDurum: 'Açık', uyapSenkronAt: T('2026-09-27T08:00:00Z'), uyapEslesme: 'OK', uyapEslesmeNot: null, uyapHesapJson: { tahsilat: 1500 },
     rucuTutari: ondalik(61728.5), asilAlacak: null, kapanisSebebi: null, kapanisAt: null,

@@ -27,7 +27,7 @@ export function RucuSebebiSec({ veri, capa = 'yh-rucu-sebebi' }: { veri: RucuSeb
   const [kod, setKod] = useState<RucuSebebiKodu | ''>(varsayilan)
   const [gerekce, setGerekce] = useState('')
   const secili = veri.secenekler.find((s) => s.kod === kod) ?? null
-  const gerekceGerekli = kod === 'GS_DIGER'
+  const gerekceGerekli = secili?.gerekceZorunlu ?? false
   const degismedi = !!veri.onayli && veri.onayli.kod === kod
   const uygunlar = veri.secenekler.filter((s) => s.bransUygun)
   const digerleri = veri.secenekler.filter((s) => !s.bransUygun)
@@ -136,7 +136,7 @@ export function RucuSebebiSec({ veri, capa = 'yh-rucu-sebebi' }: { veri: RucuSeb
             {gerekceGerekli && (
               <label className="flex min-w-[280px] flex-1 flex-col gap-1">
                 <span className="text-[11.5px] font-semibold text-muted-foreground">Gerekçe (zorunlu)</span>
-                <input required minLength={10} className={GIRDI} value={gerekce} onChange={(e) => setGerekce(e.target.value)} placeholder="Hangi GŞ hâli, neden" />
+                <input required minLength={10} className={GIRDI} value={gerekce} onChange={(e) => setGerekce(e.target.value)} placeholder="Hangi hâl, neden" />
               </label>
             )}
             <button type="submit" disabled={bekliyor || !kod || degismedi} className={DUGME_ONAY}>

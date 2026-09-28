@@ -19,7 +19,7 @@ export const ERTELEME_EYLEM_ONEKI = 'Yol haritası · ertelendi'
 /** Tek sorguda dosyanın yol haritası için gereken her şey (kişisel veri kolonları seçilmez). */
 export const HAM_SELECT = {
   id: true, hukukDosyaNo: true, durum: true, yol: true, yolGuven: true, yolNeden: true, yolOnayAt: true, yolOnaylayanId: true,
-  icraEksen: true, arabEksen: true, davaEksen: true, eksenJson: true, onarimDurumu: true, rucuSebebiKod: true, zamanasimi: true,
+  icraEksen: true, arabEksen: true, davaEksen: true, eksenJson: true, onarimDurumu: true, rucuSebebiKod: true, brans: true, zamanasimi: true,
   yetkiliIcra: true, icraDairesi: true, icraDosyaNo: true, takipTarihi: true,
   uyapDurum: true, uyapSenkronAt: true, uyapEslesme: true, uyapEslesmeNot: true, uyapHesapJson: true,
   rucuTutari: true, asilAlacak: true, kapanisSebebi: true, kapanisAt: true, cikarimJson: true, createdAt: true,
@@ -170,6 +170,7 @@ export function hamdanGercekler(h: HamDosya, ek: HamEk): Gercekler {
       onarimDurumu: h.onarimDurumu,
       onarimBekleyen: h._count?.veriOnarimlari ?? 0,
       rucuSebebiKod: h.rucuSebebiKod,
+      brans: h.brans,
       zamanasimi: h.zamanasimi,
       yetkiliIcra: h.yetkiliIcra,
       icraDairesi: h.icraDairesi,

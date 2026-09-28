@@ -7,6 +7,7 @@
  */
 import { alanTanimi, degerEsit, degerGorunum, degerNormal, KAYNAK_ETIKET, type AlanTanimi, type KaynakTuru, type OdemeDegeri, type YetkiliIcraDegeri } from './alanlar'
 import { binKatSuphesi, celiskiVar, onaylayabilir, topluOnayUygunMu, type AlanKaydi } from './karar'
+import { hugoMetniGenislet } from './kaynaklar'
 import { ekranMaskele } from './maske-gorunum'
 import { rayEvrakIstekTaslagi } from './ray-istek'
 import { yetkiliIcraSecenekleri, type YetkiliIcraBorclu } from './yetkili-icra'
@@ -152,6 +153,8 @@ export function rucuSebebiKur(g: {
   policeTanzim: Date | string | null
   policeBaslangic: Date | string | null
   kullanicilar: Record<string, string>
+  /** RucuDosyasi.kaynakJson — oto dışı dosyalarda "Rücu Nedeni Detay" (kaynakJson.aciklama) eşleştiriciye eklenir. */
+  kaynakJson?: unknown
 }): RucuSebebiVerisi {
   const kodSatirlari = g.satirlar.filter((s) => s.alan === 'rucuSebebiKod')
   const onayliS = kodSatirlari.find((s) => s.durum === 'ONAYLI' && rucuSebebiKoduMu(s.degerJson))
@@ -163,14 +166,17 @@ export function rucuSebebiKur(g: {
       const kod = s.degerJson as RucuSebebiKodu
       return { id: s.id, kod, ad: RUCU_SEBEBI_TANIM[kod].ad, kaynakEtiketi: KAYNAK_ETIKET[s.kaynakTuru as KaynakTuru] ?? s.kaynakTuru, guven: s.guven, k1Etiketi: k1Etiketi(kod) }
     })
-  const hugo = hugoRucuNedeniEsle(g.hugoHam, g.brans)
+  const hugo = hugoRucuNedeniEsle(hugoMetniGenislet(g.hugoHam, g.brans, g.kaynakJson), g.brans)
   const uygun = new Set(bransKodlari(g.brans))
   const secenekler = [...RUCU_SEBEBI_KODLARI]
     .sort((a, b) => Number(uygun.has(b)) - Number(uygun.has(a)))
-    .map((kod) => ({ kod, ad: RUCU_SEBEBI_TANIM[kod].ad, k1Etiketi: k1Etiketi(kod), bransUygun: kodBransaUygunMu(kod, g.brans) }))
+    .map((kod) => ({
+      kod, ad: RUCU_SEBEBI_TANIM[kod].ad, k1Etiketi: k1Etiketi(kod), bransUygun: kodBransaUygunMu(kod, g.brans),
+      gerekceZorunlu: RUCU_SEBEBI_TANIM[kod].gerekceZorunlu,
+    }))
   const etkinKod = onayliKod ?? oneriler[0]?.kod ?? null
   const tanim = etkinKod ? RUCU_SEBEBI_TANIM[etkinKod] : null
-  const ev07 = ev07Durumu({ onayliKod, oneriKod: oneriler[0]?.kod ?? hugo.kod })
+  const ev07 = ev07Durumu({ onayliKod, oneriKod: oneriler[0]?.kod ?? hugo.kod, brans: g.brans })
   return {
     dosyaId: g.dosyaId, yetki: g.yetki, hugoHam: g.hugoHam?.trim() || null, brans: g.brans,
     onayli: onayliS && onayliKod ? {

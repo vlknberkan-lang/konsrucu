@@ -110,6 +110,36 @@ describe('rucuSebebiKur', () => {
     expect(v.gsRejimi).toMatchObject({ rejim: 'GS_2026', esasTur: 'TANZIM' })
     expect(v.ev07).toMatchObject({ gerekli: false, teyitGerekli: true })
   })
+
+  it('oto dışı dosyada OD_* seçenekler önce gelir, kaynakJson.aciklama "Rücu Nedeni Detay" eşleştiriciye eklenir, GŞ sürümü yazılmaz', () => {
+    // "Diğer Nedenler" tek başına eşleşmez; kaynakJson.aciklama ("Rücu Nedeni Detay") eklenince OD_YONETIM_ORTAK_ALAN çıkar.
+    const v = rucuSebebiKur({
+      dosyaId: 'd1', yetki: AVUKAT, hugoHam: 'Diğer Nedenler', brans: 'OTO_DISI',
+      satirlar: [s({ alan: 'rucuSebebiKod', degerJson: 'OD_KOMSU_SU', kaynakTuru: 'KURAL' })],
+      policeTanzim: null, policeBaslangic: null, kullanicilar: {},
+      kaynakJson: { kaynak: 'zurich', aciklama: 'APARTMAN YÖNETİMİNE' },
+    })
+    expect(v.secenekler.slice(0, 8).every((x) => x.bransUygun && x.kod.startsWith('OD_'))).toBe(true)
+    expect(v.secenekler.find((x) => x.kod === 'OD_DIGER')?.gerekceZorunlu).toBe(true)
+    expect(v.secenekler.find((x) => x.kod === 'OD_KOMSU_SU')?.gerekceZorunlu).toBe(false)
+    expect(v.gsRejimi.rejim).toBe('UYGULANMAZ')
+    expect(v.ev07.metin).not.toContain('GŞ sürümü')
+    expect(v.ev07.metin).toContain('teyit gerekli')
+  })
+
+  it('oto dışı Hugo eşleşmesi: "Diğer Nedenler" tek başına yetersizken kaynakJson.aciklama eklenince tek koda çözülür', () => {
+    const olmadan = rucuSebebiKur({
+      dosyaId: 'd1', yetki: AVUKAT, hugoHam: 'Diğer Nedenler', brans: 'OTO_DISI', satirlar: [],
+      policeTanzim: null, policeBaslangic: null, kullanicilar: {},
+    })
+    expect(olmadan.ev07.metin).not.toContain('öneri:')
+    const ileBirlikte = rucuSebebiKur({
+      dosyaId: 'd1', yetki: AVUKAT, hugoHam: 'Diğer Nedenler', brans: 'OTO_DISI', satirlar: [],
+      policeTanzim: null, policeBaslangic: null, kullanicilar: {},
+      kaynakJson: { kaynak: 'zurich', aciklama: 'APARTMAN YÖNETİMİNE' },
+    })
+    expect(ileBirlikte.ev07.metin).toContain('öneri: Oto dışı halefiyet · apartman yönetimi / ortak alan')
+  })
 })
 
 describe('yetkiliIcraKur', () => {
