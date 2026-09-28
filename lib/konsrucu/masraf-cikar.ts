@@ -173,6 +173,133 @@ const SATIR_DISI = [
 
 export type MakbuzParseSonuc = { reddiyat: boolean; kalemler: MakbuzKalem[]; guvenli: boolean }
 
+// ── UYAP "sütun dökümü" makbuz düzeni (Masraf Makbuzu / Sayman Mutemedi Alındısı / Harç makbuzu) ──
+// pdfjs bu makbuzlarda metni SÜTUN SÜTUN döker: tutarlar kendi satırında ("732,00 864,61 104,00"), toplam ayrı satırda
+// ("1.700,61"), kalem adları en sonda bitişik ("Başvurma Harcı Peşin Harç Vekalet Suret Harcı"), tek kalemli masraf
+// makbuzunda cins "Açıklama"dan sonraki cümlede ("Posta Masrafı Yirmisekiz Türk Lirası … tahsil edilmiştir").
+// Satır-temelli parser bunu okuyamıyordu → her makbuz AI yedeğine düşüyor, o da KVKK gereği kapalı → Zurich'te 0 masraf.
+
+const SAYI_KOK: [string, number][] = [
+  ['milyon', 1_000_000], ['bin', 1000], ['yuz', 100],
+  ['doksan', 90], ['seksen', 80], ['yetmis', 70], ['altmis', 60], ['elli', 50], ['kirk', 40], ['otuz', 30], ['yirmi', 20], ['on', 10],
+  ['dokuz', 9], ['sekiz', 8], ['yedi', 7], ['alti', 6], ['bes', 5], ['dort', 4], ['uc', 3], ['iki', 2], ['bir', 1],
+]
+/** "Binyedıyüz", "Yirmisekiz", "Altmışbir" → sayı. Sayı sözcüğü değilse null. */
+export function yaziyiSayiyaCevir(kelime: string): number | null {
+  let s = normCins(kelime).replace(/\s+/g, '')
+  if (!s) return null
+  let toplam = 0
+  let grup = 0
+  while (s) {
+    const k = SAYI_KOK.find(([kok]) => s.startsWith(kok))
+    if (!k) return null
+    const [kok, deger] = k
+    s = s.slice(kok.length)
+    if (deger === 100) grup = (grup || 1) * 100
+    else if (deger >= 1000) { toplam += (grup || 1) * deger; grup = 0 }
+    else grup += deger
+  }
+  return toplam + grup
+}
+
+/** "… Türk Lirası … Kuruş tahsil edilmiştir" yazıyla toplam (TL + kuruş). Bulunamazsa null. */
+function yaziylaToplam(metin: string): number | null {
+  const m = metin.match(/([A-Za-zÇĞİIÖŞÜçğıiöşü]+)\s+Türk\s+Liras[ıi](?:\s+([A-Za-zÇĞİIÖŞÜçğıiöşü]+)\s+Kuru[şs])?\s+tahsil\s+edilmi[şs]tir/iu)
+  if (!m) return null
+  const tl = yaziyiSayiyaCevir(m[1])
+  if (tl == null) return null
+  const kurus = m[2] ? yaziyiSayiyaCevir(m[2]) : 0
+  return kurus == null ? null : tl + kurus / 100
+}
+
+const PARA_TOKEN = /^\d{1,3}(?:\.\d{3})*,\d{2}$/
+/** Yalnız para tutarlarından (ve "TL") oluşan satırlar, sırayla. */
+function tutarSatirlari(metin: string): number[][] {
+  const out: number[][] = []
+  for (const ln of metin.split('\n')) {
+    const toks = ln.replace(/\bTL\b/g, ' ').trim().split(/\s+/).filter(Boolean)
+    if (toks.length && toks.every((t) => PARA_TOKEN.test(t))) out.push(toks.map((t) => paraGuvenli(t) ?? NaN))
+  }
+  return out.filter((r) => r.every((n) => Number.isFinite(n)))
+}
+
+const KALEM_SONU = /(?:Harc[ıi]|Harç|Masraf[ıi]|Masraflar[ıi]|Ücreti|Avans[ıi]|Gideri|Bedeli|Pulu|Vergisi)$/iu
+/** Bitişik kalem adlarını ayır: "Başvurma Harcı Peşin Harç Vekalet Suret Harcı" → 3 ad. */
+function kalemAdlariniAyir(s: string): string[] {
+  const adlar: string[] = []
+  let biriken: string[] = []
+  for (const w of s.trim().split(/\s+/)) {
+    biriken.push(w)
+    if (KALEM_SONU.test(w)) { adlar.push(biriken.join(' ')); biriken = [] }
+  }
+  if (biriken.length) adlar.push(biriken.join(' '))
+  return adlar.filter(Boolean)
+}
+
+/** Seri + sıra no ("AB2026 318714322 …" / "MSR2026 217490749 …") → makbuz no. */
+function uyapMakbuzNo(metin: string): string | undefined {
+  const m = metin.match(/\b([A-Z]{2,4}\d{4})\s+(\d{6,})\b/)
+  return m ? `${m[1]}/${m[2]}` : undefined
+}
+
+/**
+ * UYAP sütun dökümü makbuzunu ayrıştır. Düzen tanınmazsa null (çağıran satır-temelli parser'a düşer).
+ * guvenli=true yalnız: kalem sayısı = tutar sayısı, tutarların toplamı = makbuz toplamı ve (varsa) yazıyla toplam da aynı.
+ */
+export function uyapMakbuzParse(metin: string): MakbuzParseSonuc | null {
+  if (!/masraf makbuzu|sayman mutemedi alindisi|harc makbuzu|alindi masraf turu|alindi harc turu/.test(normCins(metin))) return null
+  const satirlar = tutarSatirlari(metin)
+  if (!satirlar.length) return null
+
+  // Tutarlar + toplam: [kalemler] + [toplam] ya da tek kalemde "28,70 TL 28,70 TL" (miktar + toplam aynı satırda)
+  let tutarlar: number[]
+  let toplam: number
+  // Kayan sütun: değişken tutarlı kalem (peşin harç) kendi satırına düşebilir → [ilk satır] [kayan…] [toplam]
+  let kayan: number[] = []
+  const son = satirlar[satirlar.length - 1]
+  if (satirlar.length >= 3 && son.length === 1 && satirlar.slice(1, -1).every((r) => r.length === 1)) {
+    tutarlar = satirlar[0]; kayan = satirlar.slice(1, -1).map((r) => r[0]); toplam = son[0]
+  } else if (satirlar.length >= 2 && satirlar[1].length === 1) { tutarlar = satirlar[0]; toplam = satirlar[1][0] }
+  else if (satirlar[0].length === 2 && Math.abs(satirlar[0][0] - satirlar[0][1]) < 0.005) { tutarlar = [satirlar[0][0]]; toplam = satirlar[0][1] }
+  else if (satirlar[0].length === 1) { tutarlar = satirlar[0]; toplam = satirlar[0][0] }
+  else return null
+
+  // Kalem adları: "Alındı (Harç|Masraf) Türü <adlar>" ya da tek kalemde "Açıklama <cins> <yazıyla tutar> Türk Lirası"
+  let adlar: string[] = []
+  const tur = metin.match(/Al[ıi]nd[ıi]\s*\((?:Har[çc]|Masraf)\)\s*T[üu]r[üu][ \t]+([^\n]+)/iu)
+  // Adların arkasından yazıyla tutar gelebilir ("Vekalet Suret Harcı Yüzdört Türk Lirası tahsil edilmiştir.") → kes
+  const turAdlari = tur ? tur[1].replace(/\s+[A-Za-zÇĞİIÖŞÜçğıiöşü]+\s+Türk\s+Liras[ıi].*$/iu, '') : ''
+  if (turAdlari && !/^\s*:?\s*$/.test(turAdlari) && !/Açıklama|Aciklama/iu.test(turAdlari)) adlar = kalemAdlariniAyir(turAdlari)
+  if (!adlar.length) {
+    const ac = metin.match(/A[çc][ıi]klama\s+([^\n]+?)\s+Türk\s+Liras[ıi]/iu)
+    if (ac) {
+      const kelimeler = ac[1].trim().split(/\s+/)
+      while (kelimeler.length && yaziyiSayiyaCevir(kelimeler[kelimeler.length - 1]) != null) kelimeler.pop()
+      if (kelimeler.length) adlar = [kelimeler.join(' ')]
+    }
+  }
+  // Kayan tutarlar "peşin" kalemlere (sırayla), ilk satırdakiler diğer kalemlere (sırayla) gider.
+  let kalemTutari: number[] = tutarlar
+  if (kayan.length) {
+    const pesinSira = adlar.map((a, i) => (/pe[şs]in/iu.test(a) ? i : -1)).filter((i) => i >= 0)
+    if (pesinSira.length !== kayan.length || adlar.length !== tutarlar.length + kayan.length) return { reddiyat: false, kalemler: [], guvenli: false }
+    const digerler = [...tutarlar]
+    const pesinler = [...kayan]
+    kalemTutari = adlar.map((_, i) => (pesinSira.includes(i) ? pesinler.shift()! : digerler.shift()!))
+  }
+  if (!adlar.length || adlar.length !== kalemTutari.length) return { reddiyat: false, kalemler: [], guvenli: false }
+
+  const tarih = metinTarih(metin)
+  const makbuzNo = uyapMakbuzNo(metin)
+  const kalemler: MakbuzKalem[] = adlar
+    .map((cinsHam, i) => ({ cinsHam, tutar: kalemTutari[i], tarih, makbuzNo, taraf: 'BIZ' as const }))
+    .filter((k) => k.tutar > 0 && masrafKalemiMi(k.cinsHam))
+  const kalemToplam = kalemler.reduce((a, k) => a + k.tutar, 0)
+  const yazi = yaziylaToplam(metin)
+  const guvenli = kalemler.length === adlar.length && Math.abs(kalemToplam - toplam) < 0.005 && (yazi == null || Math.abs(yazi - toplam) < 0.005)
+  return { reddiyat: false, kalemler, guvenli }
+}
+
 /**
  * Metinli makbuzu LLM'siz ayrıştır. guvenli=true SADECE makbuzdaki "Toplam" ile çıkarılan kalemlerin
  * toplamı birebir tutuyorsa döner (= hiçbir kalem kaçmadı + tutarlar doğru) → çağıran LLM'e GİTMEZ.
@@ -180,6 +307,8 @@ export type MakbuzParseSonuc = { reddiyat: boolean; kalemler: MakbuzKalem[]; guv
  */
 export function makbuzParseMetin(metin: string): MakbuzParseSonuc {
   if (/reddiyat makbuzu|tahsilat makbuzu/.test(normCins(metin))) return { reddiyat: true, kalemler: [], guvenli: true }
+  const uyap = uyapMakbuzParse(metin)
+  if (uyap?.guvenli) return uyap
 
   const tarih = metinTarih(metin)
   const dekontNo = metinDekontNo(metin)
