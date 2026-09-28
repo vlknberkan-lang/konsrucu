@@ -136,7 +136,7 @@ export function DilekceUretici({ dosya, tur, kartKilitli, olgular, surumler, yaz
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-6 lg:px-7">
       <div className="mb-4">
-        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Dilekçe v2 · aşama 2</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Dilekçe · adım 2: taslak</div>
         <h1 className="font-display mt-1.5 text-[26px] font-extrabold tracking-[-0.03em]">Dilekçe taslağı · {KART_TUR_ADI[tur]}</h1>
         <p className="mt-1 text-sm text-muted-foreground"><span className="font-mono">{dosya.no}</span> · {dosya.taraf}</p>
         <p className="mt-1.5 max-w-[70ch] text-xs text-muted-foreground">Bu taslak TASLAKTIR. Künye, değer, EKLER ve talep sonucu koddan basılır; AÇIKLAMALAR yapay zekâdandır ve yalnız dosya kartındaki olgulara dayanır. İmzalamadan önce mutlaka gözden geçirin.</p>

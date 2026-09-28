@@ -11,12 +11,12 @@ import { useTheme } from 'next-themes'
 import { usePathname } from 'next/navigation'
 import { Sun, Moon, Bell, LogOut, ChevronDown } from 'lucide-react'
 import { signOutAction } from '@/app/actions/auth'
-import { aktifNav, type ShellUser, type NavCounts } from '@/lib/konsrucu/nav'
+import { aktifNav, aktifBolum, type ShellUser, type NavCounts } from '@/lib/konsrucu/nav'
 import { KomutPaleti } from './komut-paleti'
 
-export function GlobalHeader({ crumb = 'Gelen Kutusu', user, counts }: { crumb?: string; user: ShellUser; counts?: NavCounts }) {
+export function GlobalHeader({ crumb = 'KonsLaw', user, counts }: { crumb?: string; user: ShellUser; counts?: NavCounts }) {
   const pathname = usePathname()
-  const aktifBaslik = aktifNav(pathname)?.label ?? crumb // başlık menüdeki adla aynı (S25)
+  const aktifBaslik = aktifNav(pathname)?.label ?? aktifBolum(pathname)?.label ?? crumb // başlık menüdeki adla aynı (S25)
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])

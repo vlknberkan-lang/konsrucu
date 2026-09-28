@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { DosyaYolHaritasi } from '@/components/dosya/yol-haritasi/yol-haritasi'
 import { EYLEM_CAPA } from '@/components/dosya/yol-haritasi/eylem'
-import { yolHaritasiYukle } from '@/lib/konsrucu/yol-haritasi/yukle'
+import { yolHaritasiYukle, onbellekGuncelle } from '@/lib/konsrucu/yol-haritasi/yukle'
 import type { DurakNo, EylemHedef } from '@/lib/konsrucu/yol-haritasi/tipler'
 import type { YolHaritasiGorunum } from '@/lib/konsrucu/yol-haritasi/gorunum'
 import { DurakPaneli } from '@/components/dosya/durak-paneli'
@@ -74,6 +74,8 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
   // yol haritası hesaplanamazsa dosya kaybolmasın: ayrıntılı (eski) görünüme düş
   const gorunum = await yolHaritasiYukle({ dosyaId: dosya.id, musteriId: dosya.musteriId, prova: searchParams.prova ?? null }).catch(() => null)
   if (!gorunum) redirect(`/akilli-giris/${dosya.id}`)
+  // Bugün masası bu önbellekten okur: açılan dosya listeye girsin (prova yazılmaz; yalnız değiştiyse yazar)
+  await onbellekGuncelle(gorunum, dosya.musteriId).catch(() => false)
 
   const seciliDurak = seciliDuraktanCoz(gorunum, searchParams.durak)
   const avukatRol = dbUser.rol === 'ADMIN' || dbUser.rol === 'AVUKAT'
@@ -109,7 +111,8 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
         gorunum={gorunum}
         kullaniciRol={dbUser.rol}
         eylemHrefleri={eylemHrefleri}
-        eskiGorunumHref={eskiGorunumHref}
+        eskiGorunumHref={`${eskiGorunumHref}?asama=oncesi`}
+        provaGoster={!!searchParams.prova}
         durakHref={durakHref}
         seciliDurak={seciliDurak}
       />

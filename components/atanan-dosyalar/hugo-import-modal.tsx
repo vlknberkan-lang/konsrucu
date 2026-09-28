@@ -22,7 +22,7 @@ export function HugoImportButton({ variant = 'soft', className = '' }: { variant
         onClick={() => setOpen(true)}
         className={`inline-flex shrink-0 items-center gap-2 rounded-[10px] px-3.5 py-2.5 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50 motion-reduce:transition-none ${stil} ${className}`}
       >
-        <FileSpreadsheet className={`h-4 w-4 ${variant === 'primary' ? '' : 'text-kr'}`} /> Hugo'dan içe aktar
+        <FileSpreadsheet className={`h-4 w-4 ${variant === 'primary' ? '' : 'text-kr'}`} /> Excel'den içe aktar
       </button>
       {open && <HugoImportDialog onClose={() => setOpen(false)} />}
     </>

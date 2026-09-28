@@ -28,10 +28,10 @@ export function DilekceV2Giris({ dosyaId, kartlar, sikisik = false }: DilekceV2G
   const dava = kartlar.find((k) => k.tur === 'DAVA')
   const digerleri = KART_TURLERI.filter((t) => t !== 'DAVA')
   return (
-    <section className={`${kart} ${sikisik ? 'p-3' : 'mb-5 p-4'}`} aria-label="Dilekçe v2">
+    <section className={`${kart} ${sikisik ? 'p-3' : 'mb-5 p-4'}`} aria-label="Dilekçe">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-xs font-semibold text-kr-ink"><FileSearch className="h-4 w-4" aria-hidden /> Dilekçe v2 · dosya kartı</div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-kr-ink"><FileSearch className="h-4 w-4" aria-hidden /> Dilekçe · önce dosya kartı</div>
           <p className="mt-0.5 text-xs text-muted-foreground">Önce kaynaklı olgular ve avukat onayı; kart kilitlenmeden taslak üretilmez.</p>
           {dava && <p className="mt-1 text-xs">Dava dilekçesi kartı: sürüm {dava.surum} <Badge tone={DURUM[dava.durum]?.ton ?? 'steel'}>{DURUM[dava.durum]?.ad ?? dava.durum}</Badge></p>}
         </div>

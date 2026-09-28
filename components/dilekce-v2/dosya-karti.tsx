@@ -82,7 +82,7 @@ export function DosyaKartiEkrani({ dosya, tur, kart, gecmis, belgeler, yetki, ai
     <div className="mx-auto max-w-[1500px] px-4 py-6 lg:px-7">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Dilekçe v2 · aşama 1</div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Dilekçe · adım 1: dosya kartı</div>
           <h1 className="font-display mt-1.5 text-[26px] font-extrabold tracking-[-0.03em]">
             Dosya kartı · {KART_TUR_ADI[tur]}{kart ? ` · sürüm ${kart.surum} (${DURUM_ADI[kart.durum] ?? kart.durum})` : ''}
           </h1>

@@ -78,7 +78,7 @@ export function SimdiKarti({ dosyaId, simdi, bekleme, kullaniciRol, prova, eylem
           )}
           {!bekliyoruz && (
             <p className="mt-1 text-[12px] text-muted-foreground">
-              Kim: {ROL_METNI[adim.rol]} · Kural <span className="font-mono">{adim.kural}</span>
+              Kim: {ROL_METNI[adim.rol]}
               {adim.adet > 1 && <> · bu türden {adim.adet} iş</>}
             </p>
           )}

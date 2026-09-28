@@ -36,7 +36,7 @@ export default async function DilekceSablonAyarlariSayfasi() {
   return (
     <div className="mx-auto max-w-[900px] px-4 py-6 lg:px-7">
       <div className="mb-4">
-        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Dilekçe v2 · ayarlar</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Dilekçe · ayarlar</div>
         <h1 className="font-display mt-1.5 text-[26px] font-extrabold tracking-[-0.03em]">İskelet ve üslup kartı · {musteri.ad}</h1>
         <p className="mt-1.5 max-w-[70ch] text-sm text-muted-foreground">
           Bu iskelet ve üslup kuralları yalnız <strong>{musteri.ad}</strong> için geçerlidir; başka müvekkilde görünmez ve kullanılmaz.

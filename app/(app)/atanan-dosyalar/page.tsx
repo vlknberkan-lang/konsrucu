@@ -169,7 +169,7 @@ export default async function AtananDosyalarPage({ searchParams }: { searchParam
           </div>
           <div className="font-display text-lg font-bold">Henüz atanan dosya yok</div>
           <p className="mx-auto mt-1.5 max-w-[54ch] text-[13px] text-muted-foreground">
-            Hugo'nun Excel tevdiye listesini içe aktarın; her satır <b>HAVUZDA</b> bir dosya olarak açılır ve
+            Size gelen Excel listesini içe aktarın; her satır <b>HAVUZDA</b> bir dosya olarak açılır ve
             burada <b>aşamasına</b> göre takibe girer.
           </p>
           <div className="mt-4">
@@ -318,10 +318,10 @@ function Baslik({ toplam, cekilen, bekleyen }: { toplam?: number; cekilen?: numb
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Akıllı Giriş · Hugo · Tevdiye</div>
-        <h1 className="font-display mt-1.5 text-[30px] font-extrabold tracking-[-0.035em]">Atanan Dosyalar</h1>
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Dosyalar</div>
+        <h1 className="font-display mt-1.5 text-[30px] font-extrabold tracking-[-0.035em]">Tüm Dosyalar</h1>
         <p className="mt-1.5 max-w-[64ch] text-sm text-muted-foreground">
-          Hugo tevdiye dosyalarını içe aktarın; her dosyanın <b>aşamasını</b> takip edin ve detayına geçin.
+          Size gelen dosyalar; aşamasını görün, dosyayı açıp sıradaki işe geçin. Yeni liste için Excel'den içe aktarın.
           {typeof toplam === 'number' && (
             <span className="font-mono ml-1 text-muted-foreground">· {toplam} dosya · {cekilen} çekildi · {bekleyen} bekliyor</span>
           )}

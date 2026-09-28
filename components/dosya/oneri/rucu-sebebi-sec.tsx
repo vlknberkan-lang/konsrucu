@@ -53,7 +53,7 @@ export function RucuSebebiSec({ veri, capa = 'yh-rucu-sebebi' }: { veri: RucuSeb
           <div className="rounded-xl border border-border-subtle bg-surface-muted/60 p-3">
             {veri.hugoHam && (
               <div className="text-muted-foreground">
-                Hugo &quot;Rücu Nedeni&quot;: <span className="font-semibold text-foreground">{veri.hugoHam}</span>
+                Excel &quot;Rücu Nedeni&quot;: <span className="font-semibold text-foreground">{veri.hugoHam}</span>
               </div>
             )}
             {veri.oneriler.map((o) => (

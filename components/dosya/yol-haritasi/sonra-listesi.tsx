@@ -34,7 +34,6 @@ export function SonraListesi({ sonra, sonraKatlanan, ertelenenler, bilgi }: {
                   </span>
                 )}
                 <Badge tone={ton.tone}>{ton.etiket}</Badge>
-                <span className="font-mono text-[11px] text-muted-foreground">{a.kural}</span>
               </li>
             )
           })}
@@ -45,7 +44,7 @@ export function SonraListesi({ sonra, sonraKatlanan, ertelenenler, bilgi }: {
       {sonraKatlanan > 0 && <p className="mt-1 text-[12px] text-muted-foreground">+{sonraKatlanan} iş daha (öncelik sırasıyla sonra gelecek)</p>}
       {bilgi && bilgi.length > 0 && (
         <ul className="mt-2 space-y-1">
-          {bilgi.map((a) => <li key={a.kural} className="text-[12.5px] text-info">Bilgi: {a.metin} <span className="font-mono text-[11px] text-muted-foreground">{a.kural}</span></li>)}
+          {bilgi.map((a) => <li key={a.kural} className="text-[12.5px] text-info">Bilgi: {a.metin}</li>)}
         </ul>
       )}
       {ertelenenler && ertelenenler.length > 0 && (
@@ -53,7 +52,6 @@ export function SonraListesi({ sonra, sonraKatlanan, ertelenenler, bilgi }: {
           {ertelenenler.map((a) => (
             <li key={a.kural} className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
               <Clock3 className="h-3.5 w-3.5" aria-hidden /> Ertelendi ({gunGoster(a.ertelendi)} tarihine kadar): {a.metin}
-              <span className="font-mono text-[11px]">{a.kural}</span>
             </li>
           ))}
         </ul>

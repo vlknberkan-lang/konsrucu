@@ -245,7 +245,7 @@ export function MevzuatKutuphanesi({ musteriAdi, kayitlar, hedefMusteriler, yetk
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6 lg:px-7">
-      <PageHeader kicker={`Dilekçe v2 · K1 · ${musteriAdi}`} title="Atıf kütüphanesi" sub="Dilekçeye yalnız doğrulanmış atıf girer. Resmî metni açın, kaydı işaretleyin; kim ve ne zaman doğruladığı kayda geçer." />
+      <PageHeader kicker={`Dilekçe · ${musteriAdi}`} title="Atıf kütüphanesi" sub="Dilekçeye yalnız doğrulanmış atıf girer. Resmî metni açın, kaydı işaretleyin; kim ve ne zaman doğruladığı kayda geçer." />
       {hata && <div role="alert" className="mb-4 rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{hata}</div>}
       {bilgi && <div role="status" className="mb-4 rounded-xl bg-success-soft px-4 py-3 text-sm text-success">{bilgi}</div>}
 

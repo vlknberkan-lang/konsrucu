@@ -445,8 +445,8 @@ function MasaBos({ suzgec, herkes, bekleyen }: { suzgec: MasaSuzgec; herkes: num
   const icerik: Record<MasaSuzgec, { metin: string; href: string; etiket: string }> = {
     benim: herkes > 0
       ? { metin: 'Size düşen iş yok.', href: '/bugun?suzgec=herkes', etiket: 'Herkesin işlerine bak' }
-      : { metin: `Şu an yapılacak iş yok${bekleyen > 0 ? `; ${bekleyen} dosyada gelişme bekleniyor` : ''}.`, href: '/atanan-dosyalar', etiket: 'Atanan dosyalara git' },
-    herkes: { metin: `Şu an yapılacak iş yok${bekleyen > 0 ? `; ${bekleyen} dosyada gelişme bekleniyor` : ''}.`, href: '/atanan-dosyalar', etiket: 'Atanan dosyalara git' },
+      : { metin: `Şu an yapılacak iş yok${bekleyen > 0 ? `; ${bekleyen} dosyada gelişme bekleniyor` : ''}.`, href: '/atanan-dosyalar', etiket: 'Tüm dosyalara git' },
+    herkes: { metin: `Şu an yapılacak iş yok${bekleyen > 0 ? `; ${bekleyen} dosyada gelişme bekleniyor` : ''}.`, href: '/atanan-dosyalar', etiket: 'Tüm dosyalara git' },
     onaysiz: { metin: 'Onay bekleyen süre yok.', href: '/sureler', etiket: 'Süre defterine git' },
     uyap: { metin: "Takibi açılmış bütün dosyalar UYAP'la eşleşiyor.", href: '/eklenti', etiket: 'Eklenti durumuna bak' },
   }

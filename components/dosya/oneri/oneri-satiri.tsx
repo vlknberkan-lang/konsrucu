@@ -34,7 +34,7 @@ function KaynakBilgisi({ o, onKaynakGoster }: { o: OneriGorunum; onKaynakGoster:
           <FileSearch className="h-3 w-3" aria-hidden /> <span className="max-w-[180px] truncate">{o.belgeAdi ?? 'Belge'}</span>{o.sayfa ? <span className="font-mono">s.{o.sayfa}</span> : null}
         </button>
       ) : o.kaynakTuru === 'HUGO' || o.kaynakTuru === 'EXCEL' ? (
-        <span>Hugo satırı</span>
+        <span>Excel satırı</span>
       ) : null}
       {o.alintiDurumu === 'KAYNAKSIZ' && (
         <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-[1px] text-[10.5px] font-semibold text-danger">

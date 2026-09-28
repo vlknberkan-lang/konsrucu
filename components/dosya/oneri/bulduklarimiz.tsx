@@ -49,7 +49,7 @@ export function Bulduklarimiz({ veri, capa = 'yh-bulduklarimiz' }: { veri: Buldu
         alt={
           <>
             Her bilginin yanında kaynağı durur. Doğruysa onaylayın; onaylanan bilgi kilitlenir ve yeniden çıkarım onu değiştirmez.
-            {!veri.aiAcik && <> Yapay zekâ kapalı: öneriler belge kurallarından ve Hugo satırından geliyor.</>}
+            {!veri.aiAcik && <> Yapay zekâ kapalı: öneriler belge kurallarından ve içe aktarılan Excel satırından geliyor.</>}
           </>
         }
         sag={yenidenBul}
