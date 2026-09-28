@@ -31,7 +31,7 @@ export async function davaTaslagiUret(input: {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) return { ok: false, error: 'Dilekçe üretimi için sunucuda AI bağlantısı yapılandırılmamış. Mevcut taslakları düzenleyebilirsiniz.' }
   // KVKK kapısı: yüzey canlıda kapalıysa dosya verisi hiç okunmaz; mevcut taslaklar düzenlenebilir.
-  if (!yuzeyAcik('dilekce')) return { ok: false, error: `${KVKK_KAPALI_MESAJI} Mevcut taslakları düzenleyebilirsiniz.` }
+  if (!yuzeyAcik('dilekce')) return { ok: false, error: `${KVKK_KAPALI_MESAJI} Yeni dilekçeyi dosyanın Dava durağındaki "Dilekçe" bölümünden şablonla hazırlayın; buradaki mevcut taslakları düzenleyebilirsiniz.` }
 
   try {
     const musteri = await prisma.musteri.findFirst({ where: { id: aktifMusteriId, aktif: true }, select: { id: true } })
