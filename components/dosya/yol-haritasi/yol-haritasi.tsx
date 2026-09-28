@@ -33,9 +33,11 @@ export interface DosyaYolHaritasiProps {
   durakHref?: (no: number) => string
   /** Görsel olarak belirgin gösterilecek durak no'su (seçili durak). */
   seciliDurak?: number
+  /** Durak listesi burada çizilsin mi (varsayılan evet; sekmeli dosya ekranı onu kendi sekmesinde çizer). */
+  duraklarGoster?: boolean
 }
 
-export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHrefSablonu, eskiGorunumHref, provaGoster = true, durakHref, seciliDurak }: DosyaYolHaritasiProps) {
+export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHrefSablonu, eskiGorunumHref, provaGoster = true, durakHref, seciliDurak, duraklarGoster = true }: DosyaYolHaritasiProps) {
   const s = gorunum.sonuc
   const prova = gorunum.prova?.tarih ?? null
   return (
@@ -55,7 +57,7 @@ export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHr
         belgeHrefSablonu={belgeHrefSablonu}
       />
       <SonraListesi sonra={s.sonra} sonraKatlanan={s.sonraKatlanan} ertelenenler={s.ertelenenler} bilgi={s.bilgi} />
-      <DurakListesi duraklar={gorunum.duraklar} durakHref={durakHref} secili={seciliDurak} />
+      {duraklarGoster && <DurakListesi duraklar={gorunum.duraklar} durakHref={durakHref} secili={seciliDurak} />}
     </div>
   )
 }

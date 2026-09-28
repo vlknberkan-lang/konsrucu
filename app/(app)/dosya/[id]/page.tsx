@@ -6,7 +6,6 @@
  */
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { FileText, Plug, Timer, History } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { DosyaYolHaritasi } from '@/components/dosya/yol-haritasi/yol-haritasi'
@@ -16,6 +15,8 @@ import type { DurakNo, EylemHedef } from '@/lib/konsrucu/yol-haritasi/tipler'
 import type { YolHaritasiGorunum } from '@/lib/konsrucu/yol-haritasi/gorunum'
 import { DurakPaneli } from '@/components/dosya/durak-paneli'
 import { SiraGecis } from '@/components/dosya/sira-gecis'
+import { DurakListesi } from '@/components/dosya/yol-haritasi/durak-listesi'
+import { SekmeCubugu, EvrakSekmesi, TaraflarSekmesi, GecmisSekmesi, HazirlikAdimlari, SEKMELER, type SekmeKey } from '@/components/dosya/sekmeler/sekmeler'
 import { oneriPaneliYukle } from '@/lib/konsrucu/oneri/yukle'
 import { olayPaneliYukle } from '@/lib/konsrucu/eksen/yukle'
 import { arabuluculukPaneli } from '@/lib/konsrucu/arabuluculuk/veri'
@@ -55,7 +56,7 @@ function seciliDuraktanCoz(gorunum: YolHaritasiGorunum, durakParam: string | und
 
 export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: {
   params: { id: string }
-  searchParams: { durak?: string; prova?: string; panel?: string }
+  searchParams: { durak?: string; prova?: string; panel?: string; sekme?: string; evrak?: string }
 }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -67,9 +68,12 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
 
   const dosya = await prisma.rucuDosyasi.findFirst({
     where: { musteriId: { in: izinli }, OR: [{ id: params.id }, { hasarDosyaNo: params.id }, { hukukDosyaNo: params.id }, { id: { startsWith: params.id } }] },
-    select: { id: true, musteriId: true, icraDosyaNo: true, icraDairesi: true },
+    select: { id: true, musteriId: true, icraDosyaNo: true, icraDairesi: true, durum: true },
   })
   if (!dosya) notFound()
+  // icra öncesi: takip henüz açılmadı → "Hazırlık" ekranı (5 adım); sonrası "Takip" (yol haritası durakları)
+  const icraOncesi = !dosya.icraDosyaNo && ['HAVUZDA', 'INCELENIYOR', 'TAKIBE_HAZIR'].includes(dosya.durum)
+  const sekme: SekmeKey = SEKMELER.includes(searchParams.sekme as SekmeKey) ? (searchParams.sekme as SekmeKey) : 'is'
 
   // yol haritası hesaplanamazsa dosya kaybolmasın: ayrıntılı (eski) görünüme düş
   const gorunum = await yolHaritasiYukle({ dosyaId: dosya.id, musteriId: dosya.musteriId, prova: searchParams.prova ?? null }).catch(() => null)
@@ -81,11 +85,13 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
   const avukatRol = dbUser.rol === 'ADMIN' || dbUser.rol === 'AVUKAT'
   const yazabilirRol = dbUser.rol !== 'GORUNTULEYEN'
 
-  const needsOneri = seciliDurak === 1 || seciliDurak === 2
-  const needsOlay = seciliDurak === 4
-  const needsArab = seciliDurak === 5
-  const needsDava = seciliDurak === 6 || seciliDurak === 7 || seciliDurak === 8
-  const needsDilekce = (seciliDurak === 6 || seciliDurak === 7) && dilekceV2Acik(dbUser.rol)
+  const isSekmesi = sekme === 'is'
+  const needsOneri = isSekmesi && (icraOncesi || seciliDurak === 1 || seciliDurak === 2)
+  const needsOlay = isSekmesi && !icraOncesi && seciliDurak === 4
+  const needsArab = isSekmesi && !icraOncesi && seciliDurak === 5
+  const needsDava = isSekmesi && !icraOncesi && (seciliDurak === 6 || seciliDurak === 7 || seciliDurak === 8)
+  const needsDilekce = isSekmesi && !icraOncesi && (seciliDurak === 6 || seciliDurak === 7) && dilekceV2Acik(dbUser.rol)
+  const belgeSayisi = await prisma.belge.count({ where: { dosyaId: dosya.id } })
 
   const [oneriPanel, olayPanel, arabPanel, davaPanel, dilekceKartlar] = await Promise.all([
     needsOneri ? oneriPaneliYukle(dosya.id).catch(() => null) : Promise.resolve(null),
@@ -97,11 +103,12 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
 
   const eskiGorunumHref = `/akilli-giris/${dosya.id}`
   const provaQS = searchParams.prova ? `&prova=${encodeURIComponent(searchParams.prova)}` : ''
-  const durakHref = (no: number) => `/dosya/${dosya.id}?durak=${no}${provaQS}`
+  const durakHref = (no: number) => `/dosya/${dosya.id}?sekme=is&durak=${no}${provaQS}`
+  const sekmeHref = (s: SekmeKey) => `/dosya/${dosya.id}?sekme=${s}${provaQS}`
   const capaHedef = (capa: string) =>
     capa === 'yh-onarim' ? '/yonetim/veri-onarim'
       : ESKI_EKRAN_CAPA[capa] ? `${eskiGorunumHref}${ESKI_EKRAN_CAPA[capa]}`
-        : `/dosya/${dosya.id}?durak=${CAPA_DURAK[capa] ?? seciliDurak}${provaQS}#${CAPA_ESI[capa] ?? capa}`
+        : `/dosya/${dosya.id}?sekme=is&durak=${CAPA_DURAK[capa] ?? seciliDurak}${provaQS}#${CAPA_ESI[capa] ?? capa}`
   const eylemHrefleri = Object.fromEntries(Object.entries(EYLEM_CAPA).map(([hedef, capa]) => [hedef, capaHedef(capa)])) as Partial<Record<EylemHedef, string>>
 
   return (
@@ -115,37 +122,56 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
         provaGoster={!!searchParams.prova}
         durakHref={durakHref}
         seciliDurak={seciliDurak}
+        duraklarGoster={false}
       />
 
-      <DurakPaneli
-        durak={seciliDurak}
-        dosyaId={dosya.id}
-        icraDosyaNo={dosya.icraDosyaNo}
-        icraDairesi={dosya.icraDairesi}
-        yazabilirRol={yazabilirRol}
-        avukatRol={avukatRol}
-        eskiGorunumHref={eskiGorunumHref}
-        oneriPanel={oneriPanel}
-        olayPanel={olayPanel}
-        arabPanel={arabPanel}
-        davaPanel={davaPanel}
-        dilekceKartlar={dilekceKartlar}
-      />
+      <div className="mt-5">
+        <SekmeCubugu
+          aktif={sekme}
+          href={sekmeHref}
+          etiketler={{ is: icraOncesi ? 'Hazırlık' : 'Takip', evrak: `Evrak ${belgeSayisi}`, taraflar: 'Taraflar ve bilgiler', gecmis: 'Geçmiş' }}
+        />
 
-      <nav aria-label="Paneller" className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-border bg-surface px-5 py-3 text-[12.5px]">
-        <Link href={`/akilli-giris/${dosya.id}?belge=hasar`} className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground transition hover:text-kr">
-          <FileText className="h-3.5 w-3.5" aria-hidden />Evrak
-        </Link>
-        <Link href={`/akilli-giris/${dosya.id}?belge=uyap`} className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground transition hover:text-kr">
-          <Plug className="h-3.5 w-3.5" aria-hidden />UYAP evrakı
-        </Link>
-        <Link href={`/dosya/${dosya.id}?durak=7#yh-sureler`} className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground transition hover:text-kr">
-          <Timer className="h-3.5 w-3.5" aria-hidden />Süreler
-        </Link>
-        <Link href={`/akilli-giris/${dosya.id}?asama=oncesi`} className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground transition hover:text-kr">
-          <History className="h-3.5 w-3.5" aria-hidden />Borçlular, künye, faiz ve notlar
-        </Link>
-      </nav>
+        {sekme === 'is' && icraOncesi && (
+          <>
+            <HazirlikAdimlari
+              dosyaId={dosya.id}
+              musteriId={dosya.musteriId}
+              adimHref={(capa) => (capa === 'evrak' ? `${sekmeHref('evrak')}&evrak=bizim` : capa === 'borclular' ? `${sekmeHref('taraflar')}#taraflar-borclular` : `${sekmeHref('is')}#${capa}`)}
+            />
+            <DurakPaneli durak={1} dosyaId={dosya.id} icraDosyaNo={dosya.icraDosyaNo} icraDairesi={dosya.icraDairesi} yazabilirRol={yazabilirRol} avukatRol={avukatRol} eskiGorunumHref={eskiGorunumHref} oneriPanel={oneriPanel} olayPanel={null} arabPanel={null} davaPanel={null} dilekceKartlar={null} />
+            <div id="yh-hazirlik" className="mt-4">
+              <DurakPaneli durak={2} dosyaId={dosya.id} icraDosyaNo={dosya.icraDosyaNo} icraDairesi={dosya.icraDairesi} yazabilirRol={yazabilirRol} avukatRol={avukatRol} eskiGorunumHref={eskiGorunumHref} oneriPanel={oneriPanel} olayPanel={null} arabPanel={null} davaPanel={null} dilekceKartlar={null} />
+            </div>
+          </>
+        )}
+
+        {sekme === 'is' && !icraOncesi && (
+          <>
+            <DurakListesi duraklar={gorunum.duraklar} durakHref={durakHref} secili={seciliDurak} />
+            <DurakPaneli
+              durak={seciliDurak}
+              dosyaId={dosya.id}
+              icraDosyaNo={dosya.icraDosyaNo}
+              icraDairesi={dosya.icraDairesi}
+              yazabilirRol={yazabilirRol}
+              avukatRol={avukatRol}
+              eskiGorunumHref={eskiGorunumHref}
+              oneriPanel={oneriPanel}
+              olayPanel={olayPanel}
+              arabPanel={arabPanel}
+              davaPanel={davaPanel}
+              dilekceKartlar={dilekceKartlar}
+            />
+          </>
+        )}
+
+        {sekme === 'evrak' && (
+          <EvrakSekmesi dosyaId={dosya.id} alt={searchParams.evrak === 'uyap' ? 'uyap' : 'bizim'} altHref={(a) => `${sekmeHref('evrak')}&evrak=${a}`} />
+        )}
+        {sekme === 'taraflar' && <TaraflarSekmesi dosyaId={dosya.id} musteriId={dosya.musteriId} />}
+        {sekme === 'gecmis' && <GecmisSekmesi dosyaId={dosya.id} kullaniciAd={dbUser.ad} />}
+      </div>
     </div>
   )
 }
