@@ -44,6 +44,8 @@ function bransEnum(s: string | null): Brans | null {
   if (!k) return null
   if (k.includes('kasko')) return Brans.KASKO
   if (k.includes('zmms') || k.includes('zmm') || k.includes('trafik') || k.includes('zorunlu')) return Brans.ZMMS
+  // İhtiyari mali mesuliyet (İMM): trafik poliçesinin üstü, oto dışı DEĞİL → ZMMS ailesi (ham değer kaynakJson'da)
+  if (k.includes('ihtiyari') || k === 'imm') return Brans.ZMMS
   return Brans.OTO_DISI
 }
 

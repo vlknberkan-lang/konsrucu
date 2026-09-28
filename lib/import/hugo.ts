@@ -109,6 +109,8 @@ export type ImportSonuc = {
 type AlanKey =
   | 'gonderenBirim'
   | 'hukukDosyaNo'
+  | 'idariTakipNo'
+  | 'rucuNo'
   | 'hasarDosyaNo'
   | 'hasarTarihi'
   | 'zamanasimi'
@@ -195,6 +197,13 @@ const BASLIK_ESLEME: Record<string, AlanKey> = {
   hasaryeri: 'kazaYeri', // "Hasar Yeri" = yetkili icra yeri
   tazminatodemetarihi: 'tazminatOdeme', // "Tazminat Ödeme Tarihi" → faiz başlangıcı
   atananburo: 'kadroluAvukat', // "Atanan Büro" → sorumlu avukat etiketi
+  // Zurich Eylül 2026 biçimi: "Hukuk Dosya No" yok (anahtar = Hasar Dosya No), başlıklar kısaldı
+  hasaril: 'kazaYeri', // "Hasar İl"
+  sigortali: 'sigortaliUnvan', // "Sigortalı"
+  alinanrucu: 'tahsilEdilen', // "Alınan Rücu"
+  atananvekil: 'kadroluAvukat', // "Atanan Vekil"
+  idaritakipno: 'idariTakipNo', // "Idari Takip No" — Zurich iç numarası (denetim, ham)
+  rucuno: 'rucuNo', // "Rücu No" (ham)
 
   // ── S27 · Ray takip Excel'i (30 sütun): icra #15–#18, dava #19–#30 (06 §3.5) ──
   icramudurlugu: 'icraMudurlugu', // "İCRA MÜDÜRLÜĞÜ"
@@ -558,6 +567,11 @@ export function hugoCozumle(buf: Buffer | ArrayBuffer | Uint8Array): HugoParseSo
   // Zurich'e özgü kolonlar görüldüyse kaynağı 'zurich' damgala (denetim izi + downstream ipucu).
   const zurichFormat =
     alanKol.has('brans') || alanKol.has('sigortaliUnvan') || alanKol.has('policeNo') || alanKol.has('tahsilEdilen')
+  // Zurich Eylül 2026 biçiminde "Hukuk Dosya No" sütunu yok: dosya anahtarı "Hasar Dosya No"dur (programdaki
+  // mevcut Zurich dosyaları da bu 7 haneli numarayla kayıtlı). Yalnız Zurich biçiminde ve hukuk no sütunu yoksa.
+  if (zurichFormat && !alanKol.has('hukukDosyaNo') && alanKol.has('hasarDosyaNo')) {
+    alanKol.set('hukukDosyaNo', alanKol.get('hasarDosyaNo')!)
+  }
   // S27 · Ray takip Excel'i (30 sütun) icra/dava sütunlarından en az biri başlıkta var mı?
   const rayTakipVar = [...RAY_ICRA_ALANLARI, ...RAY_DAVA_ALANLARI].some((k) => alanKol.has(k))
 
