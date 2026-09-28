@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState } from 'react'
+import Link from 'next/link'
 import { Check, Copy, FileDown, FileText, Loader2, Save, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/konsrucu/ui'
 import { davaTaslagiKaydet, davaTaslagiUret } from '@/app/(app)/dilekceler/actions'
@@ -8,6 +9,8 @@ import { DILEKCE_TURLERI, type CalismaDilekceTuru } from '@/lib/konsrucu/dilekce
 import { calismayiOku, calismayiSakla, calismayiSil, kurtarmaIleBaslat, type TaslakKaydi } from './dilekce-kurtarma'
 
 type Taslak = TaslakKaydi
+/** Yeni taslak artık dosya kartı akışından (dilekçe v2: olgu→kaynak bağı, kalite kapıları, büro şablonu) üretilir. */
+const KART_TURU: Record<CalismaDilekceTuru, 'DAVA' | 'CEVABA_CEVAP' | 'BEYAN'> = { DAVA: 'DAVA', CEVAP: 'CEVABA_CEVAP', BEYAN: 'BEYAN', BILIRKISI_ITIRAZ: 'BEYAN' }
 type Props = {
   dosyaId: string
   ciktilar: Taslak[]
@@ -291,11 +294,18 @@ export function DilekceEditor({ dosyaId, ciktilar, belgeler, yazabilir, demo = f
               ) : <p className="mt-2 text-xs text-muted-foreground">Bu dosyada evrak yok. Taslak dosyanın mevcut bilgileriyle hazırlanır; eksik dayanakları tamamlayın.</p>}
             </fieldset>
             <div className="flex flex-wrap items-center gap-3">
-              <button type="button" onClick={uret} disabled={kilitli} className={`${button} bg-kr text-kr-foreground hover:bg-kr/90`}>
-                {islem === 'uretim' ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Sparkles aria-hidden="true" className="h-4 w-4" />}
-                {islem === 'uretim' ? 'Taslak hazırlanıyor…' : demo ? 'Örnek taslağı oluştur' : 'Yeni taslak oluştur'}
-              </button>
-              <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">Hazırlanan metindeki olayları, talepleri ve hukuki dayanakları kullanmadan önce kontrol edin.</p>
+              {demo ? (
+                <button type="button" onClick={uret} disabled={kilitli} className={`${button} bg-kr text-kr-foreground hover:bg-kr/90`}>
+                  {islem === 'uretim' ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Sparkles aria-hidden="true" className="h-4 w-4" />}
+                  {islem === 'uretim' ? 'Taslak hazırlanıyor…' : 'Örnek taslağı oluştur'}
+                </button>
+              ) : (
+                <Link href={`/dilekceler/kart?dosya=${encodeURIComponent(dosyaId)}&tur=${KART_TURU[tur]}`} className={`${button} bg-kr text-kr-foreground hover:bg-kr/90`}>
+                  <Sparkles aria-hidden="true" className="h-4 w-4" />
+                  Yeni taslak oluştur
+                </Link>
+              )}
+              <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">{demo ? 'Hazırlanan metindeki olayları, talepleri ve hukuki dayanakları kullanmadan önce kontrol edin.' : 'Taslak dosya kartından hazırlanır: her olgu kaynak belgeye bağlanır, büro şablonu ve kalite kontrolleri uygulanır.'}</p>
             </div>
           </div>
         </details>
