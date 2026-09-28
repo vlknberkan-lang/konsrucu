@@ -11,7 +11,7 @@
 import { gunEkle, gunNo, gunTR, isoGun, yilEkle } from './norm'
 import { ekranMaskele } from './maske'
 import { mazbataBelgesiMi, mazbataOku, type MazbataOkuma } from './mazbata'
-import { onayYokNedeni, onayYolu, type OnayYolu } from './aday-onay'
+import { durumBilgiAdayiMi, onayYokNedeni, onayYolu, type OnayYolu } from './aday-onay'
 import { sureOnizle, type SureSatiri } from './sure-onizleme'
 import type { EksenSonuc } from './turet'
 import {
@@ -26,6 +26,8 @@ export const ROL_ETIKET: Record<Rol, string> = { risk: 'RİSK', onay: 'ONAY BEKL
 // ── Girdiler (yukle.ts DB'den doldurur; testler elle kurar) ─────────────────
 export type PanelOlay = {
   id: string
+  /** DURUM / TAHSILAT / TEBLIG / ITIRAZ / HACIZ / KESINLESTI / KAPANDI (TakipOlayi.tip) — yalnız durumBilgiAdayiMi süzgeci için. */
+  tip?: string | null
   altTip: string | null
   teyit: string | null
   borcluId: string | null
@@ -380,7 +382,11 @@ export function olayPaneli(p: {
   const adaylar = p.olaylar.filter((o) => o.teyit === 'ADAY' || o.teyit === 'TEYITLI' || o.teyit === 'REDDEDILDI')
   const bagli = new Set(adaylar.map((o) => o.kaynakBelgeId).filter((x): x is string => !!x))
   const kart = (o: PanelOlay) => gelismeKarti(o, { borclular: p.borclular, belgeler: p.belgeler, bagliBelgeler: bagli, bugun: p.bugun })
-  const bekleyen = adaylar.filter((o) => o.teyit === 'ADAY').map(kart)
+  // Hiçbir hukuki olgu taşımayan DURUM adayı (yalnız TAHSILAT_SINYALI — bkz. aday-onay.ts durumBilgiAdayiMi)
+  // onay bekleyen karta ÇIKMAZ (06 karar 2). Kendi onay yolu olan (ör. DURDURMA_ITIRAZ, TEBLIG_IADE) ya da
+  // GENEL yollu ama hukuken önemli olabilecek (ör. MUVEKKIL_ALACAGINA_HACIZ) adaylar ETKİLENMEZ. Satır silinmez,
+  // yazılmaya devam eder — yalnız bu listeden hariç tutulur.
+  const bekleyen = adaylar.filter((o) => o.teyit === 'ADAY' && !durumBilgiAdayiMi(o)).map(kart)
     .sort((a, b) => a.oncelik - b.oncelik || Number(b.gecikti) - Number(a.gecikti))
   const islenen = adaylar.filter((o) => o.teyit !== 'ADAY')
     .sort((a, b) => (b.teyitAt?.getTime() ?? b.createdAt.getTime()) - (a.teyitAt?.getTime() ?? a.createdAt.getTime()))

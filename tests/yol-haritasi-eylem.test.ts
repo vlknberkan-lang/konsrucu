@@ -57,9 +57,17 @@ describe('görünüm modeli ekrana hazır ve serileştirilebilir', () => {
     const v = yolHaritasiHesapla(bosGercekler(), { simdi: new Date('2026-09-27T09:00:00Z') })
     const gidis = JSON.parse(JSON.stringify(v))
     expect(gidis).toEqual(v)
-    expect(v.tekCumle).toBe("Şimdi: Ray'den gelen evrakı sürükleyin.")
+    expect(v.tekCumle).toBe("Şimdi: Ray'dan gelen evrakı sürükleyin.")
     expect(v.duraklar.map((d) => d.ad)).toEqual(['Evrak', 'Hazırlık', 'Takip', 'Tebliğ ve itiraz', 'Arabuluculuk', 'Dava açılışı', 'Yargılama', 'Sonuç ve tahsil'])
     expect(v.duraklar[0].durum).toBe('SIMDI')
     expect(v.bugun).toBe('2026-09-27')
+  })
+})
+
+describe('müvekkil adına hâl eki', () => {
+  it('Zurich → Zurich\'ten (sert ünsüz), Ray → Ray\'dan', async () => {
+    const { halEki } = await import('@/lib/konsrucu/dilekce-v2/sablon-dil')
+    expect(halEki('Zurich', 'ayrilma')).toBe("Zurich'ten")
+    expect(halEki('Ray', 'ayrilma')).toBe("Ray'dan")
   })
 })

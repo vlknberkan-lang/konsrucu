@@ -202,7 +202,12 @@ export async function mazbatalariOkuEylem(input: { dosyaId: string }): Promise<O
     const r = await mazbataAdaylariniIsle(p.data.dosyaId)
     await eksenYenidenHesapla(p.data.dosyaId, { sebep: 'Mazbatalar yeniden okundu', kullaniciId: k.kullaniciId }).catch(() => null)
     yenile(p.data.dosyaId)
-    return { ok: true, bilgi: r.yeni + r.zengin ? `${r.yeni} yeni gelişme, ${r.zengin} gelişme mazbatayla güncellendi.` : 'Okunmuş yeni mazbata bulunamadı.' }
+    return {
+      ok: true,
+      bilgi: r.yeni + r.zengin + r.birlesen
+        ? `${r.yeni} yeni gelişme, ${r.zengin} gelişme mazbatayla güncellendi${r.birlesen ? `, ${r.birlesen} belge var olan karta eklendi` : ''}.`
+        : 'Okunmuş yeni mazbata bulunamadı.',
+    }
   } catch (e) {
     return { ok: false, error: `Evrak okunamadı: ${(e as Error).message}` }
   }

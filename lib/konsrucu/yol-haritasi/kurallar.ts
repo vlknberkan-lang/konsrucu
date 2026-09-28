@@ -21,6 +21,8 @@ import {
   mevcutDurak, sonGelisme, sureBul, takipVar, tebligBilgisiVar, tebligTarihi, tevziVar, uyapDurumItiraz, uyapKapali, yolOnayKaydi,
 } from './olgular'
 import { alintiKisa, borcluEtiketi, enErken, gecenGun, gunMetni, istGun, kalan, kisalt, sureAdi, tarihKisa, trNorm, tutarMetni } from './yardimci'
+import { durumBilgiAdayiMi } from '@/lib/konsrucu/eksen/aday-onay'
+import { halEki } from '@/lib/konsrucu/dilekce-v2/sablon-dil'
 
 // ─────────────────────────── kanıt yardımcıları ───────────────────────────
 
@@ -383,7 +385,7 @@ const EV: Kural[] = [
     kosulMetni: 'Dosyada evrak yok', oneriMetni: "Ray'den gelen evrakı sürükleyin", eylem: ['Evrak ekle', 'evrak-ekle'], hukukiEtiket: null,
     degerlendir(g) {
       if (g.belgeler.length) return null
-      return { metin: `${muvekkilKisa(g)}'den gelen evrakı sürükleyin`, neden: 'Dosyada henüz evrak yok; fotoğraf, PDF, HEIC ve zip tek hamlede eklenebilir.', kanit: [] }
+      return { metin: `${halEki(muvekkilKisa(g), 'ayrilma')} gelen evrakı sürükleyin`, neden: 'Dosyada henüz evrak yok; fotoğraf, PDF, HEIC ve zip tek hamlede eklenebilir.', kanit: [] }
     },
   }),
   kural({
@@ -700,7 +702,11 @@ const TB: Kural[] = [
     kod: 'TB-02', grup: 'TB', durak: D(4), rol: R('H'), oncelik: O(3), senaryo: S('e'),
     kosulMetni: 'Diğer aday olaylar bekliyor', oneriMetni: '"UYAP\'tan gelen [n] gelişmeyi onaylayın"', eylem: ['Gözden geçir', 'olay-onay'], hukukiEtiket: null,
     degerlendir(g) {
-      const o = g.olaylar.filter((x) => x.teyit === 'ADAY' && !AYRI_KURALLI_OLAY.has(x.altTip ?? ''))
+      // Hiçbir hukuki olgu taşımayan DURUM adayı (yalnız TAHSILAT_SINYALI — bkz. aday-onay.ts durumBilgiAdayiMi)
+      // bu "diğer" sayacına GİRMEZ (06 karar 2). Kendi kuralı olan adaylar zaten AYRI_KURALLI_OLAY ile dışarıda
+      // (ör. DURDURMA_ITIRAZ → TB-01); MUVEKKIL_ALACAGINA_HACIZ/ICRAI_HACIZ/DIGER gibi GENEL yollu ama hukuken
+      // önemli olabilecek adaylar burada ETKİLENMEZ, sayılmaya devam eder.
+      const o = g.olaylar.filter((x) => x.teyit === 'ADAY' && !AYRI_KURALLI_OLAY.has(x.altTip ?? '') && !durumBilgiAdayiMi(x))
       const i = g.davaIslemleri.filter((x) => x.teyit === 'ADAY' && !AYRI_KURALLI_ISLEM.has(x.tur))
       const e = g.etkinlikler.filter((x) => x.teyit === 'ADAY')
       const n = o.length + i.length + e.length

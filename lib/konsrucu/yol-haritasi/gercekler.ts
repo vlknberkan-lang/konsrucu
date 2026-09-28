@@ -43,7 +43,7 @@ export const HAM_SELECT = {
     },
   },
   olaylar: {
-    select: { id: true, altTip: true, teyit: true, borcluId: true, hukukiTarih: true, tarih: true, tutar: true, sonuc: true, kaynakBelgeId: true, kural: true, createdAt: true },
+    select: { id: true, tip: true, altTip: true, teyit: true, borcluId: true, hukukiTarih: true, tarih: true, tutar: true, sonuc: true, kaynakBelgeId: true, kural: true, createdAt: true },
   },
   alanDegerleri: {
     where: { silindiAt: null, durum: { in: ['ONERI', 'ONAYLI'] } },
@@ -211,7 +211,7 @@ export function hamdanGercekler(h: HamDosya, ek: HamEk): Gercekler {
       } : null,
     })),
     olaylar: h.olaylar.map((o) => ({
-      id: o.id, altTip: o.altTip, teyit: o.teyit, borcluId: o.borcluId, hukukiTarih: o.hukukiTarih, tarih: o.tarih, tutar: sayi(o.tutar),
+      id: o.id, tip: o.tip, altTip: o.altTip, teyit: o.teyit, borcluId: o.borcluId, hukukiTarih: o.hukukiTarih, tarih: o.tarih, tutar: sayi(o.tutar),
       sonuc: o.sonuc, kaynakBelgeId: o.kaynakBelgeId, kural: o.kural, createdAt: o.createdAt,
     })),
     alanlar: h.alanDegerleri.map((a) => ({

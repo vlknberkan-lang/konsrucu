@@ -101,6 +101,29 @@ export function onayYokNedeni(altTip: string | null): string | null {
   return null
 }
 
+/**
+ * Hiçbir hukuki/mali olgu taşımayan, "DURUM" (UYAP durum metni / snapshot) kanalından gelen aday mı? — 06 karar 2:
+ * onay bekleyen sayaç/liste/kartlardan HARİÇ tutulur (Bugün rozeti, yol haritası TB-02 "diğer aday olaylar",
+ * tebliğ/itiraz paneli), yazılmaya devam eder (satır silinmez, yalnız görünümden çıkar).
+ *
+ * Kapsam BİLEREK DAR: yalnız TAHSILAT_SINYALI (evrak adından — kodun kendi etiketi: "tahsilat sayılmadı"; hiçbir
+ * para toplamına girmez — TOPLAMA_GIRMEZ). Üretimde en büyük tek grup budur (Zurich ilk senkron: 256 DURUM
+ * satırının 203'ü). `onayYolu(altTip) === 'GENEL'` gibi daha geniş bir süzgeç DENENDİ ve GERİ ALINDI: eksen-
+ * senaryo-d1-d2.test.ts "K2: haciz süre/durum etkisi göstermez" senaryosu MUVEKKIL_ALACAGINA_HACIZ'ın (tip=DURUM,
+ * onayYolu=GENEL) bekleyen listesinde KALMASINI zorunlu kılıyor — "kendi onayı yok" ile "hukuki olgu taşımıyor"
+ * AYNI ŞEY DEĞİL (haciz sinyali süre/durum etkilemez ama avukatın görmesi gerekir). Benzer nedenle DIGER de
+ * kapsam dışı bırakıldı: bazı DIGER metinleri gerçekten önemli uyarı taşır (ör. "İtirazdan feragat… avukat baksın").
+ *
+ * DİKKAT: kendi onay yolu olan adaylar (TEBLIG/ITIRAZ/ALACAKLIYA_TEBLIG/KESINLESME — ör. DURDURMA_ITIRAZ,
+ * TEBLIG_IADE) tip='DURUM' olsa da ETKİLENMEZ. Eksen türetme (turet.ts) `tip` alanını hiç okumaz; bu yalnız
+ * GÖRÜNÜM/SAYAÇ süzgecidir, eksen sonucu değişmez.
+ */
+const HUKUKI_OLGUSUZ_DURUM_ALT_TIPLERI: ReadonlySet<string> = new Set(['TAHSILAT_SINYALI'])
+
+export function durumBilgiAdayiMi(p: { tip?: string | null; altTip: string | null }): boolean {
+  return p.tip === 'DURUM' && HUKUKI_OLGUSUZ_DURUM_ALT_TIPLERI.has(p.altTip ?? '')
+}
+
 const DUZELTME_AILESI: readonly AltTip[] = ['TEBLIG_SONUCU', 'TEBLIG_IADE', 'ITIRAZ', 'DURDURMA_ITIRAZ', 'ITIRAZIN_ALACAKLIYA_TEBLIGI']
 
 export type OnayPlani =

@@ -24,6 +24,7 @@ import {
   masaTablosu, masaSuz, masaSayac, masaSuzgecOku, MASA_SUZGECLERI, MASA_ROL_ETIKET,
   type MasaSatir, type MasaSuzgec,
 } from '@/lib/konsrucu/rapor-mail'
+import { adayKartSayisi } from '@/lib/konsrucu/eksen/aday-birlestir'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,7 @@ export default async function BugunPage({ searchParams }: { searchParams?: { [k:
   const ZA_LISTE = 30 // kartta gösterilecek azami satır; kalanı SAYIYLA belirtilir
 
   const [
-    masaDosyalari, masaSureleri, masaDavalari, adayOlaySayi, adayDavaIslemSayi, durumTeyitSayi,
+    masaDosyalari, masaSureleri, masaDavalari, adayOlaylariHam, adayDavaIslemSayi, durumTeyitSayi,
     etkinlikler, gorevler, acikGorevToplam, onemliler, taksitler, zaYakinHam, zaGectiHam, zaYakinSayi, zaGectiSayi, zaBos, sonuclanmamis, uyapSorunlu,
   ] = await Promise.all([
     // ── Bugün masası: açık dosyalar + Şimdi önbelleği ──
@@ -93,7 +94,12 @@ export default async function BugunPage({ searchParams }: { searchParams?: { [k:
         esasYil: true, esasSira: true, sonrakiDurusma: true, onIncelemeTarihi: true,
       },
     }),
-    prisma.takipOlayi.count({ where: { dosya: { musteriId: aktifMusteriId }, teyit: 'ADAY' } }),
+    // Ham ADAY satırları: kart sayısı adayKartSayisi ile hesaplanır (raw satır değil, gruplanmış gerçek olay —
+    // 06 karar 4; hiçbir hukuki olgu taşımayan DURUM adayı — yalnız TAHSILAT_SINYALI — hiç sayılmaz, karar 2).
+    prisma.takipOlayi.findMany({
+      where: { dosya: { musteriId: aktifMusteriId }, teyit: 'ADAY' },
+      select: { dosyaId: true, tip: true, altTip: true, hukukiTarih: true, borcluId: true },
+    }),
     prisma.davaIslem.count({ where: { dosya: { musteriId: aktifMusteriId }, teyit: 'ADAY', silindiAt: null, kaynakTuru: { in: ['UYAP_EVRAK', 'UYAP_YAPISAL'] } } }),
     prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, onarimDurumu: 'BEKLIYOR' } }),
 
@@ -147,7 +153,7 @@ export default async function BugunPage({ searchParams }: { searchParams?: { [k:
   const suzgecSayi: Record<MasaSuzgec, number> = { benim: sayac.benim, herkes: sayac.herkes, onaysiz: sayac.onaysiz, uyap: sayac.uyap }
   const suzgecEtiket = MASA_SUZGECLERI.find((s) => s.id === suzgec)!.etiket
   const birim = suzgec === 'onaysiz' || suzgec === 'uyap' ? 'dosya' : 'iş'
-  const onayBekleyenGelisme = adayOlaySayi + adayDavaIslemSayi
+  const onayBekleyenGelisme = adayKartSayisi(adayOlaylariHam) + adayDavaIslemSayi
 
   // ── radar ──
   const zaYakin = zaYakinHam.filter(zamanasimiRadarinda)

@@ -45,7 +45,7 @@ export async function olayPaneliYukle(dosyaId: string, musteriId: string, bugun:
         orderBy: { createdAt: 'desc' },
         take: 150,
         select: {
-          id: true, altTip: true, teyit: true, borcluId: true, hukukiTarih: true, tarih: true, sonuc: true, tebligSekli: true,
+          id: true, tip: true, altTip: true, teyit: true, borcluId: true, hukukiTarih: true, tarih: true, sonuc: true, tebligSekli: true,
           muhatap: true, kaynakBelgeId: true, kaynakTuru: true, kural: true, aciklama: true, tutar: true, createdAt: true, teyitAt: true, hamJson: true,
         },
       },

@@ -90,7 +90,6 @@ export async function EvrakSekmesi({ dosyaId, alt, altHref }: { dosyaId: string;
         </>
       ) : (
         <>
-          <Baslik baslik="UYAP evrakı" alt="Eklentinin UYAP'tan indirdiği icra ve dava evrakı; belgenin kendi tarihine göre, en yeni üstte." />
           {uyap.length ? (
             <UyapEvraklar
               evraklar={uyap

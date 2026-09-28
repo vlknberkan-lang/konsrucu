@@ -14,6 +14,7 @@ import { prisma } from '@/lib/prisma'
 import { gunNo } from './norm'
 import { mazbataBelgesiMi, mazbataOku, type MazbataBorclu, type MazbataOkuma } from './mazbata'
 import { adayTekilAnahtar, tekilIhlaliMi } from './tekil'
+import { birlesecekAdayIdBul, adayaKaynakEkle } from './aday-birlestir'
 import type { AltTip } from './sabitler'
 
 export type MazbataBelge = {
@@ -78,8 +79,8 @@ export function mazbataPlani(belge: MazbataBelge, okuma: MazbataOkuma, adaylar: 
   return { tur: 'YENI', okuma, altTip }
 }
 
-/** Dosyanın okunmuş mazbatalarını işler. Dönüş: açılan ve zenginleştirilen aday sayısı. */
-export async function mazbataAdaylariniIsle(dosyaId: string): Promise<{ yeni: number; zengin: number }> {
+/** Dosyanın okunmuş mazbatalarını işler. Dönüş: açılan, zenginleştirilen ve BİRLEŞTİRİLEN (var olan karta kaynak eklenen) aday sayısı. */
+export async function mazbataAdaylariniIsle(dosyaId: string): Promise<{ yeni: number; zengin: number; birlesen: number }> {
   const [belgelerHam, borclular, adaylar] = await Promise.all([
     prisma.belge.findMany({
       where: {
@@ -110,6 +111,7 @@ export async function mazbataAdaylariniIsle(dosyaId: string): Promise<{ yeni: nu
   const belgeler = belgelerHam.filter(mazbataBelgesiMi)
   let yeni = 0
   let zengin = 0
+  let birlesen = 0
   for (const b of belgeler) {
     const okuma = mazbataOku(b.extractedText, borclular as MazbataBorclu[], b.metinYontemi === 'OCR' ? b.metinGuven : null)
     if (!okuma) continue
@@ -135,13 +137,25 @@ export async function mazbataAdaylariniIsle(dosyaId: string): Promise<{ yeni: nu
       }
       continue
     }
+    const aciklamaMazbata = `Mazbata: ${b.dosyaAdi}`.slice(0, 200)
+    const kaynakTuruMazbata = b.kaynak && b.kaynak.startsWith('UYAP') ? 'UYAP_EVRAK' : 'ELLE'
+    const tekilAnahtar = adayTekilAnahtar({ altTip: plan.altTip, hukukiTarih: okuma.tarih, belgeId: b.id })
+    // S15 birleştirme: bu mazbatanın anlattığı olay dosyada (başka kaynaktan — safahat/evrak listesi) zaten
+    // aday olarak var olabilir (dosya+altTip+hukuki gün aynı). Varsa YENİ SATIR AÇILMAZ; belge var olan karta
+    // ek kaynak olarak eklenir (mazbataPlani'nın kendi ±3 gün ZENGINLESTIR eşleşmesinden bağımsız, daha kaba
+    // ama daha kesin bir "aynı olay" testi).
+    const birlesecekId = await birlesecekAdayIdBul({ dosyaId, altTip: plan.altTip, hukukiTarih: okuma.tarih, borcluId: okuma.borcluId })
+    if (birlesecekId) {
+      if (await adayaKaynakEkle(birlesecekId, { aciklama: aciklamaMazbata, kaynakTuru: kaynakTuruMazbata, kaynakBelgeId: b.id, tekilAnahtar })) birlesen++
+      continue
+    }
     try {
       const o = await prisma.takipOlayi.create({
         data: {
-          dosyaId, tip: 'DURUM', tarih: okuma.tarih ?? b.belgeTarihi, aciklama: `Mazbata: ${b.dosyaAdi}`.slice(0, 200),
-          teyit: 'ADAY', kaynakTuru: b.kaynak && b.kaynak.startsWith('UYAP') ? 'UYAP_EVRAK' : 'ELLE', ...ortak,
+          dosyaId, tip: 'DURUM', tarih: okuma.tarih ?? b.belgeTarihi, aciklama: aciklamaMazbata,
+          teyit: 'ADAY', kaynakTuru: kaynakTuruMazbata, ...ortak,
           hukukiTarih: okuma.tarih, borcluId: okuma.borcluId,
-          tekilAnahtar: adayTekilAnahtar({ altTip: plan.altTip, hukukiTarih: okuma.tarih, belgeId: b.id }),
+          tekilAnahtar,
           hamJson: { kaynak: 'mazbata', uyarilar: okuma.uyarilar } as Prisma.InputJsonValue,
         },
         select: { id: true },
@@ -152,5 +166,5 @@ export async function mazbataAdaylariniIsle(dosyaId: string): Promise<{ yeni: nu
       if (!tekilIhlaliMi(e)) throw e // eşzamanlı ikinci işlem aynı adayı açtı — sessiz geç
     }
   }
-  return { yeni, zengin }
+  return { yeni, zengin, birlesen }
 }

@@ -41,6 +41,20 @@ export function adayTekilAnahtar(p: {
   return `${p.altTip}|${gun}|${kaynak}`.slice(0, 190)
 }
 
+/**
+ * Aynı HUKUKİ OLAYIN grup anahtarı (S15 birleştirme; docs bulgu: UYAP aynı olayı safahat satırı + evrak listesi +
+ * "Tensip Zaptı Bilgi Girişi (…)" gibi birden çok yerde FARKLI metinle gösterir → adayTekilAnahtar metin hash'i
+ * her kaynakta farklı çıkar, aynı olay için 2-3 kart açılırdı). Bu anahtar metinden bağımsızdır: dosya + altTip +
+ * hukuki GÜN (+ borçlu biliniyorsa). Aynı grupta ikinci bir aday geldiğinde YENİ SATIR AÇILMAZ; var olan karta
+ * kaynak eklenir (lib/konsrucu/eksen/aday-birlestir.ts). Hukuki tarihi olmayan aday (DIGER, TAHSILAT_SINYALI,
+ * DURDURMA_ITIRAZ …) BİRLEŞTİRİLMEZ — tarihsiz iki olayın aynı gerçek olay olduğu güvenle söylenemez (ürün kararı).
+ */
+export function adayGrupAnahtari(p: { dosyaId: string; altTip: string; hukukiTarih: Date | null; borcluId?: string | null }): string | null {
+  const gun = isoGun(p.hukukiTarih)
+  if (!gun) return null
+  return `${p.dosyaId}|${p.altTip}|${gun}|${p.borcluId ?? ''}`
+}
+
 /** Yatan Para farkı adayının anahtarı: aynı önceki→yeni toplam iki kez aday doğurmaz. */
 export function tahsilatTekilAnahtar(onceki: number, yeni: number): string {
   return `TAHSILAT_BORCLUDAN|${onceki.toFixed(2)}>${yeni.toFixed(2)}`

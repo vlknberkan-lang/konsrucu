@@ -180,6 +180,10 @@ export interface GBorclu {
 
 export interface GOlay {
   id: string
+  /** DURUM / TAHSILAT / TEBLIG / ITIRAZ / HACIZ / KESINLESTI / KAPANDI (TakipOlayi.tip). Opsiyonel: eski test
+   *  kurguları hâlâ vermeyebilir; yalnız TB-02'nin "DURUM kanalından gelen, kendi onay yolu olmayan aday"
+   *  süzgeci (durumBilgiAdayiMi) için okunur — eksen türetmeyi ETKİLEMEZ. */
+  tip?: string | null
   altTip: string | null
   /** ADAY | TEYITLI | REDDEDILDI ; null = eski satır (yeni hesaplara girmez). */
   teyit: string | null

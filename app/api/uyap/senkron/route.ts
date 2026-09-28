@@ -28,6 +28,7 @@ import { durumMetniItirazAdayi, durumMetniItirazMi, eklentiOlayiniSinifla } from
 import { adayTekilAnahtar, DURUM_METNI_ITIRAZ_ANAHTARI, tahsilatTekilAnahtar, tekilIhlaliMi } from '@/lib/konsrucu/eksen/tekil'
 import { tahsilatAdayMetni, yatanParaFarki } from '@/lib/konsrucu/eksen/tahsilat'
 import { mazbataAdaylariniIsle } from '@/lib/konsrucu/eksen/mazbata-aday'
+import { birlesecekAdayIdBul, adayaKaynakEkle } from '@/lib/konsrucu/eksen/aday-birlestir'
 import { eksenYenidenHesapla } from '@/lib/konsrucu/eksen/kaydet'
 import { TAHSILAT_SINYALI_ETIKET } from '@/lib/konsrucu/eksen/sabitler'
 import { isoGun } from '@/lib/konsrucu/eksen/norm'
@@ -104,6 +105,7 @@ export async function POST(req: Request) {
   const adayKipi = eksenAcik()
   let eklenen = 0
   let yeniAday = 0
+  let birlesenKaynak = 0
   // Eklentinin dosya düzeyindeki yapısal tebliğ özeti ("Tebliğ (UYAP)") aynı günlü bir tebliğ evrakının kopyasıdır:
   // aynı gün başka tebliğ olayı varsa ondan AYRICA aday açılmaz (tek tebligata iki kart çıkmasın). Aynı gün
   // içinde yapısal özet en sona alınır.
@@ -132,6 +134,7 @@ export async function POST(req: Request) {
     if (mevcut) continue
 
     let adayKolon: AdayKolonlari | undefined
+    let birlesti = false
     if (adayKipi) {
       const a = eklentiOlayiniSinifla({ tip: hamTip, aciklama: hamAciklama, tarih })
       const tekilAnahtar = adayTekilAnahtar({ altTip: a.altTip, hukukiTarih: a.hukukiTarih, metin: hamAciklama, olayTarihi: tarih })
@@ -141,12 +144,22 @@ export async function POST(req: Request) {
         !!(await prisma.takipOlayi.findFirst({ where: { dosyaId: dosya.id, altTip: { in: ['TEBLIG_SONUCU', 'TEBLIG_IADE'] }, hukukiTarih: tarih, teyit: { not: null } }, select: { id: true } }))
       )
       if (!ayniAday && !yapisalKopya) {
-        adayKolon = {
-          altTip: a.altTip, teyit: 'ADAY', kaynakTuru: a.kaynakTuru, kural: a.kural, hukukiTarih: a.hukukiTarih,
-          sonuc: a.sonuc, tebligSekli: a.tebligSekli, muhatap: a.muhatap, tekilAnahtar,
+        // S15 birleştirme: UYAP aynı olayı birden çok yerde (safahat + evrak listesi + tensip zaptı) FARKLI
+        // metinle gösterir → tekilAnahtar (metin hash'i) her seferinde farklı çıkar. Grup anahtarı (dosya+altTip+
+        // hukuki gün) bunu yakalar: eşleşme varsa YENİ SATIR AÇILMAZ, ek kaynak var olan karta eklenir.
+        const birlesecekId = await birlesecekAdayIdBul({ dosyaId: dosya.id, altTip: a.altTip, hukukiTarih: a.hukukiTarih })
+        if (birlesecekId) {
+          birlesti = true
+          if (await adayaKaynakEkle(birlesecekId, { aciklama: hamAciklama, kaynakTuru: a.kaynakTuru, kaynakBelgeId: null, tekilAnahtar })) birlesenKaynak++
+        } else {
+          adayKolon = {
+            altTip: a.altTip, teyit: 'ADAY', kaynakTuru: a.kaynakTuru, kural: a.kural, hukukiTarih: a.hukukiTarih,
+            sonuc: a.sonuc, tebligSekli: a.tebligSekli, muhatap: a.muhatap, tekilAnahtar,
+          }
         }
       }
     }
+    if (birlesti) continue // ek kaynak var olan karta eklendi (aday-birlestir.ts) — yeni satır açılmadı
     const hamJson = { kaynak: 'uyap', ...(tip !== hamTip ? { hamTip } : {}), ...(tahsilatSinyali ? { kaynakTip: 'TAHSILAT' } : {}) }
     try {
       // Tarih UYDURULMAZ: tarihsiz olay tarihsiz kaydedilir ("bugün" yazılmaz).
@@ -257,5 +270,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return corsJson({ ok: true, dosyaId: dosya.id, yeniOlay: eklenen, yeniAday, yeniMasraf: masrafEklenen }, 200, req)
+  return corsJson({ ok: true, dosyaId: dosya.id, yeniOlay: eklenen, yeniAday, birlesenKaynak, yeniMasraf: masrafEklenen }, 200, req)
 }
