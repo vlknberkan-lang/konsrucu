@@ -13,10 +13,10 @@ import type { Tone } from '@/components/konsrucu/ui'
 
 /** Hedef → sayfa içi çapa kimliği (panel id'si). */
 export const EYLEM_CAPA: Record<EylemHedef, string> = {
-  'durum-teyit': 'yh-onarim', 'tutar-dogrula': 'yh-bulduklarimiz', 'eslesme-duzelt': 'yh-uyap', 'sure-onay': 'yh-sureler', 'sure-git': 'yh-sureler',
+  'durum-teyit': 'yh-onarim', 'tutar-dogrula': 'yh-hap', 'eslesme-duzelt': 'yh-uyap', 'sure-onay': 'yh-sureler', 'sure-git': 'yh-sureler',
   'uyap-ac': 'yh-uyap', 'uyap-cek': 'yh-uyap', 'evrak-ekle': 'yh-evrak', okunamayanlar: 'yh-evrak', 'ray-istek': 'yh-eksik-evrak',
-  'alan-onay': 'yh-bulduklarimiz', celiski: 'yh-bulduklarimiz', 'rucu-sebebi-sec': 'yh-rucu-sebebi',
-  hazirlik: 'yh-hazirlik', 'hazirlik-onay': 'yh-hazirlik', 'yol-sec-idari': 'yh-idari-yol', 'idari-yol-onay': 'yh-idari-yol', 'idari-basvuru': 'yh-idari-yol',
+  'alan-onay': 'yh-hap', celiski: 'yh-hap', 'rucu-sebebi-sec': 'yh-rucu-sebebi',
+  hazirlik: 'yh-hazirlik', 'hazirlik-onay': 'yh-hap', 'yol-sec-idari': 'yh-idari-yol', 'idari-yol-onay': 'yh-idari-yol', 'idari-basvuru': 'yh-idari-yol',
   'kopilot-ac': 'yh-takip', 'kopilot-gorev': 'yh-takip', 'esas-no-gir': 'yh-takip',
   'olay-onay': 'yh-onaylar', 'teblig-karar': 'yh-teblig-itiraz', 'itiraz-kapsam': 'yh-teblig-itiraz', 'itiraz-teblig-tarih': 'yh-teblig-itiraz',
   'kesinlesme-teyit': 'yh-teblig-itiraz', 'itiraz-incele': 'yh-teblig-itiraz', 'talep-taslak': 'yh-dilekce',

@@ -228,8 +228,8 @@ export async function HazirlikAdimlari({ dosyaId, musteriId, adimHref }: { dosya
   const adimlar = [
     { no: 1, ad: 'Evrakı yükle', durum: belge > 0 ? 'tamam' : 'simdi', detay: belge > 0 ? `${belge} belge` : 'Poliçe, ekspertiz, tutanak, dekont', capa: 'evrak' },
     aiBekliyor
-      ? { no: 2, ad: 'Bulguları onayla', durum: 'simdi', detay: 'Önce "AI ile Çıkarım Yap"', capa: 'yh-ai-cikarim' }
-      : { no: 2, ad: 'Bulguları onayla', durum: oneri > 0 ? 'simdi' : belge > 0 ? 'tamam' : 'sirada', detay: oneri > 0 ? `${oneri} öneri onay bekliyor` : d?.rucuSebebiKod ? 'Rücu sebebi seçildi' : 'Rücu sebebini seçin', capa: 'yh-bulduklarimiz' },
+      ? { no: 2, ad: 'Hap bilgileri kontrol et', durum: 'simdi', detay: 'Önce "AI ile Çıkarım Yap"', capa: 'yh-ai-cikarim' }
+      : { no: 2, ad: 'Hap bilgileri kontrol et', durum: oneri > 0 ? 'simdi' : belge > 0 ? 'tamam' : 'sirada', detay: oneri > 0 ? `${oneri} bilgi kontrol bekliyor` : d?.rucuSebebiKod ? 'Rücu sebebi seçildi' : 'Rücu sebebini seçin', capa: 'yh-hap' },
     { no: 3, ad: 'Borçluyu teyit et', durum: borclu > 0 && teyitli === borclu ? 'tamam' : borclu > 0 ? 'simdi' : 'sirada', detay: borclu ? `${teyitli}/${borclu} borçlu teyitli` : 'Borçlu yok', capa: 'borclular' },
     { no: 4, ad: 'Yetkili icra dairesini seç', durum: d?.yetkiliIcra ? 'tamam' : 'sirada', detay: d?.yetkiliIcra ?? 'Kaza yerine göre', capa: 'yh-hazirlik' },
     { no: 5, ad: "Takip talebi → UYAP'ta aç", durum: talep > 0 ? 'simdi' : 'sirada', detay: talep > 0 ? 'Takip talebi hazırlandı' : 'Önceki adımlardan sonra', capa: 'yh-takip' },

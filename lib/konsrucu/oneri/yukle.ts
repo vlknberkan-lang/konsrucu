@@ -15,7 +15,7 @@ import { gorselAiAcik, yuzeyAcik } from '@/lib/ai/bayrak'
 import { rucuSebebiKoduMu, type RucuSebebiKodu } from '@/lib/konsrucu/rucu-sebebi'
 import { kullaniciYetkisi } from './karar'
 import { listeKaynagi } from './kaynaklar'
-import { aiCikarimKur, bulduklarimizKur, eksikEvrakKur, rucuSebebiKur, yetkiliIcraKur, type PanelSatiri } from './gorunum'
+import { aiCikarimKur, hapKur, bulduklarimizKur, eksikEvrakKur, rucuSebebiKur, yetkiliIcraKur, type PanelSatiri } from './gorunum'
 import type { OneriPaneli } from './tipler'
 
 /** Dosyadaki son başarılı yapay zekâ çıkarımı: eski ekranın aiCikar'ı ya da "AI ile Çıkarım Yap" (KURAL_ONERI + ai TAMAM). */
@@ -33,6 +33,11 @@ export function sonAiCikarimi(dosyaId: string) {
   })
 }
 
+/** Onaylı yetkili icra değerinden daire adı. */
+function yetkiliIcraGorunum(v: unknown): string | null {
+  return v && typeof v === 'object' && typeof (v as { icraDairesi?: unknown }).icraDairesi === 'string' ? (v as { icraDairesi: string }).icraDairesi : null
+}
+
 export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | null> {
   const { dbUser, aktifMusteriId } = await ctx()
   if (!aktifMusteriId || !dosyaId) return null
@@ -42,7 +47,7 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
       id: true, musteriId: true, hukukDosyaNo: true, hasarDosyaNo: true, brans: true, rucuSebebi: true, rucuTutari: true,
       kazaYeri: true, il: true, yetkiliIcra: true, policeBaslangic: true, kaynakJson: true,
       cikarimJson: true, yol: true, yolGuven: true, yolNeden: true,
-      borclular: { select: { id: true, adUnvan: true, adres: true }, orderBy: { id: 'asc' } },
+      borclular: { select: { id: true, adUnvan: true, adres: true, tcVkn: true, rol: true, kaynak: true, teyitDurumu: true }, orderBy: { id: 'asc' } },
       belgeler: { where: { silindiAt: null }, select: { id: true, dosyaAdi: true, storagePath: true, kategori: true, altTur: true, silindiAt: true } },
       odemeler: { select: { tutar: true, haricMi: true } },
     },
@@ -102,6 +107,11 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
       dosyaId, yetki, aiAcik: yuzeyAcik('cikarim'), gorselAcik, cikarimJson: dosya.cikarimJson,
       yol: dosya.yol, yolGuven: dosya.yolGuven, yolNeden: dosya.yolNeden, metinliBelge, metinsizBelge,
       sonCalisma: sonAi ? { at: sonAi.createdAt, kim: sonAi.kullanici?.ad ?? null } : null,
+    }),
+    hap: hapKur({
+      dosyaId, yetki, satirlar, cikarimJson: dosya.cikarimJson,
+      borclular: dosya.borclular.map((b) => ({ id: b.id, adUnvan: b.adUnvan, tcVkn: b.tcVkn, rol: b.rol, kaynak: b.kaynak, teyitDurumu: b.teyitDurumu })),
+      yetkiliIcra: yetkiliIcraGorunum(onayliDeger('yetkiliIcra')),
     }),
     bulduklarimiz: bulduklarimizKur({
       dosyaId, yetki, aiAcik: yuzeyAcik('cikarim'), satirlar, belgeler: dosya.belgeler, kullanicilar,

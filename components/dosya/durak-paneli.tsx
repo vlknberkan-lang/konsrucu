@@ -16,6 +16,7 @@ import type { DavaPaneliVeri } from '@/lib/konsrucu/dava/veri'
 import type { KartTuru } from '@/lib/konsrucu/dilekce-v2/tipler'
 import { AiCikarim } from '@/components/dosya/oneri/ai-cikarim'
 import { Bulduklarimiz } from '@/components/dosya/oneri/bulduklarimiz'
+import { HapBilgiler } from '@/components/dosya/oneri/hap-bilgiler'
 import { RucuSebebiSec } from '@/components/dosya/oneri/rucu-sebebi-sec'
 import { EksikEvrak } from '@/components/dosya/oneri/eksik-evrak'
 import { YetkiliIcraSec } from '@/components/dosya/oneri/yetkili-icra-sec'
@@ -70,7 +71,18 @@ export function DurakPaneli({
           {oneriPanel ? (
             <>
               <AiCikarim veri={oneriPanel.aiCikarim} />
-              <Bulduklarimiz veri={oneriPanel.bulduklarimiz} bulDugmesi={false} />
+              <HapBilgiler hap={oneriPanel.hap} bulgu={oneriPanel.bulduklarimiz} />
+              {oneriPanel.bulduklarimiz.satirlar.length > 0 && (
+                <details className="group rounded-2xl border border-border bg-card">
+                  <summary className="cursor-pointer list-none px-5 py-3 text-[12.5px] font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                    <span className="mr-1 inline-block transition group-open:rotate-90 motion-reduce:transition-none" aria-hidden>›</span>
+                    Tüm bulgular ve kaynakları ({oneriPanel.bulduklarimiz.satirlar.length}) · belge, sayfa, alıntı
+                  </summary>
+                  <div className="p-2 pt-0">
+                    <Bulduklarimiz veri={oneriPanel.bulduklarimiz} bulDugmesi={false} />
+                  </div>
+                </details>
+              )}
               <RucuSebebiSec veri={oneriPanel.rucuSebebi} />
               <EksikEvrak veri={oneriPanel.eksikEvrak} />
             </>

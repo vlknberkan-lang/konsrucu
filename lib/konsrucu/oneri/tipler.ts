@@ -179,8 +179,38 @@ export type AiCikarimVerisi = {
   sonrakiAdimlar: string[]
 }
 
+export type HapBorclu = {
+  id: string
+  adUnvan: string
+  /** Maskeli T.C./VKN (ör. •••••••••92) ya da null. */
+  kimlik: string | null
+  rol: string
+  kaynak: string | null
+  teyit: 'TEYIT_EDILDI' | 'TEYIT_GEREK' | 'SUPHE'
+}
+
+/** "Hap bilgiler" kartı (lib/konsrucu/oneri/hap.ts): tek son kontrolün ön görünümü. Alan satırları Bulduklarımız'dan. */
+export type HapVerisi = {
+  dosyaId: string
+  yetki: KullaniciYetkisi
+  /** Son "Hap bilgileri kontrol ettim" (cikarimJson.onay). */
+  kontrol: { kim: string | null; tarih: string | null } | null
+  borclular: HapBorclu[]
+  /** Onaylı değeri olmayan, farklı değerli önerisi olan alanlar (seçim ister). */
+  celiskiAlanlar: string[]
+  /** Seçilmemiş seçim alanlarının etiketleri (rücu sebebi, yetkili icra). */
+  eksikSecim: string[]
+  /** Kontrol isteyen ödeme önerisi id → gerekçe (kartta işaretsiz gelir). */
+  odemeSuphe: Record<string, string>
+  /** Onaylı yetkili icra dairesi (Bulduklarımız'da gösterilmez; kendi seçicisi var). */
+  yetkiliIcra: string | null
+  /** Düğmeye basınca onaylanacak bilgi sayısı (ödemeler dahil, işaretsizler hariç). */
+  onaylanacak: number
+}
+
 export type OneriPaneli = {
   aiCikarim: AiCikarimVerisi
+  hap: HapVerisi
   bulduklarimiz: BulduklarimizVerisi
   rucuSebebi: RucuSebebiVerisi
   eksikEvrak: EksikEvrakVerisi

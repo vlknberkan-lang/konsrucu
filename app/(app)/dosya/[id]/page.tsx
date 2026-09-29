@@ -29,7 +29,7 @@ export const maxDuration = 300
 
 /** Eylem çapası (EYLEM_CAPA değeri, "yh-" öneki hariç) → durağı ("Bağla" aşaması; 06 §2). */
 const CAPA_DURAK: Record<string, DurakNo> = {
-  'yh-ai-cikarim': 1, 'yh-bulduklarimiz': 1, 'yh-eksik-evrak': 1, 'yh-rucu-sebebi': 1, 'yh-evrak': 1,
+  'yh-ai-cikarim': 1, 'yh-hap': 1, 'yh-bulduklarimiz': 1, 'yh-eksik-evrak': 1, 'yh-rucu-sebebi': 1, 'yh-evrak': 1,
   'yh-hazirlik': 2, 'yh-idari-yol': 2, 'yh-takip': 2,
   'yh-uyap': 3,
   'yh-teblig-itiraz': 4, 'yh-onaylar': 4,

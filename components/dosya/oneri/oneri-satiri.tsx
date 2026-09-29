@@ -16,8 +16,8 @@ import type { AlanSatiri, KullaniciYetkisi, OneriGorunum } from '@/lib/konsrucu/
 import type { KaynakHedefi } from './kaynak-goster'
 import { DUGME_IKINCIL, DUGME_ONAY, DUGME_RET, GIRDI, useEylem } from './ortak'
 
-const KAYNAK_TON: Record<string, Tone> = { KURAL: 'info', HUGO: 'info', EXCEL: 'info', UYAP: 'info', AI: 'kr', ELLE: 'steel' }
-const MONO_TIPLER = new Set(['PARA', 'TARIH', 'ODEME', 'PLAKA', 'PLAKA_LISTE', 'ORAN'])
+export const KAYNAK_TON: Record<string, Tone> = { KURAL: 'info', HUGO: 'info', EXCEL: 'info', UYAP: 'info', AI: 'kr', ELLE: 'steel' }
+export const MONO_TIPLER = new Set(['PARA', 'TARIH', 'ODEME', 'PLAKA', 'PLAKA_LISTE', 'ORAN'])
 const BRANS_SECENEK = [{ d: 'KASKO', e: 'Kasko' }, { d: 'ZMMS', e: 'ZMSS (trafik)' }, { d: 'OTO_DISI', e: 'Oto dışı' }]
 
 function KaynakBilgisi({ o, onKaynakGoster }: { o: OneriGorunum; onKaynakGoster: (h: KaynakHedefi) => void }) {
@@ -47,7 +47,7 @@ function KaynakBilgisi({ o, onKaynakGoster }: { o: OneriGorunum; onKaynakGoster:
   )
 }
 
-function DuzeltFormu({ satir, o, onVazgec, onKaydet, bekliyor }: {
+export function DuzeltFormu({ satir, o, onVazgec, onKaydet, bekliyor }: {
   satir: AlanSatiri; o: OneriGorunum; bekliyor: boolean
   onVazgec: () => void; onKaydet: (deger: string, tarih?: string) => void
 }) {

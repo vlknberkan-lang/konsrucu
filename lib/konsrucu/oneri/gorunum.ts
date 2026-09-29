@@ -15,8 +15,9 @@ import {
   asgariSetDurumu, bransKodlari, ev07Durumu, gsRejimi, hugoRucuNedeniEsle, k1Etiketi, kodBransaUygunMu,
   RUCU_SEBEBI_KODLARI, RUCU_SEBEBI_TANIM, rucuSebebiKoduMu, type AsgariBelge, type RucuSebebiKodu,
 } from '@/lib/konsrucu/rucu-sebebi'
+import { degerGruplari, hapPlani, odemeSupheleri } from './hap'
 import type {
-  AiCikarimVerisi, AlanSatiri, BulduklarimizVerisi, EksikEvrakVerisi, Engel, KullaniciYetkisi, OneriGorunum, RucuSebebiVerisi, YetkiliIcraVerisi,
+  AiCikarimVerisi, HapBorclu, HapVerisi, AlanSatiri, BulduklarimizVerisi, EksikEvrakVerisi, Engel, KullaniciYetkisi, OneriGorunum, RucuSebebiVerisi, YetkiliIcraVerisi,
 } from './tipler'
 
 /** Yükleyicinin okuduğu AlanDegeri satırı. */
@@ -192,6 +193,44 @@ export function rucuSebebiKur(g: {
     dayanaklar: tanim ? tanim.dayanaklar.map((d) => ({ ...d })) : [],
     notlar: tanim ? [...tanim.notlar] : [],
     ev07: { gerekli: ev07.gerekli, teyitGerekli: ev07.teyitGerekli, metin: ev07.metin },
+  }
+}
+
+// ───────────────────────── Hap bilgiler ─────────────────────────
+
+const TEYITLER = new Set(['TEYIT_EDILDI', 'TEYIT_GEREK', 'SUPHE'])
+
+/** Hap bilgiler kartı: borçlular (kimlik maskeli), çelişkili alanlar, şüpheli ödemeler, son kontrol. */
+export function hapKur(g: {
+  dosyaId: string
+  yetki: KullaniciYetkisi
+  satirlar: readonly PanelSatiri[]
+  borclular: readonly { id: string; adUnvan: string; tcVkn: string | null; rol: string; kaynak: string | null; teyitDurumu: string }[]
+  cikarimJson: unknown
+  yetkiliIcra: string | null
+}): HapVerisi {
+  const aktif = g.satirlar.filter((s) => s.durum === 'ONERI' || s.durum === 'ONAYLI')
+  const onayliAlan = new Set(aktif.filter((s) => s.durum === 'ONAYLI').map((s) => s.alan))
+  const bekleyen = aktif.filter((s) => s.durum === 'ONERI' && !onayliAlan.has(s.alan))
+  const odemeMi = (alan: string) => alanTanimi(alan)?.tip === 'ODEME'
+
+  const alanlar = new Map<string, PanelSatiri[]>()
+  for (const s of bekleyen) if (!odemeMi(s.alan)) alanlar.set(s.alan, [...(alanlar.get(s.alan) ?? []), s])
+  const celiskiAlanlar = [...alanlar].filter(([, o]) => degerGruplari(o).length > 1).map(([a]) => a)
+
+  const odemeSuphe = odemeSupheleri(bekleyen.filter((s) => odemeMi(s.alan)), aktif.filter((s) => odemeMi(s.alan)))
+  const plan = hapPlani({ satirlar: aktif, borclular: [], odemeHaric: new Set(Object.keys(odemeSuphe)), borcluHaric: new Set() })
+
+  const cj = (g.cikarimJson && typeof g.cikarimJson === 'object' && !Array.isArray(g.cikarimJson) ? g.cikarimJson : {}) as { onay?: { ok?: boolean; kim?: string; tarih?: string } }
+  const borclular: HapBorclu[] = g.borclular.map((b) => ({
+    id: b.id, adUnvan: b.adUnvan, kimlik: b.tcVkn ? ekranMaskele(b.tcVkn) : null, rol: b.rol, kaynak: b.kaynak,
+    teyit: (TEYITLER.has(b.teyitDurumu) ? b.teyitDurumu : 'TEYIT_GEREK') as HapBorclu['teyit'],
+  }))
+  return {
+    dosyaId: g.dosyaId, yetki: g.yetki,
+    kontrol: cj.onay?.ok ? { kim: cj.onay.kim ?? null, tarih: cj.onay.tarih ?? null } : null,
+    borclular, celiskiAlanlar, eksikSecim: plan.eksikSecim, odemeSuphe, yetkiliIcra: g.yetkiliIcra,
+    onaylanacak: plan.onaylanacak.length,
   }
 }
 

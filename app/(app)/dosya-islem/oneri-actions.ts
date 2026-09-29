@@ -13,7 +13,7 @@
  */
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { ctx } from '@/lib/konsrucu/db'
 import { alanTanimi, degerNormal } from '@/lib/konsrucu/oneri/alanlar'
@@ -27,6 +27,9 @@ import {
   dosyaSayfalari, elleOnayla, oneriOnayla, oneriReddet, onerileriKaydet, OneriHata, tekilIhlalMi, topluOnayla,
 } from '@/lib/konsrucu/oneri/servis'
 import { RUCU_SEBEBI_KODLARI, RUCU_SEBEBI_TANIM } from '@/lib/konsrucu/rucu-sebebi'
+import { hapPlani } from '@/lib/konsrucu/oneri/hap'
+import { rucuHesapIzi } from '@/lib/konsrucu/senkron/takip-talebi'
+import { takipTalebiYaz, type HesapIziOnayi } from '@/lib/konsrucu/senkron/takip-talebi-db'
 import type { KullaniciYetkisi } from '@/lib/konsrucu/oneri/tipler'
 
 type Hata = { ok: false; error: string }
@@ -41,7 +44,7 @@ function yenile(dosyaId: string) {
 }
 
 /** Oturum + aktif müvekkil + dosya kapsamı. Yazma eylemlerinde pasif müvekkil ve yetkisiz kullanıcı durur. */
-async function kapsam(dosyaId: string): Promise<{ hata: string } | { kullaniciId: string; yetki: KullaniciYetkisi }> {
+async function kapsam(dosyaId: string): Promise<{ hata: string } | { kullaniciId: string; kullaniciAd: string; yetki: KullaniciYetkisi }> {
   const { dbUser, aktifMusteriId } = await ctx()
   const yetki = kullaniciYetkisi(dbUser)
   if (!yetki.duzenleyebilir) return { hata: YETKI_YOK }
@@ -49,7 +52,7 @@ async function kapsam(dosyaId: string): Promise<{ hata: string } | { kullaniciId
   const dosya = await prisma.rucuDosyasi.findFirst({ where: { id: dosyaId, musteriId: aktifMusteriId }, select: { id: true, musteri: { select: { aktif: true } } } })
   if (!dosya) return { hata: 'Dosya bulunamadı veya erişiminiz yok.' }
   if (!dosya.musteri.aktif) return { hata: 'Bu müşteri pasif olduğu için değişiklik yapılamaz.' }
-  return { kullaniciId: dbUser.id, yetki }
+  return { kullaniciId: dbUser.id, kullaniciAd: dbUser.ad, yetki }
 }
 
 function hataMetni(e: unknown): string {
@@ -216,6 +219,134 @@ function bulAktiviteMetni(s: { eklenen: number; atlanan: number }, ai: AiOneriSo
     m += ` · yapay zekâ çalışmadı: ${ai.hata}`
   }
   return m
+}
+
+// ───────────────────────── hap bilgiler · tek son kontrol ─────────────────────────
+
+const alanDuzeltGirdi = z.object({
+  dosyaId: id, beklenenOnayliId: kilitId,
+  alan: z.string().trim().min(1).max(60),
+  deger: z.string().trim().min(1).max(300),
+})
+
+/**
+ * Hap bilgilerde "Düzelt": alanın doğru değerini elle yazar (onaylı değer olsun olmasın). Değer ELLE kaynaklı onaylı
+ * satır olur, kolona yansır; yeniden çıkarım ezmez. Ödeme, rücu sebebi ve yetkili icra kendi yerinde düzeltilir.
+ */
+export async function alanDegeriniDuzeltEylem(input: z.input<typeof alanDuzeltGirdi>): Promise<Tamam | Hata> {
+  const p = alanDuzeltGirdi.safeParse(input)
+  if (!p.success) return { ok: false, error: 'Değer boş ya da çok uzun.' }
+  const k = await kapsam(p.data.dosyaId)
+  if ('hata' in k) return { ok: false, error: k.hata }
+  const tanim = alanTanimi(p.data.alan)
+  if (!tanim || tanim.karar || tanim.tip === 'ODEME' || tanim.tip === 'YETKILI_ICRA' || tanim.tip === 'RUCU_KOD') return { ok: false, error: 'Bu alan burada düzeltilemez.' }
+  const ham: unknown = tanim.tip === 'PLAKA_LISTE' ? p.data.deger.split(/[,;]+/) : p.data.deger
+  if (degerNormal(tanim.tip, ham) == null) return { ok: false, error: `${tanim.etiket}: değer anlaşılamadı. Biçimi kontrol edin.` }
+  try {
+    await prisma.$transaction((tx) => elleOnayla(tx, {
+      dosyaId: p.data.dosyaId, alan: p.data.alan, deger: ham, beklenenOnayliId: p.data.beklenenOnayliId,
+      kullaniciId: k.kullaniciId, yetki: k.yetki, uretici: 'HAP:DUZELTME',
+    }))
+  } catch (e) {
+    return { ok: false, error: hataMetni(e) }
+  }
+  yenile(p.data.dosyaId)
+  return { ok: true }
+}
+
+const hapGirdi = z.object({
+  dosyaId: id,
+  /** İşaretsiz bırakılan ödeme önerileri (reddedilir). */
+  odemeHaric: z.array(id).max(300).default([]),
+  /** İşaretsiz bırakılan borçlular (teyitsiz kalır, takibe girmez). */
+  borcluHaric: z.array(id).max(100).default([]),
+})
+
+export type HapSonucu = { onaylanan: number; reddedilen: number; teyit: number; hesapIzi: string }
+
+const tlYaz = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+/**
+ * "Hap bilgileri kontrol ettim" (yalnız avukat ya da yönetici; lib/konsrucu/oneri/hap.ts): tek işlemde çelişkisiz
+ * öneriler onaylanır, işaretsiz ödeme önerileri reddedilir, işaretli borçlular teyit edilir, hesap izi rücu tutarıyla
+ * tutarlıysa onaylanır ve dosya "Takibe hazır" onayı alır. Çelişki, seçilmemiş rücu sebebi/yetkili icra ya da hiç
+ * borçlu kalmaması durumunda hiçbir şey yazılmaz. Faiz seçimi takip talebinde ayrıca yapılır (varsayılanı yok).
+ */
+export async function hapBilgileriOnaylaEylem(input: z.input<typeof hapGirdi>): Promise<Tamam<HapSonucu> | Hata> {
+  const p = hapGirdi.safeParse(input)
+  if (!p.success) return { ok: false, error: 'Geçersiz istek.' }
+  const k = await kapsam(p.data.dosyaId)
+  if ('hata' in k) return { ok: false, error: k.hata }
+  if (!k.yetki.kararVerebilir) return { ok: false, error: 'Hap bilgilerinin son kontrolünü avukat ya da yönetici yapar.' }
+  const dosyaId = p.data.dosyaId
+  try {
+    const r = await prisma.$transaction(async (tx) => {
+      const [satirlar, borclular] = await Promise.all([
+        tx.alanDegeri.findMany({
+          where: { dosyaId, silindiAt: null, durum: { in: ['ONERI', 'ONAYLI'] } },
+          select: { id: true, alan: true, degerJson: true, kaynakTuru: true, kaynakBelgeId: true, durum: true, alintiDogru: true, uretici: true, guven: true, createdAt: true },
+        }),
+        tx.borclu.findMany({ where: { dosyaId }, select: { id: true, teyitDurumu: true } }),
+      ])
+      const plan = hapPlani({ satirlar, borclular, odemeHaric: new Set(p.data.odemeHaric), borcluHaric: new Set(p.data.borcluHaric) })
+      if (plan.celiskiler.length) throw new OneriHata('GECERSIZ', `Önce iki değer arasında seçim yapın: ${plan.celiskiler.join(', ')}.`)
+      if (plan.eksikSecim.length) throw new OneriHata('GECERSIZ', `Önce seçin: ${plan.eksikSecim.join(', ')}.`)
+      if (!borclular.some((b) => b.teyitDurumu === 'TEYIT_EDILDI') && !plan.teyitEdilecek.length) {
+        throw new OneriHata('GECERSIZ', 'Takip için en az bir borçlu işaretleyin.')
+      }
+
+      for (const oneriId of plan.onaylanacak) {
+        await oneriOnayla(tx, { dosyaId, oneriId, beklenenOnayliId: null, kullaniciId: k.kullaniciId, yetki: k.yetki })
+      }
+      for (const oneriId of plan.reddedilecek) {
+        await oneriReddet(tx, { dosyaId, oneriId, kullaniciId: k.kullaniciId, yetki: k.yetki, gerekce: 'Hap bilgiler kontrolünde işaretsiz bırakıldı' })
+      }
+      if (plan.teyitEdilecek.length) {
+        await tx.borclu.updateMany({ where: { id: { in: plan.teyitEdilecek }, dosyaId }, data: { teyitDurumu: 'TEYIT_EDILDI' } })
+      }
+
+      // Hesap izi: onaylı ödemeler × oran rücu tutarıyla tutuyorsa onaylanır; tutmuyorsa avukat takip talebinde bakar.
+      const d = await tx.rucuDosyasi.findUnique({
+        where: { id: dosyaId },
+        select: { rucuOrani: true, rucuTutari: true, cikarimJson: true, odemeler: { select: { tarih: true, tutar: true, haricMi: true } } },
+      })
+      if (!d) throw new OneriHata('BULUNAMADI', 'Dosya bulunamadı.')
+      const iz = rucuHesapIzi({
+        dekontlar: d.odemeler.map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : null, tutar: o.tutar != null ? Number(o.tutar) : 0, haricMi: o.haricMi })),
+        rucuOrani: d.rucuOrani,
+        hugoRucuTutari: d.rucuTutari != null ? Number(d.rucuTutari) : null,
+      })
+      let hesapIzi: string
+      if (iz.durdu || iz.asilAlacak == null) {
+        hesapIzi = `Hesap izi onaylanmadı: ${iz.durdu ?? 'hesap yapılamadı'}`
+      } else if (iz.tutarli === false) {
+        hesapIzi = `Hesap izi onaylanmadı: ödemelerden çıkan ${tlYaz(iz.asilAlacak)} TL rücu tutarıyla (${tlYaz(iz.hugoRucuTutari ?? 0)} TL) tutmuyor; takip talebinde kontrol edip onaylayın`
+      } else {
+        const asil = iz.asilAlacak
+        const onay: HesapIziOnayi = { kullaniciId: k.kullaniciId, kullaniciAd: k.kullaniciAd, at: new Date().toISOString(), asilAlacak: asil }
+        await takipTalebiYaz(tx, dosyaId, { asilAlacak: asil, hesapIziJson: { ...iz, onay } as unknown as Prisma.InputJsonValue, onaylayanId: k.kullaniciId }, asil)
+        await tx.rucuDosyasi.update({ where: { id: dosyaId }, data: { asilAlacak: new Prisma.Decimal(asil.toFixed(2)) } })
+        hesapIzi = `Hesap izi onaylandı: asıl alacak ${tlYaz(asil)} TL`
+      }
+
+      // "Takibe hazır" avukat onayı en sonda: alan onayları (aynala) eski onayı düşürür.
+      const cj = d.cikarimJson && typeof d.cikarimJson === 'object' && !Array.isArray(d.cikarimJson) ? { ...(d.cikarimJson as Record<string, unknown>) } : {}
+      cj.onay = { ok: true, kim: k.kullaniciAd, tarih: new Date().toISOString() }
+      await tx.rucuDosyasi.update({ where: { id: dosyaId }, data: { cikarimJson: cj as Prisma.InputJsonValue } })
+      await tx.aktivite.create({
+        data: {
+          dosyaId, kullaniciId: k.kullaniciId,
+          eylem: `Hap bilgiler kontrol edildi: ${plan.onaylanacak.length} bilgi onaylandı, ${plan.reddedilecek.length} ödeme önerisi çıkarıldı, ${plan.teyitEdilecek.length} borçlu teyit edildi · ${hesapIzi} · takibe hazır`,
+          detayJson: { tur: 'HAP_KONTROL', onaylanan: plan.onaylanacak, reddedilen: plan.reddedilecek, teyit: plan.teyitEdilecek, hesapIziOnaylandi: hesapIzi.startsWith('Hesap izi onaylandı') } as Prisma.InputJsonValue,
+        },
+      })
+      return { onaylanan: plan.onaylanacak.length, reddedilen: plan.reddedilecek.length, teyit: plan.teyitEdilecek.length, hesapIzi }
+    }, { timeout: 30_000 })
+    yenile(dosyaId)
+    return { ok: true, ...r }
+  } catch (e) {
+    return { ok: false, error: hataMetni(e) }
+  }
 }
 
 // ───────────────────────── rücu sebebi (S19) ─────────────────────────
