@@ -10,7 +10,6 @@ import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { footerOlustur, aciklamaTam, footerIcerir } from '@/lib/konsrucu/takip'
 import { faizHesapla, oranlariOku, sonDekontTarihi, odenenToplam, type DekontGirdi } from '@/lib/konsrucu/faiz'
-import { takipAcildi } from '../actions'
 import { FaizPanel } from '@/components/akilli-giris/detay/faiz-panel'
 import { Kopyala } from '@/components/akilli-giris/kopyala'
 import { Badge, type Tone } from '@/components/konsrucu/ui'
@@ -44,18 +43,14 @@ import { tenantKullanicilari } from '@/lib/konsrucu/db'
 import { tarihTR, saatTR, kalanGun } from '@/lib/konsrucu/format'
 import { toTRInput as sayiToTRInput } from '@/lib/konsrucu/sayi'
 // ana senaryo (v2) panelleri
-import { DosyaYolHaritasi } from '@/components/dosya/yol-haritasi/yol-haritasi'
-import { EYLEM_CAPA } from '@/components/dosya/yol-haritasi/eylem'
-import { yolHaritasiYukle } from '@/lib/konsrucu/yol-haritasi/yukle'
+import { yolHaritasiYukle, onbellekGuncelle } from '@/lib/konsrucu/yol-haritasi/yukle'
+import { takipTalebiGorunumu } from '@/lib/konsrucu/senkron/takip-talebi-db'
+import { TakipAcDugmesi } from '@/components/akilli-giris/detay/takip-ac-dugmesi'
+import { HapBilgiler } from '@/components/dosya/oneri/hap-bilgiler'
 import { UyapBaglanti } from '@/components/senkron/uyap-baglanti'
 import { IcraNoSenkron } from '@/components/senkron/icra-no-senkron'
 import { TakipTalebiPaneli } from '@/components/takip-talebi/takip-talebi-paneli'
-import { ExcelOnerileri } from '@/components/takip-talebi/excel-onerileri'
 import { oneriPaneliYukle } from '@/lib/konsrucu/oneri/yukle'
-import { Bulduklarimiz } from '@/components/dosya/oneri/bulduklarimiz'
-import { RucuSebebiSec } from '@/components/dosya/oneri/rucu-sebebi-sec'
-import { EksikEvrak } from '@/components/dosya/oneri/eksik-evrak'
-import { YetkiliIcraSec } from '@/components/dosya/oneri/yetkili-icra-sec'
 import { olayPaneliYukle } from '@/lib/konsrucu/eksen/yukle'
 import { TebligItirazPaneli } from '@/components/dosya/olay/teblig-itiraz-paneli'
 import { SurelerPaneli } from '@/components/sure/sureler-paneli'
@@ -113,9 +108,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
-  const dbUser = await prisma.kullanici.findUnique({ where: { id: user.id }, include: { musteriler: true } })
+  const dbUser = await prisma.kullanici.findUnique({ where: { id: user.id }, include: { musteriler: { include: { musteri: { select: { aktif: true } } } } } })
   if (!dbUser) redirect('/login')
-  const izinli = dbUser.musteriler.map((m) => m.musteriId)
+  // pasif (dondurulmuş) şirketin dosyası açılmaz — ctx() ve kabukla aynı kural
+  const izinli = dbUser.musteriler.filter((m) => m.musteri.aktif).map((m) => m.musteriId)
 
   const dosya = await prisma.rucuDosyasi.findFirst({
     where: { musteriId: { in: izinli }, OR: [{ id: params.id }, { hasarDosyaNo: params.id }, { hukukDosyaNo: params.id }, { id: { startsWith: params.id } }] },
@@ -183,10 +179,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
   const TUR_SEKME: Record<string, SekmeKey> = { ICRA_TAKIBI: 'icra', ARABULUCULUK: 'arabuluculuk', DAVA: 'dava', INFAZ: 'infaz' }
   const guncelAsamaRec = [...asamalar].reverse().find((a) => a.durum === 'DEVAM') ?? asamalar[asamalar.length - 1] ?? null
   const guncelSekme: SekmeKey = guncelAsamaRec ? TUR_SEKME[guncelAsamaRec.tur] : dosya.icraDosyaNo ? 'icra' : 'oncesi'
-  // varsayılan: dosyanın GÜNCEL aşaması (aktif aşama paneli, ikinci tık gerekmez).
-  // İcra Öncesi'ye (ana içerik: evrak/borçlu/faiz/AI) şeritten ?asama=oncesi ile her zaman gidilebilir.
+  // varsayılan: ana içerik (1 Borçlular · 2 Dosya bilgileri · 3 Faiz · 4 Geçmiş · 5 Kaynak + sağda hazırlık) — takip
+  // açılmış dosyada da borçlu/künye/faiz görünür kalır; aşama panelleri (İcra, Arabuluculuk…) şeritten açılır.
   const SEKMELER: SekmeKey[] = ['oncesi', 'icra', 'arabuluculuk', 'dava', 'infaz']
-  const aktifSekme: SekmeKey = SEKMELER.includes((searchParams.asama ?? '') as SekmeKey) ? (searchParams.asama as SekmeKey) : guncelSekme
+  const aktifSekme: SekmeKey = SEKMELER.includes((searchParams.asama ?? '') as SekmeKey) ? (searchParams.asama as SekmeKey) : 'oncesi'
   // Belge & Veri şeridi (5-aşamadan bağımsız kovalar): ?belge=hasar|uyap|taksit — set ise ana içerik o kovaya odaklanır
   const BELGE_KOVALAR: readonly string[] = ['hasar', 'uyap', 'taksit']
   const aktifBelge: BelgeKey | null = BELGE_KOVALAR.includes(searchParams.belge ?? '') ? (searchParams.belge as BelgeKey) : null
@@ -204,16 +200,6 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
     : []
   // Ana senaryo panelleri (S13–S31, S28): yol haritası her sekmede; diğerleri yalnız kendi sekmesinde yüklenir
   const avukatRol = dbUser.rol === 'ADMIN' || dbUser.rol === 'AVUKAT'
-  // Yol haritası eylemleri sekmeli sayfada doğru sekmeye + panele gitsin (çapa başka sekmedeyse ?asama= ile)
-  const CAPA_SEKME: Record<string, string> = {
-    'yh-bulduklarimiz': '?asama=oncesi', 'yh-eksik-evrak': '?asama=oncesi', 'yh-rucu-sebebi': '?asama=oncesi', 'yh-evrak': '?belge=hasar', 'yh-taksit': '?belge=taksit',
-    'yh-uyap': '?asama=icra', 'yh-takip': '?asama=icra', 'yh-teblig-itiraz': '?asama=icra', 'yh-onaylar': '?asama=icra', 'yh-hazirlik': '?asama=icra',
-    'yh-sureler': aktifSekme === 'dava' ? '?asama=dava' : '?asama=icra',
-    'yh-arabuluculuk': '?asama=arabuluculuk', 'yh-yol-secimi': '?asama=arabuluculuk', 'yh-muvekkil-onayi': '?asama=arabuluculuk',
-    'yh-dava': '?asama=dava', 'yh-dilekce': '?asama=dava', 'yh-yargilama': '?asama=dava', 'yh-sonuc': '?asama=dava',
-  }
-  const capaHedef = (c: string) => (c === 'yh-onarim' ? '/yonetim/veri-onarim' : c === 'yh-idari-yol' ? '#yh-idari-yol' : `/akilli-giris/${dosya.id}${CAPA_SEKME[c] ?? ''}#${['yh-teblig-itiraz', 'yh-onaylar'].includes(c) ? 'yh-teblig-itiraz' : ['yh-yol-secimi', 'yh-muvekkil-onayi'].includes(c) ? 'yh-arabuluculuk' : ['yh-dilekce', 'yh-yargilama', 'yh-sonuc'].includes(c) ? 'yh-dava' : c}`)
-  const eylemHrefleri = Object.fromEntries(Object.entries(EYLEM_CAPA).map(([h, c]) => [h, capaHedef(c)])) as Partial<Record<keyof typeof EYLEM_CAPA, string>>
   const yazabilirRol = dbUser.rol !== 'GORUNTULEYEN'
   const [yolHaritasi, oneriPanel, olayPanel, arabPanel, davaPanel, dilekceKartlar] = await Promise.all([
     yolHaritasiYukle({ dosyaId: dosya.id, musteriId: dosya.musteriId, prova: searchParams.prova ?? null }).catch(() => null),
@@ -223,6 +209,8 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
     aktifSekme === 'dava' && !aktifBelge ? davaPaneli(dosya.id, dosya.musteriId, dbUser).catch(() => null) : null,
     aktifSekme === 'dava' && !aktifBelge && dilekceV2Acik(dbUser.rol) ? dilekceV2Ozeti(prisma, dosya.musteriId, dosya.id).catch(() => null) : null,
   ])
+
+  if (yolHaritasi) await onbellekGuncelle(yolHaritasi, dosya.musteriId).catch(() => false)
 
   // Önemli Olay (borca itiraz) — arabuluculuk sekmesinde "başvuru hazırlığı + tamamla" paneli
   const acikOlaylar = dosya.onemliOlaylar
@@ -334,24 +322,23 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
       }
     : null
 
-  const teyitliBorclu = dosya.borclular.some((b) => b.teyitDurumu === 'TEYIT_EDILDI')
-  const teyitGerek = dosya.borclular.some((b) => b.teyitDurumu === 'TEYIT_GEREK')
   const katSet = new Set(dosya.belgeler.map((b) => b.kategori))
   const evrakOk = ['POLICE', 'DEKONT', 'TUTANAK'].every((k) => katSet.has(k as never))
-  const teyitOk = cikarimVar && dosya.borclular.length > 0 && !teyitGerek
 
-  const checks = [
-    { label: 'Borçlu · TC/VKN · adres', ok: teyitliBorclu, okText: `${dosya.borclular.length} borçlu çıkarıldı, en az biri teyitli`, hint: 'Çıkarım yapın; en az bir borçlu TC ve adresiyle teyitli olmalı' },
-    { label: 'Asıl alacak (anapara)', ok: anapara != null, okText: fmtTRY(anapara) ?? '', hint: 'Ödenen tazminat (asıl alacak) girilmeli' },
-    { label: 'Faiz başlangıcı', ok: !!faizBasEff, okText: faizBasEff ? `Son dekont · ${fmtDate(new Date(faizBasEff))}` : '', hint: 'Ödeme dekontu tarihi (faiz başlangıcı) gerekli' },
-    { label: 'Örnek / mahiyet', ok: !!dosya.brans, okText: dosya.rucuSebebi ?? dosya.brans ?? '', hint: 'Takip mahiyeti (branş/örnek) belirlenmeli' },
-    { label: 'İl–ilçe · yetkili icra (kaza yeri)', ok: !!dosya.yetkiliIcra, okText: dosya.yetkiliIcra ?? '', hint: 'Kaza yerine göre yetkili icra dairesi gerekli' },
-    { label: 'Gerekli evrak', ok: evrakOk, okText: 'Poliçe, ödeme dekontu ve kaza tutanağı dosyada', hint: 'Poliçe, dekont ve kaza tutanağı eksik olmamalı' },
-    { label: 'Teyit tamam (düşük güven kalmadı)', ok: teyitOk, okText: 'Tüm düşük güvenli alanlar onaylandı', hint: teyitGerek ? 'Bir borçlu “teyit gerekiyor” — onaylayın' : 'Çıkarımı yapıp düşük güvenli alanları teyit edin' },
-    { label: 'Avukat onayı (alanlar gözden geçirildi)', ok: onayli, okText: `${onay?.kim ?? '—'} onayladı`, hint: 'Alanları düzeltip “Avukat onayı ver”e basın' },
+  // Sağ panel maddeleri eklentinin ön kontrolüyle AYNI kaynaktan (takipTalebiGorunumu.kontrol): madde tamam görünüp
+  // UYAP'ta reddedilme olmaz. Evrak eksiği uyarıdır, takibi engellemez.
+  const tg = aktifSekme === 'oncesi' && !aktifBelge && !takipAcik ? await takipTalebiGorunumu(dosya.id, dosya.musteriId).catch(() => null) : null
+  const kt = tg?.kontrol
+  const ilkSebep = (a: string[] | undefined) => (!a ? 'Kontrol edilemedi; sayfayı yenileyin' : a.length > 1 ? `${a[0]} (+${a.length - 1})` : a[0] ?? '')
+  const checks: { label: string; ok: boolean; okText: string; hint: string; uyari?: boolean }[] = [
+    { label: 'Borçlular', ok: !!kt && kt.borclu.length === 0, okText: `${dosya.borclular.length} borçlu · TC'li ve teyitli`, hint: ilkSebep(kt?.borclu) },
+    { label: 'Dosya bilgileri', ok: !!kt && kt.dosya.length === 0, okText: 'Takip açıklaması, alacaklı ve yetkili adliye tamam', hint: ilkSebep(kt?.dosya) },
+    { label: 'Faiz hesabı', ok: !!kt && kt.faiz.length === 0, okText: tg?.takipTalebi ? `Asıl alacak ${fmtTRY(tg.takipTalebi.asilAlacak) ?? '—'} · faiz seçildi` : 'Faiz seçildi', hint: ilkSebep(kt?.faiz) },
+    { label: 'Gerekli evrak', ok: evrakOk, okText: 'Poliçe, ödeme dekontu ve kaza tutanağı dosyada', hint: 'Poliçe, dekont ya da tutanak eksik (uyarı; takibi engellemez)', uyari: true },
+    { label: 'Avukat onayı', ok: onayli, okText: `${onay?.kim ?? '—'} onayladı`, hint: 'Bilgileri kontrol edip "Avukat onayı ver"e basın' },
   ]
   const done = checks.filter((c) => c.ok).length
-  const hazir = done === checks.length
+  const hazir = checks.every((c) => c.ok || c.uyari)
   const pct = Math.round((done / checks.length) * 100)
 
   const durumEt: { tone: Tone; label: string } = takipAcik
@@ -359,8 +346,6 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
     : hazir ? { tone: 'success', label: 'Takibe hazır' }
       : evrakVar ? { tone: 'info', label: 'Hazırlanıyor' } : { tone: 'warning', label: 'Evrak bekleniyor' }
 
-  const pipeline = ['Havuzda', 'İnceleniyor', 'Takibe Hazır', 'Takip Açıldı']
-  const pipelineStep = takipAcik ? 3 : hazir ? 2 : evrakVar ? 1 : 0
 
   const g = dosya.zamanasimi ? kalanGun(dosya.zamanasimi) : null
   const zaRisk = g != null && g >= 0 && g < 30
@@ -432,8 +417,6 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
         <Link href="/atanan-dosyalar" className="inline-flex items-center gap-1 font-semibold text-muted-foreground transition hover:text-foreground"><ChevronLeft className="h-[15px] w-[15px]" /> Atanan Dosyalar</Link>
         <span className="text-border">/</span>
         <span className="font-mono font-semibold text-foreground">{dosya.hukukDosyaNo ?? dosya.hasarDosyaNo ?? dosya.id.slice(0, 8)}</span>
-        <span className="text-border">/</span>
-        <Link href={`/dosya/${dosya.id}`} className="font-semibold text-kr transition hover:text-kr-ink hover:underline">Yol haritası görünümü</Link>
       </div>
 
       {/* künye başlık */}
@@ -478,8 +461,6 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
         </div>
       </div>
 
-      {/* S20: Dosya Yol Haritası — Şimdi kartı, sonra listesi, 8 durak (program yönlendirir) */}
-      {yolHaritasi && <div className="mt-[14px]"><DosyaYolHaritasi gorunum={yolHaritasi} kullaniciRol={dbUser.rol} eylemHrefleri={eylemHrefleri} /></div>}
 
       {/* S06: AI idari yol önerisi (karar avukatta) · S07: yeniden çıkarımın farklı bulduğu değerler (ezmez, önerir) */}
       <div id="yh-idari-yol" />
@@ -540,30 +521,10 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
         </>
       ) : (
         <>
-      {oneriPanel && (
-        <div className="mt-[14px] flex flex-col gap-4">
-          <ExcelOnerileri dosyaId={dosya.id} />
-          <Bulduklarimiz veri={oneriPanel.bulduklarimiz} />
-          <RucuSebebiSec veri={oneriPanel.rucuSebebi} />
-          <EksikEvrak veri={oneriPanel.eksikEvrak} />
-          <YetkiliIcraSec veri={oneriPanel.yetkiliIcra} />
-        </div>
+      {/* AI'ın evraktan bulup henüz kontrol edilmemiş bilgileri varsa (öneri) tek kartta; yoksa hiç görünmez */}
+      {oneriPanel && (oneriPanel.hap.onaylanacak > 0 || oneriPanel.hap.celiskiAlanlar.length > 0) && (
+        <div className="mt-[14px]"><HapBilgiler hap={oneriPanel.hap} bulgu={oneriPanel.bulduklarimiz} /></div>
       )}
-      {/* durum pipeline */}
-      <div className="mt-[14px] flex items-center overflow-x-auto rounded-[14px] border border-border bg-surface p-[12px_18px]">
-        {pipeline.map((label, i) => {
-          const isDone = i < pipelineStep, now = i === pipelineStep
-          return (
-            <span key={label} className="flex items-center">
-              {i > 0 && <span className={`h-[2px] w-7 ${i <= pipelineStep ? 'bg-success' : 'bg-border'}`} />}
-              <span className={`flex items-center gap-2 rounded-full px-[11px] py-[5px] ${now ? 'bg-kr-soft' : ''}`}>
-                <span className={`font-mono grid h-[22px] w-[22px] place-items-center rounded-full border text-[11px] font-semibold ${isDone ? 'border-success bg-success text-white' : now ? 'border-kr bg-kr text-white' : 'border-border bg-surface-muted text-muted-foreground'}`}>{isDone ? <Check className="h-3 w-3" /> : i + 1}</span>
-                <span className={`text-[12.5px] font-semibold ${isDone ? 'text-foreground' : now ? 'text-kr-ink' : 'text-muted-foreground'}`}>{label}</span>
-              </span>
-            </span>
-          )
-        })}
-      </div>
 
       {/* gövde: 2 kolon */}
       <div className="dd-grid mt-5">
@@ -627,6 +588,12 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
           {/* 3 · FAİZ & DAVA TUTARI */}
           <Section kicker="3 · FAİZ & DAVA TUTARI" title="Faiz Hesabı" accent="text-kr" sub="Dava tutarı (rücu/kusur payı) ve işlemiş faiz. Dekontlar yüklü evraktan çıkarılır; ekspertiz ücreti anaparaya katılmaz. Birden fazla parçalı ödemede faiz son dekont tarihinden işler. Tutar ve tarihler elle düzenlenebilir.">
             <FaizPanel dosyaId={dosya.id} init={faizInit} oranlar={faizOranlar} bugun={bugun} />
+            {!takipAcik && (
+              <div className="mt-5 border-t border-border-subtle pt-4">
+                <div className="mb-2 font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">Takip talebine girecek faiz ve asıl alacak</div>
+                <TakipTalebiPaneli dosyaId={dosya.id} sadeceFaiz />
+              </div>
+            )}
           </Section>
 
           {/* 4 · ZAMAN ÇİZELGESİ */}
@@ -746,7 +713,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
                   <span className={`grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border ${c.ok ? 'border-success/30 bg-success-soft text-success' : 'border-border bg-surface-muted text-muted-foreground'}`}>{c.ok ? <Check className="h-3.5 w-3.5" /> : <span className="text-[12px]">·</span>}</span>
                   <div className="min-w-0">
                     <div className="text-[13px] font-semibold text-foreground">{c.label}</div>
-                    <div className={`text-[11.5px] ${c.ok ? 'text-success' : 'text-[hsl(var(--warning-fg))]'}`}>{c.ok ? c.okText : c.hint}</div>
+                    <div className={`text-[11.5px] ${c.ok ? 'text-success' : c.uyari ? 'text-muted-foreground' : 'text-[hsl(var(--warning-fg))]'}`}>{c.ok ? c.okText : c.hint}</div>
                   </div>
                 </li>
               ))}
@@ -756,23 +723,17 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
               {takipAcik ? (
                 <div className="flex items-center gap-[9px] rounded-[11px] bg-kr-soft p-[11px_14px] text-[12.5px] text-kr-ink"><Check className="h-4 w-4 shrink-0" /><span><b>UYAP’a gönderildi</b> · {dosya.icraDosyaNo ?? 'eşleştirme bekleniyor'}</span></div>
               ) : (
-                <>
-                  <OnayButonu dosyaId={dosya.id} onayli={onayli} onayKim={onay?.kim} onayTarih={onay?.tarih} />
-                  {hazir ? (
-                    <form action={takipAcildi} className="flex flex-col gap-2.5">
-                      <input type="hidden" name="dosyaId" value={dosya.id} />
-                      <input name="daire" defaultValue={dosya.yetkiliIcra ?? dosya.kazaYeri ?? ''} placeholder="İcra Dairesi" className="rounded-[10px] border border-border bg-surface-muted px-3 py-2.5 text-[13px] outline-none transition focus:border-kr focus:bg-surface focus:ring-4 focus:ring-kr/15" />
-                      <input name="no" placeholder="İcra Dosya No (2026/…)" className="font-mono rounded-[10px] border border-border bg-surface-muted px-3 py-2.5 text-[13px] outline-none transition focus:border-kr focus:bg-surface focus:ring-4 focus:ring-kr/15" />
-                      <input name="tarih" type="date" className="rounded-[10px] border border-border bg-surface-muted px-3 py-2.5 text-[13px] text-foreground outline-none transition focus:border-kr focus:bg-surface focus:ring-4 focus:ring-kr/15" />
-                      <button type="submit" className="inline-flex w-full items-center justify-center gap-2 rounded-[11px] bg-success px-5 py-3 text-[14.5px] font-semibold text-white shadow-[0_2px_8px_hsl(160_60%_18%/0.35)] transition hover:bg-success/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/50"><Send className="h-4 w-4" /> Takip Aç · UYAP’a Gönder</button>
-                    </form>
-                  ) : (
-                    <>
-                      <button type="button" disabled className="inline-flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-[11px] bg-kr px-5 py-3 text-[14.5px] font-semibold text-kr-foreground opacity-60"><Send className="h-4 w-4" /> Takip Aç · UYAP’a Gönder</button>
-                      <p className="text-center font-mono text-[11px] text-muted-foreground">{!onayli ? 'önce avukat onayı verin' : 'eksik maddeler tamamlanınca aktifleşir'}</p>
-                    </>
-                  )}
-                </>
+                tg?.tevziEdildi ? (
+                  <>
+                    <p className="text-[12.5px] text-foreground">UYAP tevzisi yapıldı. Harcı UYAP&apos;ta ödeyin; esas no oluşunca buraya girin.</p>
+                    <IcraNoSenkron dosyaId={dosya.id} icraDosyaNo={dosya.icraDosyaNo} icraDairesi={dosya.icraDairesi} yazabilir={yazabilirRol} />
+                  </>
+                ) : (
+                  <>
+                    <OnayButonu dosyaId={dosya.id} onayli={onayli} onayKim={onay?.kim} onayTarih={onay?.tarih} />
+                    <TakipAcDugmesi dosyaId={dosya.id} hazir={hazir} avukat={avukatRol} />
+                  </>
+                )
               )}
             </div>
           </div>

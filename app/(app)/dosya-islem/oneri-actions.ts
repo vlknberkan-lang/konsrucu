@@ -11,6 +11,7 @@
  * (kural, Excel; yüzey açıksa yapay zekâ) yeniden üretir. Kritik alan (tutar, ödeme, kaza tarihi), rücu sebebi ve yetkili icra yalnız AVUKAT/ADMIN.
  * Hukuki kayıt silinmez: öneri reddedilir ya da eskir; kilit değişince eski onaylı satır ESKIDI olur.
  */
+import { listeKaynagi } from '@/lib/konsrucu/oneri/kaynaklar'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { Prisma } from '@prisma/client'
@@ -308,13 +309,14 @@ export async function hapBilgileriOnaylaEylem(input: z.input<typeof hapGirdi>): 
       // Hesap izi: onaylı ödemeler × oran rücu tutarıyla tutuyorsa onaylanır; tutmuyorsa avukat takip talebinde bakar.
       const d = await tx.rucuDosyasi.findUnique({
         where: { id: dosyaId },
-        select: { rucuOrani: true, rucuTutari: true, cikarimJson: true, odemeler: { select: { tarih: true, tutar: true, haricMi: true } } },
+        select: { rucuOrani: true, rucuTutari: true, cikarimJson: true, kaynakJson: true, odemeler: { select: { tarih: true, tutar: true, haricMi: true } } },
       })
       if (!d) throw new OneriHata('BULUNAMADI', 'Dosya bulunamadı.')
       const iz = rucuHesapIzi({
         dekontlar: d.odemeler.map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : null, tutar: o.tutar != null ? Number(o.tutar) : 0, haricMi: o.haricMi })),
         rucuOrani: d.rucuOrani,
         hugoRucuTutari: d.rucuTutari != null ? Number(d.rucuTutari) : null,
+        excelEsas: listeKaynagi(d.kaynakJson) === 'zurich',
       })
       let hesapIzi: string
       if (iz.durdu || iz.asilAlacak == null) {

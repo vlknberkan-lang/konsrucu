@@ -9,6 +9,7 @@
  * Props: dosyaId
  */
 import { useCallback, useEffect, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Lock, Loader2, Scale } from 'lucide-react'
 import { takipTalebiGetir, uyaptaTakibiAc, type TakipTalebiGetirSonuc } from '@/app/(app)/dosya-islem/takip-talebi-actions'
 import { CanliSenkron } from '@/components/senkron/canli-senkron'
@@ -17,7 +18,12 @@ import { HesapIziKarti } from './hesap-izi'
 import { TakipOnizleme } from './takip-onizleme'
 import { AciklamaDuzenle } from '@/components/akilli-giris/detay/aciklama-duzenle'
 
-export function TakipTalebiPaneli({ dosyaId }: { dosyaId: string }) {
+/**
+ * sadeceFaiz: dosya ekranının "3 · Faiz Hesabı" bölümünde yalnız faiz seçimi + hesap izi çizilir (önizleme, açıklama ve
+ * takip düğmesi sağ paneldedir); kayıttan sonra sayfa yenilenir ki sağdaki maddeler güncellensin.
+ */
+export function TakipTalebiPaneli({ dosyaId, sadeceFaiz = false }: { dosyaId: string; sadeceFaiz?: boolean }) {
+  const router = useRouter()
   const [veri, setVeri] = useState<TakipTalebiGetirSonuc | null>(null)
   const [pending, start] = useTransition()
   const [mesaj, setMesaj] = useState<{ tur: 'ok' | 'hata'; metin: string } | null>(null)
@@ -27,6 +33,8 @@ export function TakipTalebiPaneli({ dosyaId }: { dosyaId: string }) {
     const r = await takipTalebiGetir({ dosyaId }).catch(() => null)
     setVeri(r ?? { ok: false, error: 'Takip talebi okunamadı; bağlantınızı kontrol edin.' })
   }, [dosyaId])
+  // kayıttan sonra: panel verisi + (dosya ekranında) sağdaki hazırlık maddeleri
+  const yenile = useCallback(async () => { await yukle(); if (sadeceFaiz) router.refresh() }, [yukle, sadeceFaiz, router])
 
   useEffect(() => { yukle() }, [yukle])
 
@@ -63,9 +71,11 @@ export function TakipTalebiPaneli({ dosyaId }: { dosyaId: string }) {
         deger={g.faiz}
         avukat={avukat}
         dondurulmus={!!g.takipTalebi?.dondurulduAt}
-        onKaydedildi={yukle}
+        onKaydedildi={yenile}
       />
-      <HesapIziKarti dosyaId={dosyaId} hesapIzi={g.hesapIzi} onay={g.hesapIziOnayi} gecerli={g.hesapIziGecerli} avukat={avukat} onOnaylandi={yukle} />
+      <HesapIziKarti dosyaId={dosyaId} hesapIzi={g.hesapIzi} onay={g.hesapIziOnayi} gecerli={g.hesapIziGecerli} avukat={avukat} onOnaylandi={yenile} />
+      {!sadeceFaiz && (
+        <>
       <TakipOnizleme gorunum={g} />
       {!g.tevziEdildi && (
         <section aria-label="UYAP takip açıklaması" className="rounded-2xl border border-border bg-card p-4">
@@ -106,6 +116,8 @@ export function TakipTalebiPaneli({ dosyaId }: { dosyaId: string }) {
       </section>
 
       {(tetik > 0 || veri.kopilotIsi) && <CanliSenkron dosyaId={dosyaId} tetik={tetik} yazabilir={avukat} />}
+        </>
+      )}
     </div>
   )
 }

@@ -14,6 +14,7 @@ import { prisma } from '@/lib/prisma'
 import { oranlariOku, sonDekontTarihi, type DekontGirdi } from '@/lib/konsrucu/faiz'
 import { footerOlustur, aciklamaTam } from '@/lib/konsrucu/takip'
 import { yetkiliIcraOner } from '@/lib/konsrucu/adli-rehber'
+import { listeKaynagi } from '@/lib/konsrucu/oneri/kaynaklar'
 import {
   faizTalepMetni, hesapIziHalaGecerli, kopilotFaizDestekli, rucuHesapIzi, surumKarari, takipAlacakHesapla, takipIsoGun,
   takipTalebiKilitSebepleri, type AlacakSonucu, type FaizSecimi, type HesapIzi, type SurumKarari,
@@ -102,6 +103,8 @@ export type TakipTalebiGorunumu = {
   avukatOnayi: boolean
   tevziEdildi: boolean
   kilitSebepleri: string[]
+  /** Kilit sebepleri dosya ekranının hazırlık maddelerine göre gruplu (Borçlular · Dosya bilgileri · Faiz · Avukat onayı). */
+  kontrol: { borclu: string[]; dosya: string[]; faiz: string[]; onay: string[] }
   /** Açıklama düzenleyicisi için: kayıtlı ham açıklama + şablon alanları (UYAP takip açıklaması tek yerden düzenlenir). */
   aciklamaDuzen: { ham: string; kazaTarihi: string; sigortaliPlaka: string; karsiPlaka: string; alacakliUnvan: string }
   onizleme: {
@@ -127,7 +130,7 @@ export async function takipTalebiGorunumu(dosyaId: string, musteriId: string): P
     where: { id: dosyaId, musteriId },
     select: {
       id: true, rucuTutari: true, asilAlacak: true, rucuOrani: true, faizTutari: true, faizBaslangic: true, faizBitis: true,
-      kazaYeri: true, il: true, cikarimJson: true, kazaTarihi: true, hasarTarihi: true, sigortaliPlaka: true, karsiPlaka: true,
+      kazaYeri: true, il: true, cikarimJson: true, kaynakJson: true, kazaTarihi: true, hasarTarihi: true, sigortaliPlaka: true, karsiPlaka: true,
       borclular: { select: { adUnvan: true, tcVkn: true, teyitDurumu: true } },
       odemeler: { select: { tarih: true, tutar: true, haricMi: true } },
       takipTalepleri: {
@@ -147,7 +150,7 @@ export async function takipTalebiGorunumu(dosyaId: string, musteriId: string): P
   const tt = d.takipTalepleri.find((t) => t.gecerli) ?? null
 
   const dekontlar: DekontGirdi[] = d.odemeler.map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : null, tutar: o.tutar != null ? Number(o.tutar) : 0, haricMi: o.haricMi }))
-  const hesapIzi = rucuHesapIzi({ dekontlar, rucuOrani: d.rucuOrani, hugoRucuTutari: d.rucuTutari != null ? Number(d.rucuTutari) : null })
+  const hesapIzi = rucuHesapIzi({ dekontlar, rucuOrani: d.rucuOrani, hugoRucuTutari: d.rucuTutari != null ? Number(d.rucuTutari) : null, excelEsas: listeKaynagi(d.kaynakJson) === 'zurich' })
   const onay = ((tt?.hesapIziJson ?? null) as { onay?: HesapIziOnayi | null } | null)?.onay ?? null
   const hesapIziGecerli = !!onay && hesapIziHalaGecerli(onay.asilAlacak, hesapIzi.asilAlacak)
 
@@ -169,26 +172,28 @@ export async function takipTalebiGorunumu(dosyaId: string, musteriId: string): P
 
   const avukatOnayi = !!cj.onay?.ok
   const tevziEdildi = !!cj.tevzi || !!tt?.dondurulduAt
-  const kilit = takipTalebiKilitSebepleri(tt ? { ...faiz, asilAlacak: anapara, hesapIziOnayli: hesapIziGecerli, dondurulduAt: tt.dondurulduAt } : null)
-  if (tt && onay && !hesapIziGecerli) kilit.push('Hesap izi onaydan sonra değişti (ödeme ya da oran); yeniden onaylayın')
-  if (alacak.islemisFaiz == null && alacak.uyari) kilit.push(alacak.uyari)
-  if (!avukatOnayi) kilit.push('Avukat onayı verilmedi ("Hap bilgileri kontrol ettim")')
+  // Eklentinin ön kontrolüyle (app/api/uyap/takip-hedefler) AYNI engeller: düğme açık görünüp eklenti reddetmesin.
+  const kontrol = { borclu: [] as string[], dosya: [] as string[], faiz: [] as string[], onay: [] as string[] }
+  kontrol.faiz.push(...takipTalebiKilitSebepleri(tt ? { ...faiz, asilAlacak: anapara, hesapIziOnayli: hesapIziGecerli, dondurulduAt: tt.dondurulduAt } : null))
+  if (tt && onay && !hesapIziGecerli) kontrol.faiz.push('Hesap izi onaydan sonra değişti (ödeme ya da oran); yeniden onaylayın')
+  if (alacak.islemisFaiz == null && alacak.uyari) kontrol.faiz.push(alacak.uyari)
+  if (!alacak.faizBaslangic) kontrol.faiz.push('Faiz başlangıcı yok (ödeme dekontu tarihi eksik)')
+  if (!avukatOnayi) kontrol.onay.push('Avukat onayı verilmedi')
   const adli = yetkiliIcraOner(d.kazaYeri, d.il)
   const aciklama = aciklamaTam(cj.aciklama, footerOlustur(ay))
-  // Eklentinin ön kontrolüyle (app/api/uyap/takip-hedefler) AYNI engeller: düğme açık görünüp eklenti reddetmesin.
-  if (!d.borclular.length) kilit.push('Borçlu yok')
+  if (!d.borclular.length) kontrol.borclu.push('Borçlu yok')
   for (const b of d.borclular) {
     const tc = (b.tcVkn ?? '').replace(/\D/g, '')
-    if (!tc) kilit.push(`${b.adUnvan}: TC kimlik no eksik`)
-    else if (tc.length === 10) kilit.push(`${b.adUnvan}: kurum borçlu (VKN) kopilotla açılamıyor; takibi UYAP'ta elle açın`)
-    else if (tc.length !== 11) kilit.push(`${b.adUnvan}: TC kimlik no 11 hane değil`)
-    if (b.teyitDurumu !== 'TEYIT_EDILDI') kilit.push(`${b.adUnvan}: borçlu teyit edilmedi`)
+    if (!tc) kontrol.borclu.push(`${b.adUnvan}: TC kimlik no eksik`)
+    else if (tc.length === 10) kontrol.borclu.push(`${b.adUnvan}: kurum borçlu (VKN) kopilotla açılamıyor; takibi UYAP'ta elle açın`)
+    else if (tc.length !== 11) kontrol.borclu.push(`${b.adUnvan}: TC kimlik no 11 hane değil`)
+    if (b.teyitDurumu !== 'TEYIT_EDILDI') kontrol.borclu.push(`${b.adUnvan}: borçlu teyit edilmedi`)
   }
-  if (!alacak.faizBaslangic) kilit.push('Faiz başlangıcı yok (ödeme dekontu tarihi eksik)')
-  if (!aciklama.trim()) kilit.push('Takip açıklaması yok')
-  if (!ay?.alacakliUnvan) kilit.push('Alacaklı unvanı tanımsız (Şirket Bilgileri)')
-  if (!ay?.mersis) kilit.push('Alacaklı MERSİS no tanımsız (Şirket Bilgileri)')
-  if (!adli) kilit.push(`Yetkili adliye bulunamadı (kaza yeri: ${d.kazaYeri ?? 'yok'})`)
+  if (!aciklama.trim()) kontrol.dosya.push('Takip açıklaması yok')
+  if (!ay?.alacakliUnvan) kontrol.dosya.push('Alacaklı unvanı tanımsız (Şirket Bilgileri)')
+  if (!ay?.mersis) kontrol.dosya.push('Alacaklı MERSİS no tanımsız (Şirket Bilgileri)')
+  if (!adli) kontrol.dosya.push(`Yetkili adliye bulunamadı (kaza yeri: ${d.kazaYeri ?? 'yok'})`)
+  const kilit = [...kontrol.faiz, ...kontrol.onay, ...kontrol.borclu, ...kontrol.dosya]
 
   return {
     dosyaId: d.id,
@@ -210,6 +215,7 @@ export async function takipTalebiGorunumu(dosyaId: string, musteriId: string): P
     avukatOnayi,
     tevziEdildi,
     kilitSebepleri: [...new Set(kilit)],
+    kontrol,
     aciklamaDuzen: {
       ham: cj.aciklama ?? '',
       kazaTarihi: (d.kazaTarihi ?? d.hasarTarihi)?.toISOString() ?? '',

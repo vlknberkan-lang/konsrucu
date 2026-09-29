@@ -161,6 +161,11 @@ export type HesapIziGirdisi = {
   sovtaj?: number | null
   muafiyet?: number | null
   kusurOrani?: string | null
+  /**
+   * Müvekkil Excel'indeki rücu tutarı ESAS mı (Zurich: çok sayıda ödeme yapılmış olabilir, gerçek rücu tutarı
+   * Excel'dekidir). true ve tutar varsa asıl alacak = Excel tutarı; dekont × oran yalnız karşılaştırma satırıdır.
+   */
+  excelEsas?: boolean
 }
 
 export type HesapIziAdimi = { etiket: string; deger: string; not?: string }
@@ -183,6 +188,7 @@ export type HesapIzi = {
 
 /** Formülün sürümü; K1 (Yelda) teyidi gelince yeni sürümle sovtaj/muafiyet/kusur eklenir. */
 export const HESAP_FORMUL_SURUMU = 'v1 · dekont toplamı × rücu oranı (sovtaj, muafiyet, kusur K1 teyidi bekliyor)'
+export const HESAP_FORMUL_SURUMU_EXCEL = "v1 · müvekkil Excel'indeki rücu tutarı (dekont × oran bilgi amaçlı)"
 
 const tl = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' TL'
 
@@ -216,13 +222,25 @@ export function rucuHesapIzi(g: HesapIziGirdisi): HesapIzi {
   if (g.muafiyet != null && g.muafiyet > 0) dahilEdilmeyen.push({ etiket: 'Muafiyet', deger: tl(g.muafiyet), not: 'formüle dahil edilmedi (K1 teyidi bekleniyor)' })
   if (g.kusurOrani) dahilEdilmeyen.push({ etiket: 'Kusur oranı', deger: g.kusurOrani, not: 'formüle dahil edilmedi (K1 teyidi bekleniyor)' })
 
+  const hugo = g.hugoRucuTutari != null && Number.isFinite(g.hugoRucuTutari) ? yuvarla(g.hugoRucuTutari) : null
+  if (g.excelEsas && hugo != null && hugo > 0) {
+    // Excel tutarı esas: dekont hesabı yapılabiliyorsa yalnız bilgi olarak yazılır, onayı durdurmaz.
+    const hesap = dahil.length && oran != null ? yuvarla(dekontToplami * oran) : null
+    const fark = hesap != null ? yuvarla(hugo - hesap) : null
+    if (hesap != null) adimlar.push({ etiket: 'Dekont × oran', deger: tl(hesap), not: fark != null && Math.abs(fark) >= 0.5 ? `Excel tutarından fark: ${tl(fark)} (bilgi)` : 'Excel tutarıyla aynı' })
+    adimlar.push({ etiket: 'Asıl alacak', deger: tl(hugo), not: "müvekkil Excel'indeki rücu tutarı esas alındı" })
+    return {
+      formulSurumu: HESAP_FORMUL_SURUMU_EXCEL, dekontSayisi: dahil.length, dekontToplami, haricToplam, oran, oranMetni: g.rucuOrani ?? null,
+      asilAlacak: hugo, hugoRucuTutari: hugo, fark, tutarli: true, adimlar, dahilEdilmeyen, durdu: null,
+    }
+  }
+
   let durdu: string | null = null
   if (!dahil.length) durdu = 'Dosyada ödeme (dekont) yok; hesap yapılamadı.'
   else if (oran == null) durdu = g.rucuOrani ? `Rücu oranı "${g.rucuOrani}" okunamadı; oranı düzeltin.` : 'Rücu oranı yok; hesap yapılamadı.'
   const asilAlacak = durdu ? null : yuvarla(dekontToplami * (oran as number))
   if (asilAlacak != null) adimlar.push({ etiket: 'Asıl alacak', deger: tl(asilAlacak), not: 'dekont toplamı × rücu oranı' })
 
-  const hugo = g.hugoRucuTutari != null && Number.isFinite(g.hugoRucuTutari) ? yuvarla(g.hugoRucuTutari) : null
   const fark = asilAlacak != null && hugo != null ? yuvarla(hugo - asilAlacak) : null
   const tutarli = fark == null ? null : Math.abs(fark) < 0.5
   if (hugo != null) adimlar.push({ etiket: 'Hugo rücu tutarı', deger: tl(hugo), not: fark == null ? undefined : tutarli ? 'hesapla aynı (fark yok)' : `hesaptan fark: ${tl(fark)}` })

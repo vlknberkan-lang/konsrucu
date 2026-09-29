@@ -76,6 +76,15 @@ describe('rücu tutarı hesap izi (B10) — kabul testi 3', () => {
     expect(iz).toMatchObject({ dekontSayisi: 2, dekontToplami: 100000, haricToplam: 2500, oran: 0.5, asilAlacak: 50000, fark: 0, tutarli: true, durdu: null })
     expect(iz.adimlar.map((a) => a.etiket)).toEqual(['Dekont toplamı', 'Rücu oranı', 'Asıl alacak', 'Hugo rücu tutarı'])
   })
+  it("Excel tutarı esas (Zurich): asıl alacak Excel'deki rücu tutarı, dekont × oran yalnız bilgi", () => {
+    const iz = rucuHesapIzi({ dekontlar, rucuOrani: '%50', hugoRucuTutari: 37250.4, excelEsas: true })
+    expect(iz).toMatchObject({ asilAlacak: 37250.4, tutarli: true, durdu: null })
+    expect(iz.adimlar.at(-1)).toMatchObject({ etiket: 'Asıl alacak' })
+    // ödeme ya da oran olmasa da Excel tutarıyla hesap durmaz
+    expect(rucuHesapIzi({ dekontlar: [], rucuOrani: null, hugoRucuTutari: 1000, excelEsas: true })).toMatchObject({ asilAlacak: 1000, durdu: null })
+    // Excel tutarı yoksa eski formül
+    expect(rucuHesapIzi({ dekontlar, rucuOrani: '%50', hugoRucuTutari: null, excelEsas: true }).asilAlacak).toBe(50000)
+  })
   it('Hugo tutarıyla fark gösterilir', () => {
     const iz = rucuHesapIzi({ dekontlar, rucuOrani: '50', hugoRucuTutari: 52000 })
     expect(iz).toMatchObject({ asilAlacak: 50000, fark: 2000, tutarli: false })

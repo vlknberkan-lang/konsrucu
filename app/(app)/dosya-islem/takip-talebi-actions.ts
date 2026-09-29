@@ -19,6 +19,7 @@
  *                           iş kuyruğu açıksa öncelikli SenkronIs(ICRA) da açılır).
  *   excelOnerisiReddet    — öneriyi reddeder (satır silinmez).
  */
+import { listeKaynagi } from '@/lib/konsrucu/oneri/kaynaklar'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { DosyaDurum, Prisma } from '@prisma/client'
@@ -162,13 +163,14 @@ export async function hesapIziniOnayla(girdi: { dosyaId: string }): Promise<Taki
   if (k.hata !== null) return { ok: false, error: k.hata }
   const dosya = await prisma.rucuDosyasi.findFirst({
     where: { id: p.data.dosyaId, musteriId: k.musteriId },
-    select: { id: true, rucuOrani: true, rucuTutari: true, odemeler: { select: { tarih: true, tutar: true, haricMi: true } } },
+    select: { id: true, rucuOrani: true, rucuTutari: true, kaynakJson: true, odemeler: { select: { tarih: true, tutar: true, haricMi: true } } },
   })
   if (!dosya) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok.' }
   const iz = rucuHesapIzi({
     dekontlar: dosya.odemeler.map((o) => ({ tarih: o.tarih ? o.tarih.toISOString().slice(0, 10) : null, tutar: o.tutar != null ? Number(o.tutar) : 0, haricMi: o.haricMi })),
     rucuOrani: dosya.rucuOrani,
     hugoRucuTutari: dosya.rucuTutari != null ? Number(dosya.rucuTutari) : null,
+    excelEsas: listeKaynagi(dosya.kaynakJson) === 'zurich',
   })
   if (iz.durdu || iz.asilAlacak == null) return { ok: false, error: iz.durdu ?? 'Hesap yapılamadı.' }
   const onay: HesapIziOnayi = { kullaniciId: k.kullaniciId, kullaniciAd: k.kullaniciAd, at: new Date().toISOString(), asilAlacak: iz.asilAlacak }
