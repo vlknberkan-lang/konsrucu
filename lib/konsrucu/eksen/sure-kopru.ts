@@ -21,7 +21,8 @@ import { sureTuru } from '@/lib/konsrucu/sure/turler'
 import { gunNo, gunTR, isoGun } from './norm'
 import type { BorcluTakipAlanlari } from './aday-onay'
 
-export const KOPRU_TURLERI = ['IIK62', 'IIK67'] as const
+/** İİK 68 (29.09): itirazla birlikte İİK 67'nin yanında öneri olarak açılır (e-postası yok; bkz. sure/turler). */
+export const KOPRU_TURLERI = ['IIK62', 'IIK67', 'IIK68'] as const
 export type KopruTur = (typeof KOPRU_TURLERI)[number]
 
 /** Köprünün açtığı sürenin izi (Sure.hesapIziJson.kopru). Defterde güncellenince iz kaybolur → süre avukatındır. */

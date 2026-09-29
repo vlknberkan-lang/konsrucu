@@ -212,7 +212,8 @@ export async function tebligGorevleriOlustur(dosyaId: string, tebligTarihi: Date
         `haciz istenmezse haciz isteme hakkı düşer, dosya işlemden kaldırılır (yenileme gerekir — teyit gerekli). ` +
         `Gerçek son gün: ${tarihTR(hacizSon)}. Bu görev ${HACIZ_UYARI_ERKEN_GUN} gün önce hatırlatılır. İtiraz/dava ` +
         `süresince süre işlemeyebilir (m.78/2) — görev yine de açık kalır. Haciz işlendiyse görevi elle kapatın — ` +
-        `dosya alacağına/ihtiyati haciz bu süreyi karşılamayabilir (teyit gerekli).` +
+        `dosya alacağına/ihtiyati haciz bu süreyi karşılamayabilir (teyit gerekli). Haciz konunca satış isteme ` +
+        `süresini (İİK 106: taşınırda 6 ay, taşınmazda 1 yıl) süre defterinden ekleyin.` +
         (itirazVar ? `\n\n${itirazNotu()}` : ''),
     },
   ]

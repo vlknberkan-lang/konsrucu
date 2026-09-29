@@ -9,10 +9,13 @@
  *  - İİK 62: borçlunun itiraz penceresi; Yelda 09.07.2026'da bu görevin e-postasını istemedi (teblig-gorev.ts).
  *  - İİK 78: Yelda 11.07.2026 "mail seli istenmiyor" (takip-gorevi-hatirlatma); eski görev kaydı sürer.
  *  - İYUK zımni ret: bizim işlem süremiz değil, dava süresinin başladığı gündür (ID-03 kartı sorar).
+ *  - İİK 68: itiraz onaylanınca İİK 67 ile birlikte öneri olarak açılır (29.09 denetimi); her itirazda iki mail
+ *    gitmesin diye e-posta yok, defterde ve dosyada görünür. İtirazın kaldırılması yolu seçilirse avukat defterden
+ *    e-postayı açmadan son günü onaylar.
  */
 
 export const SURE_TUR_KODLARI = [
-  'IIK62', 'IIK67', 'IIK78',
+  'IIK62', 'IIK67', 'IIK68', 'IIK78', 'IIK106',
   'HMK127', 'HMK136', 'HMK281', 'HMK345', 'HMK361', 'HMK150', 'HMK20',
   'AVANS', 'ARA_KARAR',
   'IYUK13_BASVURU', 'IYUK_ZIMNI_RET', 'IYUK7_DAVA',
@@ -71,11 +74,23 @@ export const SURE_TURLERI: Record<SureTurKodu, SureTuru> = {
     borcluBazinda: true, kritik: true, eposta: true, hakDusurucu: true,
     not: 'Tebliğ tarihi yoksa ihtiyatlı alt sınır: itiraz tarihi + 1 yıl. Durmalı öneri ayrıca tutulur.',
   }),
+  IIK68: T({
+    kod: 'IIK68', etiket: 'İİK 68', ad: 'İtirazın kaldırılması başvuru süresi', dayanak: 'İİK 68/1',
+    kural: { tip: 'AY', ay: 6 }, tetik: 'İtirazın alacaklıya tebliği', grup: 'ICRA',
+    borcluBazinda: true, kritik: true, eposta: false, hakDusurucu: true,
+    not: 'Yalnız belgeye dayanan alacakta (İİK 68) seçilebilir yol. Tebliğ tarihi yoksa ihtiyatlı alt sınır: itiraz tarihi + 6 ay.',
+  }),
   IIK78: T({
     kod: 'IIK78', etiket: 'İİK 78', ad: 'Haciz isteme süresi', dayanak: 'İİK 78/2',
     kural: { tip: 'YIL', yil: 1 }, tetik: 'Ödeme emrinin borçluya tebliği', grup: 'ICRA',
     borcluBazinda: true, kritik: false, eposta: false, hakDusurucu: false,
     not: 'İtiraz ve dava süresince işlemeyebilir (İİK 78/2); durma dönemini avukat girer.',
+  }),
+  IIK106: T({
+    kod: 'IIK106', etiket: 'İİK 106', ad: 'Hacizden sonra satış isteme süresi', dayanak: 'İİK 106/1',
+    kural: { tip: 'AY', ay: 6 }, tetik: 'Haczin konulduğu gün', grup: 'ICRA',
+    borcluBazinda: true, kritik: true, eposta: true, hakDusurucu: true,
+    not: 'Taşınırda 6 ay; TAŞINMAZDA 1 YIL — taşınmaz haczinde son günü avukat defterde 1 yıla göre onaylar. Süre içinde satış istenmezse haciz düşer (İİK 110).',
   }),
   HMK127: T({
     kod: 'HMK127', etiket: 'HMK 127', ad: 'Cevap süresi', dayanak: 'HMK 127',

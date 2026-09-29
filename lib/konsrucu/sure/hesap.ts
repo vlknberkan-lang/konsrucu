@@ -200,7 +200,7 @@ export function sureOnerisiHesapla(g: SureGirdisi): SureOnerisi {
       return bos('İdari eylemin öğrenildiği günü ya da eylem (kaza) tarihini girin.')
     }
   } else {
-    if (!bas && tur.kod === 'IIK67' && g.itirazTarihi) {
+    if (!bas && (tur.kod === 'IIK67' || tur.kod === 'IIK68') && g.itirazTarihi) {
       ihtBas = gunBasi(g.itirazTarihi)
       iz.push(`İtirazın alacaklıya tebliği girilmedi: ihtiyatlı alt sınır itiraz tarihinden (${gunTR(ihtBas)}) hesaplandı (tebliğ tarihi yok).`)
     }
