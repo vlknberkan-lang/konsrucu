@@ -7,8 +7,8 @@
  * Her eylem: oturum + aktif müvekkil kapsamı (dosya `musteriId = aktifMusteriId` ile bulunur) + rol denetimi +
  * zod doğrulaması; yazma tek Prisma işleminde (öneri, kilit, eski kolona ayna, Aktivite); sonunda revalidatePath.
  *
- * Roller: GORUNTULEYEN hiçbir şey yazamaz. AVUKAT_YRD kritik olmayan öneriyi onaylar/reddeder ve kural önerilerini
- * yeniden üretir. Kritik alan (tutar, ödeme, kaza tarihi), rücu sebebi ve yetkili icra yalnız AVUKAT/ADMIN.
+ * Roller: GORUNTULEYEN hiçbir şey yazamaz. AVUKAT_YRD kritik olmayan öneriyi onaylar/reddeder ve belgelerden önerileri
+ * (kural, Excel; yüzey açıksa yapay zekâ) yeniden üretir. Kritik alan (tutar, ödeme, kaza tarihi), rücu sebebi ve yetkili icra yalnız AVUKAT/ADMIN.
  * Hukuki kayıt silinmez: öneri reddedilir ya da eskir; kilit değişince eski onaylı satır ESKIDI olur.
  */
 import { z } from 'zod'
@@ -20,6 +20,7 @@ import { alanTanimi, degerNormal } from '@/lib/konsrucu/oneri/alanlar'
 import { kullaniciYetkisi, KARAR_YETKI_YOK, YETKI_YOK } from '@/lib/konsrucu/oneri/karar'
 import { kuralCikar } from '@/lib/konsrucu/oneri/kural-cikarici'
 import { hugoOnerileri } from '@/lib/konsrucu/oneri/kaynaklar'
+import { aiOneriCalistir, aiSonucunuYaz, type AiOneriSonucu, type AiYazimSonucu } from '@/lib/konsrucu/oneri/ai-oneri'
 import { yetkiliIcraSecenekleri } from '@/lib/konsrucu/oneri/yetkili-icra'
 import {
   dosyaSayfalari, elleOnayla, oneriOnayla, oneriReddet, onerileriKaydet, OneriHata, tekilIhlalMi, topluOnayla,
@@ -145,35 +146,67 @@ export async function onerileriTopluOnaylaEylem(input: z.input<typeof topluGirdi
 
 const dosyaGirdi = z.object({ dosyaId: id })
 
+type BulSonucu = {
+  eklenen: number; atlanan: number; kaynaksiz: number
+  /** Yapay zekâ adımı: KAPALI (yüzey kapalı) · METIN_YOK · HATA · TAMAM */
+  ai: AiOneriSonucu['durum']; aiHata: string | null; yeniBorclu: number; yazilanAlan: number
+}
+
 /**
- * "Belgelerden yeniden bul" — kural katmanı (yapay zekâsız) ve Hugo satırı. Okunan sayfalardan öneri üretir;
- * onaylı alanlara dokunmaz. AI kapalıyken Bulduklarımız kartı bununla dolar (Varyant B).
+ * "Belgelerden yeniden bul" — kural katmanı ve Hugo/Excel satırı; AI_YUZEY_CIKARIM açıksa yapay zekâ da
+ * (lib/konsrucu/oneri/ai-oneri). Okunan sayfalardan öneri üretir; onaylı alanlara dokunmaz. AI kapalıyken kart
+ * yalnız kural ve Excel önerileriyle dolar (Varyant B). AI hata verirse kural önerileri yine kaydedilir.
  */
-export async function kuralOnerileriniUretEylem(input: z.input<typeof dosyaGirdi>): Promise<Tamam<{ eklenen: number; atlanan: number; kaynaksiz: number }> | Hata> {
+export async function kuralOnerileriniUretEylem(input: z.input<typeof dosyaGirdi>): Promise<Tamam<BulSonucu> | Hata> {
   const p = dosyaGirdi.safeParse(input)
   if (!p.success) return { ok: false, error: 'Geçersiz istek.' }
   const k = await kapsam(p.data.dosyaId)
   if ('hata' in k) return { ok: false, error: k.hata }
+  // Model çağrısı uzun sürer: işlemin DIŞINDA çalışır ki işlem zaman aşımına düşmesin.
+  const ai = await aiOneriCalistir(p.data.dosyaId)
   try {
     const r = await prisma.$transaction(async (tx) => {
       const dosya = await tx.rucuDosyasi.findUnique({ where: { id: p.data.dosyaId }, select: { rucuSebebi: true, brans: true, rucuTutari: true, hasarTarihi: true, kaynakJson: true } })
       const sayfalar = await dosyaSayfalari(tx, p.data.dosyaId)
-      const oneriler = [...kuralCikar(sayfalar), ...(dosya ? hugoOnerileri(dosya) : [])]
+      const oneriler = [...kuralCikar(sayfalar), ...(dosya ? hugoOnerileri(dosya) : []), ...(ai.durum === 'TAMAM' ? ai.oneriler : [])]
       const s = await onerileriKaydet(tx, p.data.dosyaId, oneriler, { sayfalar })
+      const y = ai.durum === 'TAMAM' ? await aiSonucunuYaz(tx, p.data.dosyaId, ai.analiz) : null
       await tx.aktivite.create({
         data: {
           dosyaId: p.data.dosyaId, kullaniciId: k.kullaniciId,
-          eylem: `Belgelerden öneriler bulundu (kural ve Hugo): ${s.eklenen} yeni, ${s.atlanan} zaten vardı`,
-          detayJson: { tur: 'KURAL_ONERI', sayfa: sayfalar.length, ...s } as Prisma.InputJsonValue,
+          eylem: bulAktiviteMetni(s, ai, y),
+          detayJson: {
+            tur: 'KURAL_ONERI', sayfa: sayfalar.length, ...s, ai: ai.durum,
+            ...(ai.durum === 'TAMAM' ? { aiOneri: ai.oneriler.length, acilamayanJeton: !!ai.uyari } : {}),
+            ...(y ? { yazilan: y.yazilanAlanlar, yeniBorclu: y.yeniBorclu, farkliDeger: y.farkliDeger } : {}),
+          } as Prisma.InputJsonValue,
         },
       })
-      return s
+      return { s, y }
     }, { timeout: 20_000 })
     yenile(p.data.dosyaId)
-    return { ok: true, eklenen: r.eklenen, atlanan: r.atlanan, kaynaksiz: r.kaynaksiz }
+    return {
+      ok: true, eklenen: r.s.eklenen, atlanan: r.s.atlanan, kaynaksiz: r.s.kaynaksiz,
+      ai: ai.durum, aiHata: ai.durum === 'HATA' ? ai.hata : null,
+      yeniBorclu: r.y?.yeniBorclu ?? 0, yazilanAlan: r.y?.yazilanAlanlar.length ?? 0,
+    }
   } catch (e) {
     return { ok: false, error: hataMetni(e) }
   }
+}
+
+function bulAktiviteMetni(s: { eklenen: number; atlanan: number }, ai: AiOneriSonucu, y: AiYazimSonucu | null): string {
+  const kaynak = ai.durum === 'TAMAM' ? 'kural, Hugo ve yapay zekâ' : 'kural ve Hugo'
+  let m = `Belgelerden öneriler bulundu (${kaynak}): ${s.eklenen} yeni, ${s.atlanan} zaten vardı`
+  if (ai.durum === 'TAMAM' && y) {
+    m += ` · yapay zekâ: ${ai.oneriler.length} öneri, ${y.yazilanAlanlar.length} boş alan dolduruldu, ${y.yeniBorclu} yeni borçlu (teyitsiz)`
+    if (y.onayDustu) m += ' · onay sıfırlandı'
+    if (ai.gorselNotu) m += ` · ${ai.gorselNotu}`
+    if (ai.uyari) m += ` · ⚠ ${ai.uyari}`
+  } else if (ai.durum === 'HATA') {
+    m += ` · yapay zekâ çalışmadı: ${ai.hata}`
+  }
+  return m
 }
 
 // ───────────────────────── rücu sebebi (S19) ─────────────────────────

@@ -1,6 +1,8 @@
 'use client'
 
-/** KonsRücü — Dosya Detay · "1 · EVRAK" katlanabilir kategori grupları (gerçek Belge[]) + belge açma. */
+/** KonsRücü — Dosya Detay · "1 · EVRAK" katlanabilir kategori grupları (gerçek Belge[]) + belge açma.
+ *  Sınıflandırma yereldir (belge-siniflandir: metin + dosya adı); taranmış görüntü "Diğer"e düşebilir. Belge açılınca
+ *  türü önizlemeden elle seçilir (belgeTuruDegistir). */
 import { useState } from 'react'
 import { FileText, Image as ImageIcon, ChevronRight, Check, AlertTriangle, Sparkles, Eye } from 'lucide-react'
 import { BelgeOnizleme, type OnizlemeBelge } from '@/components/akilli-giris/detay/belge-onizleme'
@@ -31,15 +33,15 @@ export function EvrakGruplari({ belgeler }: { belgeler: DetayBelge[] }) {
       <div className={`mb-[14px] flex items-center gap-[13px] rounded-xl border p-[12px_15px] ${review > 0 ? 'border-warning/30 bg-warning-soft' : 'border-kr/20 bg-kr-soft'}`}>
         <span className={`grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[10px] bg-surface ${review > 0 ? 'text-[hsl(var(--warning-fg))]' : 'text-kr-ink'}`}><Sparkles className="h-[17px] w-[17px]" /></span>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-bold text-foreground">AI {belgeler.length} belgeyi {gruplar.length} gruba ayırdı</div>
-          <div className={`text-[11.5px] ${review > 0 ? 'text-[hsl(var(--warning-fg))]' : 'text-kr-ink'}`}>{review > 0 ? `${review} belge düşük güven · gözden geçir` : 'Tüm belgeler sınıflandı ve metni çıkarıldı'}</div>
+          <div className="text-[13px] font-bold text-foreground">{belgeler.length} belge {gruplar.length} gruba ayrıldı</div>
+          <div className={`text-[11.5px] ${review > 0 ? 'text-[hsl(var(--warning-fg))]' : 'text-kr-ink'}`}>{review > 0 ? `${review} belgenin türü belirsiz · açıp türünü seçin (ör. taranmış tutanak)` : 'Tüm belgeler sınıflandı'}</div>
         </div>
       </div>
 
       <div className="flex flex-col gap-[9px]">
         {gruplar.map(({ k, items }) => {
           const rev = items.filter((b) => b.confidence != null && b.confidence < REVIEW).length
-          const open = acik[k]
+          const open = acik[k] ?? k !== 'HASAR_FOTO' // elle tür seçimiyle yeni doğan grup açık gelir
           const foto = k === 'HASAR_FOTO'
           return (
             <div key={k} className={`overflow-hidden rounded-xl border bg-surface ${rev > 0 ? 'border-warning/35' : 'border-border'}`}>
@@ -59,7 +61,7 @@ export function EvrakGruplari({ belgeler }: { belgeler: DetayBelge[] }) {
                   {foto ? (
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(62px,1fr))] gap-[7px] p-1">
                       {items.slice(0, 24).map((b) => (
-                        <button key={b.id} type="button" onClick={() => b.acilabilir && setOnizle({ id: b.id, dosyaAdi: b.dosyaAdi })} disabled={!b.acilabilir} title={b.acilabilir ? `Aç: ${b.dosyaAdi}` : b.dosyaAdi} className={`group relative grid aspect-square place-items-center rounded-[8px] bg-surface-muted text-muted-foreground transition ${b.acilabilir ? 'cursor-pointer hover:text-kr hover:ring-2 hover:ring-kr/40' : 'cursor-default'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50`}>
+                        <button key={b.id} type="button" onClick={() => b.acilabilir && setOnizle({ id: b.id, dosyaAdi: b.dosyaAdi, kategori: b.kategori })} disabled={!b.acilabilir} title={b.acilabilir ? `Aç: ${b.dosyaAdi}` : b.dosyaAdi} className={`group relative grid aspect-square place-items-center rounded-[8px] bg-surface-muted text-muted-foreground transition ${b.acilabilir ? 'cursor-pointer hover:text-kr hover:ring-2 hover:ring-kr/40' : 'cursor-default'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50`}>
                           <ImageIcon className="h-4 w-4" />
                         </button>
                       ))}
@@ -76,7 +78,7 @@ export function EvrakGruplari({ belgeler }: { belgeler: DetayBelge[] }) {
                             {b.confidence != null && <Conf c={b.confidence} />}
                             {dusuk && <span className="hidden shrink-0 items-center gap-1 font-mono text-[9.5px] text-[hsl(var(--warning-fg))] sm:flex"><AlertTriangle className="h-3 w-3" />teyit</span>}
                             {b.acilabilir
-                              ? <button type="button" onClick={() => setOnizle({ id: b.id, dosyaAdi: b.dosyaAdi })} title="Belgeyi aç" className="inline-flex shrink-0 items-center gap-1 rounded-[8px] border border-border bg-surface px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50"><Eye className="h-3.5 w-3.5" /> Aç</button>
+                              ? <button type="button" onClick={() => setOnizle({ id: b.id, dosyaAdi: b.dosyaAdi, kategori: b.kategori })} title="Belgeyi aç" className="inline-flex shrink-0 items-center gap-1 rounded-[8px] border border-border bg-surface px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:border-kr/40 hover:text-kr focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kr/50"><Eye className="h-3.5 w-3.5" /> Aç</button>
                               : <span className="shrink-0 font-mono text-[9.5px] text-muted-foreground" title="Bu kayıt Storage'sız (eski) — dosya saklanmamış">—</span>}
                           </div>
                         )

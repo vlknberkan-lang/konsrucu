@@ -3,7 +3,7 @@
  * Ekranda maskeleme (TCKN, telefon, IBAN, plaka). Kurgusal değerler; kişisel veri yok.
  */
 import { describe, expect, it } from 'vitest'
-import { aiOnerileri, hugoMetniGenislet, hugoOnerileri, listeKaynagi } from '@/lib/konsrucu/oneri/kaynaklar'
+import { aiDigerAlanlari, aiOnerileri, hugoMetniGenislet, hugoOnerileri, listeKaynagi, rucuOraniTuret } from '@/lib/konsrucu/oneri/kaynaklar'
 import { rayEvrakIstekTaslagi } from '@/lib/konsrucu/oneri/ray-istek'
 import { ekranMaskele } from '@/lib/konsrucu/oneri/maske-gorunum'
 
@@ -71,6 +71,34 @@ describe('aiOnerileri', () => {
     expect(o.map((x) => x.alan)).toEqual(['brans', 'asilAlacak', 'rucuOrani', 'odeme[2026-03-14|12500.00]'])
     expect(o.every((x) => x.kaynakTuru === 'AI')).toBe(true)
     expect(o.find((x) => x.alan === 'asilAlacak')).toMatchObject({ kaynakBelgeId: 'b1', sayfa: 2, alinti: 'Tutar: 12.500,00 TL', guven: 0.9 })
+  })
+})
+
+describe('rucuOraniTuret', () => {
+  it('oran tutarlardan türetilir; model oranı tutarla çelişirse tutar esas alınır', () => {
+    expect(rucuOraniTuret(20000, 10000, '%100')).toBe('%50')
+    expect(rucuOraniTuret(12500, 12500, null)).toBe('%100')
+  })
+
+  it('tutarlardan çıkmazsa (eksik, sıfır, %100 üstü) modelin oranı kalır', () => {
+    expect(rucuOraniTuret(null, 10000, ' %75 ')).toBe('%75')
+    expect(rucuOraniTuret(0, 10000, '%60')).toBe('%60')
+    expect(rucuOraniTuret(10000, 25000, '%100')).toBe('%100')
+    expect(rucuOraniTuret(undefined, undefined, undefined)).toBeNull()
+  })
+})
+
+describe('aiDigerAlanlari', () => {
+  it('kart alanları ve yetkili icra alınmaz; yol DB değerine çevrilir, boşlar atlanır', () => {
+    const d = aiDigerAlanlari({
+      yol: 'klasik', aciklama: '  Kurgusal takip açıklaması ', olusSekli: 'Arkadan çarpma', kusurDurumu: '', il: 'Kurgusal İl',
+      ...({ brans: 'KASKO', asilAlacak: 12500, sigortaliPlaka: '34 KRG 001', yetkiliIcra: 'Adana İcra Dairesi' } as object),
+    })
+    expect(d).toEqual({ yol: 'KLASIK', aciklama: 'Kurgusal takip açıklaması', olusSekli: 'Arkadan çarpma', il: 'Kurgusal İl' })
+  })
+
+  it('tanınmayan yol yazılmaz', () => {
+    expect(aiDigerAlanlari({ yol: 'bilinmiyor' })).toEqual({})
   })
 })
 

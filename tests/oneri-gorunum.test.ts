@@ -4,7 +4,7 @@
  * K1 etiketi); yetkili icra kartı. Kurgusal satırlar.
  */
 import { describe, expect, it } from 'vitest'
-import { bulduklarimizKur, rucuSebebiKur, yetkiliIcraKur, type PanelSatiri } from '@/lib/konsrucu/oneri/gorunum'
+import { aiCikarimKur, bulduklarimizKur, rucuSebebiKur, yetkiliIcraKur, type PanelSatiri } from '@/lib/konsrucu/oneri/gorunum'
 
 const AVUKAT = { duzenleyebilir: true, kararVerebilir: true }
 const YARDIMCI = { duzenleyebilir: true, kararVerebilir: false }
@@ -157,5 +157,42 @@ describe('yetkiliIcraKur', () => {
     })
     expect(v.onayli).toMatchObject({ icraDairesi: 'Adana İcra Dairesi', secenek: 'KAZA_YERI', onaylayanAd: 'Kurgusal Avukat' })
     expect(v.eskiDeger).toBeNull()
+  })
+})
+
+describe('aiCikarimKur', () => {
+  const temel = { dosyaId: 'd1', yetki: AVUKAT, aiAcik: true, yol: 'KLASIK', yolGuven: 0.82, metinliBelge: 7, metinsizBelge: 20 }
+
+  it('cikarimJson özetini karta çevirir; serbest metindeki TCKN ve telefon maskelenir', () => {
+    const v = aiCikarimKur({
+      ...temel, yolNeden: null,
+      cikarimJson: {
+        olayTuru: 'Trafik · kasko halefiyeti',
+        olayBaglami: 'Karşı araç sürücüsü (TC 12345678950, tel 0532 111 22 33) kavşakta çarptı.',
+        aciklama: 'Takip açıklaması',
+        teyit: [{ tip: 'uyari', not: 'Tutanak görülmedi' }, { tip: 'bilinmeyen', not: 'Ruhsat sorgulansın' }, { tip: 'ok', not: '  ' }, 'bozuk'],
+        sonrakiAdimlar: ['Tescil sorgusu yap', '', 3],
+      },
+      sonCalisma: { at: new Date('2026-09-29T09:02:29Z'), kim: 'Kurgusal Avukat' },
+    })
+    expect(v.olayTuru).toBe('Trafik · kasko halefiyeti')
+    expect(v.olayBaglami).not.toContain('12345678950')
+    expect(v.olayBaglami).not.toContain('111 22 33')
+    expect(v.olayBaglami).toContain('kavşakta çarptı')
+    expect(v.ozet).toBe('Takip açıklaması') // yolNeden yoksa açıklama
+    expect(v.teyitler).toEqual([{ tip: 'uyari', not: 'Tutanak görülmedi' }, { tip: 'oneri', not: 'Ruhsat sorgulansın' }])
+    expect(v.sonrakiAdimlar).toEqual(['Tescil sorgusu yap'])
+    expect(v.sonCalisma).toEqual({ at: '2026-09-29T09:02:29.000Z', kim: 'Kurgusal Avukat' })
+    expect(v.metinsizBelge).toBe(20)
+  })
+
+  it('çıkarım hiç çalışmamışsa özet boş, son çalışma null', () => {
+    const v = aiCikarimKur({ ...temel, yol: null, yolGuven: null, yolNeden: null, cikarimJson: null, sonCalisma: null })
+    expect(v).toMatchObject({ olayTuru: null, olayBaglami: null, ozet: null, teyitler: [], sonrakiAdimlar: [], sonCalisma: null })
+  })
+
+  it('yolNeden özete açıklamadan önce gelir', () => {
+    const v = aiCikarimKur({ ...temel, yolNeden: 'Karşı araç tam kusurlu', cikarimJson: { aciklama: 'Takip açıklaması' }, sonCalisma: null })
+    expect(v.ozet).toBe('Karşı araç tam kusurlu')
   })
 })

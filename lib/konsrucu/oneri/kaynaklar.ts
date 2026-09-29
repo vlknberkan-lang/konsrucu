@@ -112,6 +112,50 @@ export type AiAnalizGirdisi = {
 }
 
 /**
+ * Rücu oranını TUTARLARDAN türet (%1–%100): model "yaya → %100" deyip tutarı yarım verebiliyor, tutar esas alınır.
+ * Tutarlardan çıkmazsa modelin oranı olduğu gibi kalır.
+ */
+export function rucuOraniTuret(asilAlacak: unknown, rucuTutari: unknown, modelOrani?: string | null): string | null {
+  const aa = paraNormal(asilAlacak), rt = paraNormal(rucuTutari)
+  if (aa != null && rt != null && aa > 0) {
+    const oran = Math.round((rt / aa) * 100)
+    if (oran > 0 && oran <= 100) return `%${oran}`
+  }
+  return modelOrani?.trim() || null
+}
+
+/** analizEt çıktısının kartta onaylanmayan kısmı (lib/konsrucu/analiz.ts · AnalizSonuc). */
+export type AiDigerGirdisi = {
+  yol?: string | null
+  sigortaliUnvan?: string | null
+  sigortaliTelefon?: string | null
+  il?: string | null
+  olusSekli?: string | null
+  kusurDurumu?: string | null
+  muhatapOzet?: string | null
+  aciklama?: string | null
+}
+export type AiDigerAlan = 'yol' | 'sigortaliUnvan' | 'sigortaliTelefon' | 'il' | 'olusSekli' | 'kusurDurumu' | 'muhatapOzet' | 'aciklama'
+
+const YOL_DB: Record<string, string> = { klasik: 'KLASIK', idari: 'IDARI', belirsiz: 'BELIRSIZ' }
+
+/**
+ * Kartta öneri olmayan AI alanları (takip açıklaması, oluş şekli, kusur, sigortalı, il, triyaj yolu). Bunlar eski
+ * çıkarım gibi birleştiriciden geçer: yalnız BOŞ kolona yazılır (lib/konsrucu/cikarim-birlestir). Kart alanları
+ * (branş, plakalar, kaza yeri, tutarlar, oran) burada YOKTUR — onlar aiOnerileri ile öneri olur; yetkili icra hiç alınmaz.
+ */
+export function aiDigerAlanlari(a: AiDigerGirdisi): Partial<Record<AiDigerAlan, string>> {
+  const out: Partial<Record<AiDigerAlan, string>> = {}
+  const yol = a.yol ? YOL_DB[a.yol] : undefined
+  if (yol) out.yol = yol
+  for (const k of ['sigortaliUnvan', 'sigortaliTelefon', 'il', 'olusSekli', 'kusurDurumu', 'muhatapOzet', 'aciklama'] as const) {
+    const v = a[k]?.trim()
+    if (v) out[k] = v
+  }
+  return out
+}
+
+/**
  * AI sonucunu öneri modunda listeye çevirir (kolona yazmaz). `yetkiliIcra` bilinçli olarak alınmaz.
  * Ekspertiz dekontları ödeme önerisi olmaz (hesap dışı; faiz başlangıcına girmez).
  */

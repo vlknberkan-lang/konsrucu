@@ -155,7 +155,29 @@ export type YetkiliIcraVerisi = {
   eskiDeger: string | null
 }
 
+/** "Yapay zekâ çıkarımı" kartı: çalıştırma düğmesi + son çıkarımın özeti (cikarimJson; metinler maskeli). */
+export type AiCikarimVerisi = {
+  dosyaId: string
+  yetki: KullaniciYetkisi
+  /** AI çıkarım yüzeyi açık mı. Kapalıyken düğme yalnız kural ve Excel önerilerini üretir. */
+  aiAcik: boolean
+  /** Metni okunmuş belge sayısı (yapay zekânın okuyabileceği). */
+  metinliBelge: number
+  /** Fotoğraf dışı ama metni olmayan belge (taranmış görüntü, ör. el yazılı tutanak): yapay zekâ okumaz. */
+  metinsizBelge: number
+  /** Son başarılı yapay zekâ çıkarımı (eski ya da yeni ekrandan). */
+  sonCalisma: { at: string; kim: string | null } | null
+  olayTuru: string | null
+  yol: string | null
+  yolGuven: number | null
+  olayBaglami: string | null
+  ozet: string | null
+  teyitler: { tip: 'oneri' | 'uyari' | 'ok'; not: string }[]
+  sonrakiAdimlar: string[]
+}
+
 export type OneriPaneli = {
+  aiCikarim: AiCikarimVerisi
   bulduklarimiz: BulduklarimizVerisi
   rucuSebebi: RucuSebebiVerisi
   eksikEvrak: EksikEvrakVerisi

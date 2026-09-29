@@ -9,6 +9,21 @@ export type BelgeKat =
   | 'POLICE' | 'DEKONT' | 'LEHE' | 'EKSPERTIZ' | 'TUTANAK'
   | 'SBM' | 'EHLIYET' | 'RUHSAT' | 'ALKOL' | 'HASAR_FOTO' | 'DIGER'
 
+/** Elle tür seçiminde gösterilen adlar (seçim listesi bu sırayla). */
+export const BELGE_TURU_ETIKET: Record<BelgeKat, string> = {
+  TUTANAK: 'Kaza tespit tutanağı / tutanak',
+  POLICE: 'Poliçe',
+  EKSPERTIZ: 'Ekspertiz raporu',
+  DEKONT: 'Ödeme dekontu',
+  LEHE: 'Lehe / hukuk devir formu',
+  SBM: 'SBM / Tramer sorgusu',
+  EHLIYET: 'Ehliyet',
+  RUHSAT: 'Ruhsat',
+  ALKOL: 'Alkol raporu',
+  HASAR_FOTO: 'Hasar fotoğrafı',
+  DIGER: 'Diğer',
+}
+
 /** Aksan + küçük harf sadeleştir (OCR/casing toleransı). */
 export function trSade(s: string | null | undefined): string {
   return (s ?? '')

@@ -8,7 +8,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const m = vi.hoisted(() => ({
   ctx: vi.fn(), dosyaBul: vi.fn(), dosyaTek: vi.fn(), alanBul: vi.fn(), aktivite: vi.fn(), revalidate: vi.fn(),
   oneriOnayla: vi.fn(), elleOnayla: vi.fn(), oneriReddet: vi.fn(), topluOnayla: vi.fn(), onerileriKaydet: vi.fn(), dosyaSayfalari: vi.fn(),
+  aiCalistir: vi.fn(), aiYaz: vi.fn(),
 }))
+vi.mock('@/lib/konsrucu/oneri/ai-oneri', () => ({ aiOneriCalistir: m.aiCalistir, aiSonucunuYaz: m.aiYaz }))
 vi.mock('@/lib/konsrucu/db', () => ({ ctx: m.ctx }))
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidate }))
 vi.mock('@/lib/prisma', () => {
@@ -45,6 +47,7 @@ beforeEach(() => {
   m.topluOnayla.mockResolvedValue({ onaylanan: 1, atlanan: 0 })
   m.onerileriKaydet.mockResolvedValue({ eklenen: 2, atlanan: 1, eskiyen: 0, gecersiz: [], kaynaksiz: 0 })
   m.dosyaSayfalari.mockResolvedValue([])
+  m.aiCalistir.mockResolvedValue({ durum: 'KAPALI' })
 })
 
 describe('kapsam ve rol', () => {
@@ -176,10 +179,41 @@ describe('kural önerileri ve kişisel veri', () => {
     m.dosyaTek.mockResolvedValue({ rucuSebebi: 'Hizmet kusuru', brans: 'KASKO', rucuTutari: null, hasarTarihi: null, kaynakJson: { kaynak: 'hugo' } })
     m.dosyaSayfalari.mockResolvedValue([{ belgeId: 'b', sayfaNo: 1, metin: 'Poliçe No: KRG-1234', kategori: 'POLICE', altTur: null }])
     const r = await kuralOnerileriniUretEylem({ dosyaId })
-    expect(r).toEqual({ ok: true, eklenen: 2, atlanan: 1, kaynaksiz: 0 })
+    expect(r).toEqual({ ok: true, eklenen: 2, atlanan: 1, kaynaksiz: 0, ai: 'KAPALI', aiHata: null, yeniBorclu: 0, yazilanAlan: 0 })
     const oneriler = m.onerileriKaydet.mock.calls[0][2] as { alan: string; kaynakTuru: string }[]
     expect(oneriler.map((o) => [o.alan, o.kaynakTuru])).toEqual([['policeNo', 'KURAL'], ['rucuSebebiKod', 'HUGO']])
+    expect(m.aiYaz).not.toHaveBeenCalled()
     expect(m.aktivite).toHaveBeenCalledWith({ data: expect.objectContaining({ eylem: expect.stringContaining('2 yeni') }) })
+  })
+
+  it('yapay zekâ açıkken önerileri kural önerileriyle aynı işlemde kaydedilir; kart dışı alanlar ve borçlu yazılır', async () => {
+    const analiz = { yol: 'klasik', yolGuven: 0.9, borclular: [], aciklama: 'Kurgusal', olayBaglami: '', teyit: [] }
+    m.aiCalistir.mockResolvedValue({ durum: 'TAMAM', oneriler: [{ alan: 'asilAlacak', deger: 12500, kaynakTuru: 'AI' }], analiz, uyari: null, gorselNotu: '' })
+    m.aiYaz.mockResolvedValue({ yazilanAlanlar: ['olusSekli'], yeniBorclu: 1, farkliDeger: 0, onayDustu: true })
+    m.dosyaTek.mockResolvedValue({ rucuSebebi: null, brans: null, rucuTutari: null, hasarTarihi: null, kaynakJson: null })
+    const r = await kuralOnerileriniUretEylem({ dosyaId })
+    expect(r).toMatchObject({ ok: true, ai: 'TAMAM', aiHata: null, yeniBorclu: 1, yazilanAlan: 1 })
+    const oneriler = m.onerileriKaydet.mock.calls[0][2] as { alan: string; kaynakTuru: string }[]
+    expect(oneriler.map((o) => [o.alan, o.kaynakTuru])).toContainEqual(['asilAlacak', 'AI'])
+    expect(m.aiYaz).toHaveBeenCalledWith(expect.anything(), dosyaId, analiz)
+    expect(m.aktivite).toHaveBeenCalledWith({ data: expect.objectContaining({ eylem: expect.stringMatching(/yapay zekâ: 1 öneri.*onay sıfırlandı/) }) })
+  })
+
+  it('yapay zekâ hata verirse kural önerileri yine kaydedilir ve hata kullanıcıya döner', async () => {
+    m.aiCalistir.mockResolvedValue({ durum: 'HATA', hata: 'Yapay zekâ çıkarımı başarısız: kurgusal' })
+    m.dosyaTek.mockResolvedValue({ rucuSebebi: null, brans: null, rucuTutari: null, hasarTarihi: null, kaynakJson: null })
+    const r = await kuralOnerileriniUretEylem({ dosyaId })
+    expect(r).toMatchObject({ ok: true, eklenen: 2, ai: 'HATA', aiHata: 'Yapay zekâ çıkarımı başarısız: kurgusal' })
+    expect(m.onerileriKaydet).toHaveBeenCalled()
+    expect(m.aiYaz).not.toHaveBeenCalled()
+    expect(m.aktivite).toHaveBeenCalledWith({ data: expect.objectContaining({ eylem: expect.stringContaining('yapay zekâ çalışmadı') }) })
+  })
+
+  it('yazma yetkisi olmayan kullanıcı için yapay zekâ hiç çağrılmaz', async () => {
+    m.ctx.mockResolvedValue(kullanici('GORUNTULEYEN'))
+    const r = await kuralOnerileriniUretEylem({ dosyaId })
+    expect(r.ok).toBe(false)
+    expect(m.aiCalistir).not.toHaveBeenCalled()
   })
 
   it('"Göster" ham değeri döndürür ve her açış Aktivite\'ye yazılır', async () => {

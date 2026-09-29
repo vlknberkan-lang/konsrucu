@@ -16,7 +16,7 @@ import {
   RUCU_SEBEBI_KODLARI, RUCU_SEBEBI_TANIM, rucuSebebiKoduMu, type AsgariBelge, type RucuSebebiKodu,
 } from '@/lib/konsrucu/rucu-sebebi'
 import type {
-  AlanSatiri, BulduklarimizVerisi, EksikEvrakVerisi, Engel, KullaniciYetkisi, OneriGorunum, RucuSebebiVerisi, YetkiliIcraVerisi,
+  AiCikarimVerisi, AlanSatiri, BulduklarimizVerisi, EksikEvrakVerisi, Engel, KullaniciYetkisi, OneriGorunum, RucuSebebiVerisi, YetkiliIcraVerisi,
 } from './tipler'
 
 /** Yükleyicinin okuduğu AlanDegeri satırı. */
@@ -192,6 +192,44 @@ export function rucuSebebiKur(g: {
     dayanaklar: tanim ? tanim.dayanaklar.map((d) => ({ ...d })) : [],
     notlar: tanim ? [...tanim.notlar] : [],
     ev07: { gerekli: ev07.gerekli, teyitGerekli: ev07.teyitGerekli, metin: ev07.metin },
+  }
+}
+
+// ───────────────────────── Yapay zekâ çıkarımı ─────────────────────────
+
+const metinVeyaNull = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
+const TEYIT_TIPLERI = new Set(['oneri', 'uyari', 'ok'])
+
+/** cikarimJson'daki yapay zekâ özetini (olay bağlamı, özet, riskler, adımlar) karta çevirir; metinler maskelenir. */
+export function aiCikarimKur(g: {
+  dosyaId: string
+  yetki: KullaniciYetkisi
+  aiAcik: boolean
+  cikarimJson: unknown
+  yol: string | null
+  yolGuven: number | null
+  yolNeden: string | null
+  metinliBelge: number
+  metinsizBelge: number
+  sonCalisma: { at: Date; kim: string | null } | null
+}): AiCikarimVerisi {
+  const cj = (g.cikarimJson && typeof g.cikarimJson === 'object' && !Array.isArray(g.cikarimJson) ? g.cikarimJson : {}) as Record<string, unknown>
+  const teyitler = (Array.isArray(cj.teyit) ? cj.teyit : [])
+    .map((t) => (t && typeof t === 'object' ? (t as Record<string, unknown>) : {}))
+    .map((t) => ({ tip: TEYIT_TIPLERI.has(String(t.tip)) ? (t.tip as 'oneri' | 'uyari' | 'ok') : 'oneri', not: ekranMaskele(metinVeyaNull(t.not)) }))
+    .filter((t): t is { tip: 'oneri' | 'uyari' | 'ok'; not: string } => !!t.not)
+  const sonrakiAdimlar = (Array.isArray(cj.sonrakiAdimlar) ? cj.sonrakiAdimlar : [])
+    .map((s) => ekranMaskele(metinVeyaNull(s)))
+    .filter((s): s is string => !!s)
+  return {
+    dosyaId: g.dosyaId, yetki: g.yetki, aiAcik: g.aiAcik,
+    metinliBelge: g.metinliBelge, metinsizBelge: g.metinsizBelge,
+    sonCalisma: g.sonCalisma ? { at: g.sonCalisma.at.toISOString(), kim: g.sonCalisma.kim } : null,
+    olayTuru: metinVeyaNull(cj.olayTuru),
+    yol: g.yol, yolGuven: g.yolGuven,
+    olayBaglami: ekranMaskele(metinVeyaNull(cj.olayBaglami)),
+    ozet: ekranMaskele(metinVeyaNull(g.yolNeden) ?? metinVeyaNull(cj.aciklama)),
+    teyitler, sonrakiAdimlar,
   }
 }
 

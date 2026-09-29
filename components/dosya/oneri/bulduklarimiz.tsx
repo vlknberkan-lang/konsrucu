@@ -18,8 +18,10 @@ import { KaynakGoster, type KaynakHedefi } from './kaynak-goster'
 import { OneriSatiri } from './oneri-satiri'
 import { BolumBasligi, DUGME_IKINCIL, DUGME_ONAY, HataSatiri, useEylem } from './ortak'
 
-/** `capa`: bölüm kimliği — Yol Haritası eylem çapası varsayılanı (components/dosya/yol-haritasi/eylem.ts). */
-export function Bulduklarimiz({ veri, capa = 'yh-bulduklarimiz' }: { veri: BulduklarimizVerisi; capa?: string }) {
+/** `capa`: bölüm kimliği — Yol Haritası eylem çapası varsayılanı (components/dosya/yol-haritasi/eylem.ts).
+ *  `bulDugmesi`: "Belgelerden yeniden bul" başlıkta dursun mu. Yeni ekranda aynı eylem "Yapay zekâ çıkarımı" kartındadır
+ *  ("AI ile Çıkarım Yap"); orada false verilir ki ekranda aynı işi yapan iki düğme olmasın. */
+export function Bulduklarimiz({ veri, capa = 'yh-bulduklarimiz', bulDugmesi = true }: { veri: BulduklarimizVerisi; capa?: string; bulDugmesi?: boolean }) {
   const { calistir, buMu, bekliyor, hata } = useEylem()
   const [hedef, setHedef] = useState<KaynakHedefi | null>(null)
   const [bilgi, setBilgi] = useState<string | null>(null)
@@ -29,12 +31,13 @@ export function Bulduklarimiz({ veri, capa = 'yh-bulduklarimiz' }: { veri: Buldu
     ? `${veri.bekleyen} bilgi onay bekliyor${veri.kritikBekleyen ? ` (${veri.kritikBekleyen} kritik)` : ''}`
     : veri.satirlar.length ? 'Bütün bilgiler onaylı' : 'Henüz öneri yok'
 
-  const yenidenBul = veri.yetki.duzenleyebilir ? (
+  const yenidenBul = bulDugmesi && veri.yetki.duzenleyebilir ? (
     <button
       type="button" disabled={bekliyor} className={DUGME_IKINCIL}
       onClick={() => calistir('bul', async () => {
+        setBilgi(veri.aiAcik ? 'Belgeler yapay zekâyla okunuyor; bu bir dakika kadar sürebilir.' : null)
         const r = await kuralOnerileriniUretEylem({ dosyaId: veri.dosyaId })
-        if (r.ok) setBilgi(r.eklenen ? `${r.eklenen} yeni öneri bulundu${r.kaynaksiz ? `, ${r.kaynaksiz} tanesi kaynaksız` : ''}.` : 'Yeni öneri çıkmadı; mevcut öneriler yerinde.')
+        setBilgi(r.ok ? bulMesaji(r) : null)
         return r
       })}
     >
@@ -49,7 +52,9 @@ export function Bulduklarimiz({ veri, capa = 'yh-bulduklarimiz' }: { veri: Buldu
         alt={
           <>
             Her bilginin yanında kaynağı durur. Doğruysa onaylayın; onaylanan bilgi kilitlenir ve yeniden çıkarım onu değiştirmez.
-            {!veri.aiAcik && <> Yapay zekâ kapalı: öneriler belge kurallarından ve içe aktarılan Excel satırından geliyor.</>}
+            {veri.aiAcik
+              ? <> Yapay zekâ açık: belgeleri okur, bulduğu her bilgi burada onay bekler; eklediği borçlular teyit ister.</>
+              : <> Yapay zekâ kapalı: öneriler belge kurallarından ve içe aktarılan Excel satırından geliyor.</>}
           </>
         }
         sag={yenidenBul}
@@ -113,4 +118,20 @@ export function Bulduklarimiz({ veri, capa = 'yh-bulduklarimiz' }: { veri: Buldu
       <KaynakGoster hedef={hedef} onKapat={kapat} />
     </section>
   )
+}
+
+type BulSonucu = Extract<Awaited<ReturnType<typeof kuralOnerileriniUretEylem>>, { ok: true }>
+
+/** "Belgelerden yeniden bul" sonucunu tek cümleye çevirir (yapay zekâ adımı dahil). Evrak yüklemesi de kullanır. */
+export function bulMesaji(r: BulSonucu): string {
+  let m = r.eklenen ? `${r.eklenen} yeni öneri bulundu${r.kaynaksiz ? `, ${r.kaynaksiz} tanesi kaynaksız` : ''}.` : 'Yeni öneri çıkmadı; mevcut öneriler yerinde.'
+  if (r.ai === 'TAMAM') {
+    const ek = [r.yazilanAlan ? `${r.yazilanAlan} boş alanı doldurdu` : '', r.yeniBorclu ? `${r.yeniBorclu} borçlu ekledi (teyit gerek)` : ''].filter(Boolean)
+    m += ` Yapay zekâ belgeleri okudu${ek.length ? `; ${ek.join(', ')}` : ''}.`
+  } else if (r.ai === 'HATA') {
+    m += ` Yapay zekâ çalışmadı (${r.aiHata}); yalnız kural ve Excel önerileri eklendi.`
+  } else if (r.ai === 'METIN_YOK') {
+    m += ' Yapay zekânın okuyacağı belge metni yok: fotoğraf ve taranmış görüntüler (ör. el yazılı tutanak) okunmuyor.'
+  }
+  return m
 }

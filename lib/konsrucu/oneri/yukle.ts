@@ -1,8 +1,9 @@
 /**
  * KonsRücü — Öneri paneli yükleyicisi · lib/konsrucu/oneri/yukle.ts  (SUNUCU; Server Component'ten çağrılır)
  *
- * Dosya sayfası (Bağla aşaması) tek çağrıyla dört bileşenin verisini alır:
+ * Dosya sayfası (Bağla aşaması) tek çağrıyla beş bileşenin verisini alır:
  *   const panel = await oneriPaneliYukle(dosyaId)
+ *   <AiCikarim veri={panel.aiCikarim} />
  *   <Bulduklarimiz veri={panel.bulduklarimiz} /> · <RucuSebebiSec veri={panel.rucuSebebi} />
  *   <EksikEvrak veri={panel.eksikEvrak} /> · <YetkiliIcraSec veri={panel.yetkiliIcra} />
  * Kapsam: oturum + aktif müvekkil (musteriId). Başka müvekkilin dosyası → null. Kişisel veri gorunum.ts'te maskelenir.
@@ -14,8 +15,23 @@ import { yuzeyAcik } from '@/lib/ai/bayrak'
 import { rucuSebebiKoduMu, type RucuSebebiKodu } from '@/lib/konsrucu/rucu-sebebi'
 import { kullaniciYetkisi } from './karar'
 import { listeKaynagi } from './kaynaklar'
-import { bulduklarimizKur, eksikEvrakKur, rucuSebebiKur, yetkiliIcraKur, type PanelSatiri } from './gorunum'
+import { aiCikarimKur, bulduklarimizKur, eksikEvrakKur, rucuSebebiKur, yetkiliIcraKur, type PanelSatiri } from './gorunum'
 import type { OneriPaneli } from './tipler'
+
+/** Dosyadaki son başarılı yapay zekâ çıkarımı: eski ekranın aiCikar'ı ya da "AI ile Çıkarım Yap" (KURAL_ONERI + ai TAMAM). */
+export function sonAiCikarimi(dosyaId: string) {
+  return prisma.aktivite.findFirst({
+    where: {
+      dosyaId,
+      OR: [
+        { detayJson: { path: ['tur'], equals: 'AI_CIKARIM_BIRLESTIR' } },
+        { AND: [{ detayJson: { path: ['tur'], equals: 'KURAL_ONERI' } }, { detayJson: { path: ['ai'], equals: 'TAMAM' } }] },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true, kullanici: { select: { ad: true } } },
+  })
+}
 
 export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | null> {
   const { dbUser, aktifMusteriId } = await ctx()
@@ -25,6 +41,7 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
     select: {
       id: true, musteriId: true, hukukDosyaNo: true, hasarDosyaNo: true, brans: true, rucuSebebi: true, rucuTutari: true,
       kazaYeri: true, il: true, yetkiliIcra: true, policeBaslangic: true, kaynakJson: true,
+      cikarimJson: true, yol: true, yolGuven: true, yolNeden: true,
       borclular: { select: { id: true, adUnvan: true, adres: true }, orderBy: { id: 'asc' } },
       belgeler: { where: { silindiAt: null }, select: { id: true, dosyaAdi: true, storagePath: true, kategori: true, altTur: true, silindiAt: true } },
       odemeler: { select: { tutar: true, haricMi: true } },
@@ -32,7 +49,8 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
   })
   if (!dosya) return null
 
-  const [satirlarHam, ayarlar] = await Promise.all([
+  const bizimBelge = { dosyaId, silindiAt: null, kaynakRef: null }
+  const [satirlarHam, ayarlar, metinliBelge, metinsizBelge, sonAi] = await Promise.all([
     prisma.alanDegeri.findMany({
       where: { dosyaId, silindiAt: null, durum: { in: ['ONERI', 'ONAYLI'] } },
       select: {
@@ -43,6 +61,9 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
       take: 500,
     }),
     prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { vekilAd: true } }),
+    prisma.belge.count({ where: { ...bizimBelge, extractedText: { not: null } } }),
+    prisma.belge.count({ where: { ...bizimBelge, extractedText: null, kategori: { not: 'HASAR_FOTO' } } }),
+    sonAiCikarimi(dosyaId),
   ])
   const satirlar = satirlarHam as PanelSatiri[]
   const onaylayanIdler = [...new Set(satirlar.map((s) => s.onaylayanId).filter((x): x is string => !!x))]
@@ -63,6 +84,11 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
   const odemeToplami = dosya.odemeler.filter((o) => !o.haricMi && o.tutar != null).reduce((t, o) => t + Number(o.tutar), 0)
 
   return {
+    aiCikarim: aiCikarimKur({
+      dosyaId, yetki, aiAcik: yuzeyAcik('cikarim'), cikarimJson: dosya.cikarimJson,
+      yol: dosya.yol, yolGuven: dosya.yolGuven, yolNeden: dosya.yolNeden, metinliBelge, metinsizBelge,
+      sonCalisma: sonAi ? { at: sonAi.createdAt, kim: sonAi.kullanici?.ad ?? null } : null,
+    }),
     bulduklarimiz: bulduklarimizKur({
       dosyaId, yetki, aiAcik: yuzeyAcik('cikarim'), satirlar, belgeler: dosya.belgeler, kullanicilar,
       hugoRucuTutari: listeKaynagi(dosya.kaynakJson) && dosya.rucuTutari != null ? Number(dosya.rucuTutari) : null,

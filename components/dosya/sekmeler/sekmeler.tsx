@@ -14,6 +14,8 @@ import { CikarimDuzenle } from '@/components/akilli-giris/detay/cikarim-duzenle'
 import { FaizPanel } from '@/components/akilli-giris/detay/faiz-panel'
 import { NotForm } from '@/components/akilli-giris/detay/not-form'
 import { oranlariOku } from '@/lib/konsrucu/faiz'
+import { sonAiCikarimi } from '@/lib/konsrucu/oneri/yukle'
+import { yuzeyAcik } from '@/lib/ai/bayrak'
 import { tarihTR, saatTR } from '@/lib/konsrucu/format'
 import { toTRInput as sayiToTRInput } from '@/lib/konsrucu/sayi'
 
@@ -81,7 +83,7 @@ export async function EvrakSekmesi({ dosyaId, alt, altHref }: { dosyaId: string;
       {alt === 'bizim' ? (
         <>
           <Baslik baslik="Bizim evrak" alt="Müvekkilden, Excel'den ya da elle yüklenen evrak: poliçe, ekspertiz, tutanak, dekont, fotoğraflar." />
-          <div className="mb-4"><BelgeEkle dosyaId={dosyaId} /></div>
+          <div className="mb-4"><BelgeEkle dosyaId={dosyaId} otomatikBul /></div>
           {bizim.length ? (
             <EvrakGruplari belgeler={bizim.map((b) => ({ id: b.id, kategori: b.kategori as string, dosyaAdi: b.dosyaAdi, confidence: b.confidence, foto: b.kategori === 'HASAR_FOTO', acilabilir: !!b.storagePath }))} />
           ) : (
@@ -211,17 +213,23 @@ export async function GecmisSekmesi({ dosyaId, kullaniciAd }: { dosyaId: string;
 
 /** Hazırlık adımları (icra öncesi): 5 adım, her biri kendi paneline götürür. */
 export async function HazirlikAdimlari({ dosyaId, musteriId, adimHref }: { dosyaId: string; musteriId: string; adimHref: (capa: string) => string }) {
-  const [d, belge, borclu, teyitli, oneri, talep] = await Promise.all([
+  const [d, belge, borclu, teyitli, oneri, talep, metinli, sonAi] = await Promise.all([
     prisma.rucuDosyasi.findFirst({ where: { id: dosyaId, musteriId }, select: { yetkiliIcra: true, rucuSebebiKod: true } }),
     prisma.belge.count({ where: { dosyaId, kaynakRef: null } }),
     prisma.borclu.count({ where: { dosyaId } }),
     prisma.borclu.count({ where: { dosyaId, teyitDurumu: 'TEYIT_EDILDI' } }),
     prisma.alanDegeri.count({ where: { dosyaId, durum: 'ONERI', silindiAt: null } }),
     prisma.takipTalebi.count({ where: { dosyaId } }).catch(() => 0),
+    prisma.belge.count({ where: { dosyaId, kaynakRef: null, silindiAt: null, extractedText: { not: null } } }),
+    sonAiCikarimi(dosyaId),
   ])
+  // metni okunan evrak var ama yapay zekâ hiç çalışmadı → 2. adım "AI ile Çıkarım Yap"a götürür
+  const aiBekliyor = metinli > 0 && yuzeyAcik('cikarim') && !sonAi
   const adimlar = [
     { no: 1, ad: 'Evrakı yükle', durum: belge > 0 ? 'tamam' : 'simdi', detay: belge > 0 ? `${belge} belge` : 'Poliçe, ekspertiz, tutanak, dekont', capa: 'evrak' },
-    { no: 2, ad: 'Bulguları onayla', durum: oneri > 0 ? 'simdi' : belge > 0 ? 'tamam' : 'sirada', detay: oneri > 0 ? `${oneri} öneri onay bekliyor` : d?.rucuSebebiKod ? 'Rücu sebebi seçildi' : 'Rücu sebebini seçin', capa: 'yh-bulduklarimiz' },
+    aiBekliyor
+      ? { no: 2, ad: 'Bulguları onayla', durum: 'simdi', detay: 'Önce "AI ile Çıkarım Yap"', capa: 'yh-ai-cikarim' }
+      : { no: 2, ad: 'Bulguları onayla', durum: oneri > 0 ? 'simdi' : belge > 0 ? 'tamam' : 'sirada', detay: oneri > 0 ? `${oneri} öneri onay bekliyor` : d?.rucuSebebiKod ? 'Rücu sebebi seçildi' : 'Rücu sebebini seçin', capa: 'yh-bulduklarimiz' },
     { no: 3, ad: 'Borçluyu teyit et', durum: borclu > 0 && teyitli === borclu ? 'tamam' : borclu > 0 ? 'simdi' : 'sirada', detay: borclu ? `${teyitli}/${borclu} borçlu teyitli` : 'Borçlu yok', capa: 'borclular' },
     { no: 4, ad: 'Yetkili icra dairesini seç', durum: d?.yetkiliIcra ? 'tamam' : 'sirada', detay: d?.yetkiliIcra ?? 'Kaza yerine göre', capa: 'yh-hazirlik' },
     { no: 5, ad: "Takip talebi → UYAP'ta aç", durum: talep > 0 ? 'simdi' : 'sirada', detay: talep > 0 ? 'Takip talebi hazırlandı' : 'Önceki adımlardan sonra', capa: 'yh-takip' },

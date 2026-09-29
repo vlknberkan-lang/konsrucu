@@ -14,6 +14,7 @@ import type { OlayPaneliVM } from '@/lib/konsrucu/eksen/gorunum'
 import type { ArabuluculukPaneliVeri } from '@/lib/konsrucu/arabuluculuk/veri'
 import type { DavaPaneliVeri } from '@/lib/konsrucu/dava/veri'
 import type { KartTuru } from '@/lib/konsrucu/dilekce-v2/tipler'
+import { AiCikarim } from '@/components/dosya/oneri/ai-cikarim'
 import { Bulduklarimiz } from '@/components/dosya/oneri/bulduklarimiz'
 import { RucuSebebiSec } from '@/components/dosya/oneri/rucu-sebebi-sec'
 import { EksikEvrak } from '@/components/dosya/oneri/eksik-evrak'
@@ -68,7 +69,8 @@ export function DurakPaneli({
         <>
           {oneriPanel ? (
             <>
-              <Bulduklarimiz veri={oneriPanel.bulduklarimiz} />
+              <AiCikarim veri={oneriPanel.aiCikarim} />
+              <Bulduklarimiz veri={oneriPanel.bulduklarimiz} bulDugmesi={false} />
               <RucuSebebiSec veri={oneriPanel.rucuSebebi} />
               <EksikEvrak veri={oneriPanel.eksikEvrak} />
             </>
@@ -76,7 +78,7 @@ export function DurakPaneli({
             <BosHal mesaj="Bu durakta henüz iş yok." eskiGorunumHref={eskiGorunumHref} />
           )}
           <div id="yh-evrak" className="flex flex-col gap-2">
-            <BelgeEkle dosyaId={dosyaId} />
+            <BelgeEkle dosyaId={dosyaId} otomatikBul />
             <Link href={`/akilli-giris/${dosyaId}?belge=hasar`} className="self-start text-[12.5px] font-semibold text-kr hover:underline">
               Tüm evrak
             </Link>

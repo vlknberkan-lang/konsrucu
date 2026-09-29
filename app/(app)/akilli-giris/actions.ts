@@ -2,6 +2,7 @@
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { Prisma, BelgeKategori, DosyaDurum, Yol, Brans, BorcluRol, TeyitDurum, CiktiTip } from '@prisma/client'
 import { createClient } from '@/lib/supabase/server'
@@ -20,7 +21,6 @@ import { dilekceMetni, type DilekceGirdi } from '@/lib/konsrucu/dilekce'
 import { dilekceAnlatim } from '@/lib/konsrucu/dilekce-ai'
 import { taksitProgrami } from '@/lib/konsrucu/taksit'
 import { dosyadanEmsal } from '@/lib/konsrucu/emsal-ara'
-import { sayiTR } from '@/lib/konsrucu/sayi'
 import { ileriMi, dosyaDurumIlerlet } from '@/lib/konsrucu/durum'
 import { silebilir, SILME_YETKISI_YOK } from '@/lib/konsrucu/db'
 import { idariYolOnaylayabilir, idariYolaAlinabilirMi, idariYolAktiviteMetni, IDARI_YOL_YETKI_YOK } from '@/lib/konsrucu/idari-yol'
@@ -28,10 +28,12 @@ import { eskiDilekceHattiAcik, gorselAiAcik, yuzeyAcik, GORSEL_KAPALI_MESAJI, KV
 import { gorselAdaylari, gorselAktiviteMetni } from '@/lib/ai/gorsel-aday'
 import { aiKapiHatasiMi } from '@/lib/ai/cagri'
 import { ELLE_YUKLEME_METIN_SINIRI, metniSinirla } from '@/lib/konsrucu/evrak-metin/ortak'
+import { BELGE_TURU_ETIKET } from '@/lib/konsrucu/belge-siniflandir'
 import {
   cikarimBirlestir, alanOnerisiBul, alanOnerisiniKaldir, dekontOnerisiBul, dekontOnerisiniKaldir,
-  ayniDeger, degerOku, dekontAnahtari, ALAN_ETIKET, ALANLAR, type AlanAdi, type YazilacakAnahtar,
+  ayniDeger, degerOku, dekontAnahtari, ALAN_ETIKET, type AlanAdi,
 } from '@/lib/konsrucu/cikarim-birlestir'
+import { ALAN_SELECT, alanVerisi, bransDb, cikarimMetni, guvenliDecimal, mevcutAlanlar, rolDb, yolDb } from '@/lib/konsrucu/cikarim-yaz'
 
 type DosyaPayload = {
   hasarNo?: string
@@ -40,18 +42,7 @@ type DosyaPayload = {
   dosyalar: { name: string; kind: 'pdf' | 'belge' | 'foto' | 'diger'; w?: number; h?: number; exifDate?: string; kamera?: string; textLen?: number }[]
 }
 
-const yolDb = (y?: string): Yol | null => (y === 'klasik' ? Yol.KLASIK : y === 'idari' ? Yol.IDARI : y === 'belirsiz' ? Yol.BELIRSIZ : null)
-const bransDb = (b?: string): Brans | null => (b === 'KASKO' ? Brans.KASKO : b === 'ZMMS' ? Brans.ZMMS : b === 'OTO_DISI' ? Brans.OTO_DISI : null)
-const rolDb = (r?: string): BorcluRol => (r && r in BorcluRol ? (r as BorcluRol) : BorcluRol.DIGER)
 const teyitDb = (t?: string): TeyitDurum => (t && t in TeyitDurum ? (t as TeyitDurum) : TeyitDurum.TEYIT_GEREK)
-
-/** LLM'den gelen tutarı güvenle Decimal'e çevir (sayı/string/biçimli gelebilir; bozuksa null).
- *  Parse tek kaynak: lib/konsrucu/sayi.sayiTR (iki formatı da çözer). */
-function guvenliDecimal(v: unknown): Prisma.Decimal | null {
-  if (v == null) return null
-  const n = typeof v === 'number' ? v : sayiTR(v)
-  return Number.isFinite(n) && Math.abs(n) < 1e12 ? new Prisma.Decimal(Math.round(n * 100) / 100) : null
-}
 
 /** LLM dekontlarını Odeme create-data'sına çevir; geçersiz tutarı ele, tarih bozuksa null. */
 function dekontlardanOdemeler(dekontlar: { tarih?: string; tutar?: number; ekspertizMi?: boolean; aciklama?: string }[] | undefined) {
@@ -219,42 +210,8 @@ export async function takipAcildi(formData: FormData) {
   revalidatePath(`/akilli-giris/${dosyaId}`)
 }
 
-// ───────────────── S07 · yeniden çıkarım koruması: alan okuma/yazma yardımcıları ─────────────────
-
-/** Birleştiricinin karşılaştırdığı kolonlar (aciklama cikarimJson'dadır). */
-const ALAN_SELECT = {
-  yol: true, brans: true, sigortaliUnvan: true, sigortaliTelefon: true, sigortaliPlaka: true, karsiPlaka: true,
-  il: true, kazaYeri: true, olusSekli: true, kusurDurumu: true, asilAlacak: true, rucuTutari: true, rucuOrani: true,
-  yetkiliIcra: true, muhatapOzet: true,
-} as const
-
-type AlanKaydi = Prisma.RucuDosyasiGetPayload<{ select: typeof ALAN_SELECT }>
-
-/** DB kaydı → birleştiricinin saf alan değerleri (Decimal → sayı). */
-function mevcutAlanlar(d: AlanKaydi): Partial<Record<Exclude<AlanAdi, 'aciklama'>, unknown>> {
-  const o: Partial<Record<Exclude<AlanAdi, 'aciklama'>, unknown>> = {}
-  for (const k of Object.keys(ALAN_SELECT) as (keyof typeof ALAN_SELECT)[]) o[k] = d[k]
-  o.asilAlacak = d.asilAlacak != null ? Number(d.asilAlacak) : null
-  o.rucuTutari = d.rucuTutari != null ? Number(d.rucuTutari) : null
-  return o
-}
-
-/** Kolon karşılığı olan yazılabilir anahtarlar (beyaz liste — öneri JSON'undan gelen anahtar kolona körlemesine gitmez). */
-const YAZILABILIR = new Set<string>([...ALANLAR.filter((a) => a !== 'aciklama'), 'yolGuven', 'yolNeden'])
-
-/** Birleştiricinin saf değerleri → Prisma update verisi (para → Decimal, enum doğrulanır, bilinmeyen anahtar atlanır). */
-function alanVerisi(yaz: Partial<Record<YazilacakAnahtar, string | number | null>>): Prisma.RucuDosyasiUpdateInput {
-  const data: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(yaz)) {
-    if (v == null || !YAZILABILIR.has(k)) continue
-    if (k === 'asilAlacak' || k === 'rucuTutari') { const d = guvenliDecimal(v); if (d) data[k] = d }
-    else if (k === 'yol') { if (typeof v === 'string' && v in Yol) data.yol = v as Yol }
-    else if (k === 'brans') { if (typeof v === 'string' && v in Brans) data.brans = v as Brans }
-    else if (k === 'yolGuven') { if (typeof v === 'number' && Number.isFinite(v)) data.yolGuven = v }
-    else data[k] = String(v)
-  }
-  return data as Prisma.RucuDosyasiUpdateInput
-}
+// ───────────────── S07 · yeniden çıkarım koruması ─────────────────
+// Alan okuma/yazma yardımcıları (ALAN_SELECT, mevcutAlanlar, alanVerisi) lib/konsrucu/cikarim-yaz.ts'de.
 
 /** Öneri değerini ekranda/aktivitede göstermek için kısa metin. */
 function oneriMetni(alan: AlanAdi, v: string | number): string {
@@ -283,21 +240,8 @@ export async function aiCikar(dosyaId: string): Promise<{ ok: boolean; error?: s
   })
   if (!dosya || !izinli.includes(dosya.musteriId)) return { ok: false, error: 'Dosya bulunamadı veya bu dosyada yetkiniz yok' }
 
-  // Belgeleri ÖNEM sırasına diz: DELİL ÖNCE (tutanaklar/bilirkişi/ekspertiz/sorgular) → AI olay bağlamını
-  // bunlardan kursun; Lehe formu yalnız ipucu olarak sonra gelir. Mükerrer metin elenir, en kritik delil başta kalır.
-  const ONCELIK = ['TUTANAK', 'EKSPERTIZ', 'SBM', 'ALKOL', 'EHLIYET', 'RUHSAT', 'LEHE', 'POLICE', 'DEKONT', 'DIGER', 'HASAR_FOTO']
-  const onc = (k: string) => { const i = ONCELIK.indexOf(k); return i < 0 ? 99 : i }
-  const gorulen = new Set<string>()
-  const parcalar: string[] = []
-  for (const b of [...dosya.belgeler].sort((a, c) => onc(a.kategori) - onc(c.kategori))) {
-    const t = (b.extractedText ?? '').trim()
-    if (!t) continue
-    const imza = t.replace(/\s+/g, ' ').slice(0, 160)
-    if (gorulen.has(imza)) continue // aynı poliçe/ekspertiz kopyalarını tek say
-    gorulen.add(imza)
-    parcalar.push(`### ${b.kategori} · ${b.dosyaAdi}\n${t}`)
-  }
-  const metin = parcalar.join('\n\n').slice(0, 150000).trim()
+  // Delil önce, Lehe sonra; mükerrer metin elenir (lib/konsrucu/cikarim-yaz · cikarimMetni).
+  const metin = cikarimMetni(dosya.belgeler)
   if (!metin) return { ok: false, error: 'Çıkarım için belge metni yok. Önce Evrak bölümünden belge ekleyin.' }
 
   // GÖRSELLER (S02/S09; 06, 5.5): çıkarım GÖRSELSİZ çalışır — görüntü maskelenemez. Sağlık ve kimlik
@@ -669,6 +613,33 @@ export async function belgeAc(belgeId: string): Promise<{ ok: boolean; url?: str
   const { data, error } = await admin.storage.from('evrak').createSignedUrl(belge.storagePath, 600)
   if (error || !data?.signedUrl) return { ok: false, error: `Bağlantı oluşturulamadı: ${error?.message ?? 'bilinmeyen hata'}` }
   return { ok: true, url: data.signedUrl }
+}
+
+const turGirdi = z.object({ belgeId: z.string().uuid(), kategori: z.nativeEnum(BelgeKategori) })
+
+/** Belgenin türünü elle seç. Yerel sınıflandırma taranmış görüntüyü (ör. el yazılı kaza tespit tutanağı) okuyamaz;
+ *  avukat belgeyi açıp türünü seçer. Seçilen tür kesin sayılır (güven 1), eksik evrak listesi buna göre güncellenir. */
+export async function belgeTuruDegistir(input: z.input<typeof turGirdi>): Promise<{ ok: boolean; error?: string }> {
+  const p = turGirdi.safeParse(input)
+  if (!p.success) return { ok: false, error: 'Geçersiz belge türü.' }
+  const { dbUser, izinli } = await ctx()
+  if (dbUser.rol === 'GORUNTULEYEN') return { ok: false, error: GORUNTULEYEN_YAZAMAZ }
+  const belge = await prisma.belge.findUnique({ where: { id: p.data.belgeId }, select: { dosyaId: true, kategori: true, dosyaAdi: true, dosya: { select: { musteriId: true } } } })
+  if (!belge || !izinli.includes(belge.dosya.musteriId)) return { ok: false, error: 'Belge bulunamadı veya bu dosyada yetkiniz yok' }
+  if (belge.kategori === p.data.kategori) return { ok: true }
+  await prisma.$transaction([
+    prisma.belge.update({ where: { id: p.data.belgeId }, data: { kategori: p.data.kategori, confidence: 1 } }),
+    prisma.aktivite.create({
+      data: {
+        dosyaId: belge.dosyaId, kullaniciId: dbUser.id,
+        eylem: `Belge türü elle seçildi: ${belge.dosyaAdi} · ${BELGE_TURU_ETIKET[belge.kategori]} → ${BELGE_TURU_ETIKET[p.data.kategori]}`,
+        detayJson: { tur: 'BELGE_TURU_ELLE', belgeId: p.data.belgeId, onceki: belge.kategori, yeni: p.data.kategori } as Prisma.InputJsonValue,
+      },
+    }),
+  ])
+  revalidatePath(`/akilli-giris/${belge.dosyaId}`)
+  revalidatePath(`/dosya/${belge.dosyaId}`)
+  return { ok: true }
 }
 
 /** Zaman çizelgesine not ekle. */
