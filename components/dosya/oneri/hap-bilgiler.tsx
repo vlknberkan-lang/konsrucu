@@ -30,10 +30,14 @@ const BIRINCIL =
 
 type Eylem = ReturnType<typeof useEylem>
 
-/** Aynı değeri taşıyan öneriler tek satır (kaynakları yan yana). */
+/** Aynı değeri taşıyan öneriler tek satır (kaynakları yan yana). Maskeli değerler (plaka) birleştirilmez:
+ *  farklı iki plaka maskede aynı görünebilir. */
 function degerGruplariGorunum(oneriler: readonly OneriGorunum[]): OneriGorunum[][] {
   const g = new Map<string, OneriGorunum[]>()
-  for (const o of oneriler) g.set(o.deger, [...(g.get(o.deger) ?? []), o])
+  for (const o of oneriler) {
+    const k = o.maskeli ? o.id : o.deger
+    g.set(k, [...(g.get(k) ?? []), o])
+  }
   return [...g.values()]
 }
 

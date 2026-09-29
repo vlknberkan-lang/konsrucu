@@ -30,8 +30,8 @@ export type AiOneriSonucu =
   | { durum: 'HATA'; hata: string; gorsel?: GorselOkumaOzeti | null }
   | { durum: 'TAMAM'; oneriler: YeniOneri[]; analiz: AnalizSonuc; uyari: string | null; gorselNotu: string; gorsel: GorselOkumaOzeti | null }
 
-/** Görsel okumaya ayrılan süre: sayfanın maxDuration'ı (300 sn) içinde analizEt'e yer kalsın. */
-const GORSEL_BUTCE_MS = 110_000
+/** Görsel okumaya ayrılan süre: sayfanın maxDuration'ı (300 sn) içinde analizEt'e (≤170 sn) yer kalsın. */
+const GORSEL_BUTCE_MS = 90_000
 
 /** Yüzey kapalıysa hiçbir şey göndermez. Belge metni yoksa model çağrılmaz. Hata fırlatmaz; durumu döndürür. */
 export async function aiOneriCalistir(dosyaId: string): Promise<AiOneriSonucu> {
@@ -80,15 +80,15 @@ export async function aiOneriCalistir(dosyaId: string): Promise<AiOneriSonucu> {
   return { durum: 'TAMAM', oneriler, analiz, uyari: uyari as string | null, gorselNotu, gorsel }
 }
 
-export type AiYazimSonucu = { yazilanAlanlar: string[]; yeniBorclu: number; farkliDeger: number; onayDustu: boolean }
+export type AiYazimSonucu = { yazilanAlanlar: string[]; yeniBorclu: number; tamamlananBorclu: number; farkliDeger: number; onayDustu: boolean }
 
 /** Kartta olmayan alanları yalnız BOŞSA yazar, cikarimJson'u birleştirir, eşleşmeyen borçluyu TEYİT GEREK ekler. */
 export async function aiSonucunuYaz(tx: Prisma.TransactionClient, dosyaId: string, analiz: AnalizSonuc): Promise<AiYazimSonucu> {
   const dosya = await tx.rucuDosyasi.findUnique({
     where: { id: dosyaId },
-    select: { ...ALAN_SELECT, cikarimJson: true, borclular: { select: { adUnvan: true, tcVkn: true }, orderBy: { id: 'asc' } } },
+    select: { ...ALAN_SELECT, cikarimJson: true, borclular: { select: { id: true, adUnvan: true, tcVkn: true, adres: true, telefon: true, teyitDurumu: true }, orderBy: { id: 'asc' } } },
   })
-  if (!dosya) return { yazilanAlanlar: [], yeniBorclu: 0, farkliDeger: 0, onayDustu: false }
+  if (!dosya) return { yazilanAlanlar: [], yeniBorclu: 0, tamamlananBorclu: 0, farkliDeger: 0, onayDustu: false }
   const b = cikarimBirlestir({
     mevcut: { alanlar: mevcutAlanlar(dosya), cikarimJson: dosya.cikarimJson, borclular: dosya.borclular, odemeler: [] },
     ai: {
@@ -126,9 +126,19 @@ export async function aiSonucunuYaz(tx: Prisma.TransactionClient, dosyaId: strin
         : undefined,
     },
   })
+  // mevcut borçlunun boş kimlik/adres/telefonu dolar; kimliği değişen borçlu yeniden teyit ister
+  for (const t of b.borcluTamamlama) {
+    const m = dosya.borclular[t.index]
+    if (!m) continue
+    await tx.borclu.update({
+      where: { id: m.id },
+      data: { ...t.alanlar, ...(t.alanlar.tcVkn && m.teyitDurumu === TeyitDurum.TEYIT_EDILDI ? { teyitDurumu: TeyitDurum.TEYIT_GEREK } : {}) },
+    })
+  }
   return {
     yazilanAlanlar: Object.keys(b.yazilacak).filter((k) => k !== 'yolGuven' && k !== 'yolNeden'),
     yeniBorclu: b.yeniBorclular.length,
+    tamamlananBorclu: b.borcluTamamlama.length,
     farkliDeger: b.oneriler.length,
     onayDustu: b.degisti,
   }

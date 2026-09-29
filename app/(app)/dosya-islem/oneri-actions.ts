@@ -211,7 +211,7 @@ function bulAktiviteMetni(s: { eklenen: number; atlanan: number }, ai: AiOneriSo
   const g = gorselOkumaMetni(gorselOzeti(ai))
   if (g) m += ` · ${g}`
   if (ai.durum === 'TAMAM' && y) {
-    m += ` · yapay zekâ: ${ai.oneriler.length} öneri, ${y.yazilanAlanlar.length} boş alan dolduruldu, ${y.yeniBorclu} yeni borçlu (teyitsiz)`
+    m += ` · yapay zekâ: ${ai.oneriler.length} öneri, ${y.yazilanAlanlar.length} boş alan dolduruldu, ${y.yeniBorclu} yeni borçlu (teyitsiz)${y.tamamlananBorclu ? `, ${y.tamamlananBorclu} borçlunun eksik kimlik/adresi tamamlandı` : ''}`
     if (y.onayDustu) m += ' · onay sıfırlandı'
     if (ai.gorselNotu) m += ` · ${ai.gorselNotu}`
     if (ai.uyari) m += ` · ⚠ ${ai.uyari}`

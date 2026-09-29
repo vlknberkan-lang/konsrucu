@@ -268,7 +268,9 @@ export async function analizEt(metin: string, s: AnalizSecenek = {}): Promise<An
   try {
     const y = await oturum.iste({
       model: MODEL,
-      maxTokens: 4500,
+      // tutanak dökümleriyle büyüyen dosyada 4500 yetmedi (1199772, 2026-09-29: yanıt yarım kaldı → şema hatası)
+      maxTokens: 9000,
+      zamanAsimiMs: 170_000,
       sistem: unvanGecir(SISTEM, s.alacakliUnvan) + (s.footer ? '' : '\nFooter verilmediyse footer EKLEME.'),
       sistemEk,
       icerik: [{ tur: 'belge', ad: 'Dosya belgeleri', metin: metin.slice(0, 150000) }],
@@ -276,7 +278,7 @@ export async function analizEt(metin: string, s: AnalizSecenek = {}): Promise<An
     })
     if (y.aracGirdisi == null) { onHata?.(y.kesildi ? 'model yanıtı uzunluk sınırında yarım kaldı' : 'model yanıtında beklenen çıktı (tool_use) yok'); return null }
     const parsed = toolCikti(y.aracGirdisi, ZAnalizSonuc, 'analizEt')
-    if (!parsed) { onHata?.('model çıktısı şema doğrulamasını geçemedi (beklenen alanlar eksik/bozuk)'); return null }
+    if (!parsed) { onHata?.(y.kesildi ? 'model yanıtı uzunluk sınırında yarım kaldı' : 'model çıktısı şema doğrulamasını geçemedi (beklenen alanlar eksik/bozuk)'); return null }
     // Kırmızı kapı: açılamayan jeton kimlik alanlarından ayıklanır (jetonlariAyikla); serbest metin alanlarında
     // (açıklama, olay bağlamı …) kalabilir → çağıran uyarıyı Aktivite'ye yazar, sessizce geçmez.
     const uyari = acilamayanUyarisi(y.acilamayanJetonlar)

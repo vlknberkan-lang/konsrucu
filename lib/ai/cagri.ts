@@ -44,6 +44,8 @@ export type AiIstek = {
   geriAc?: boolean
   /** output_config.effort (yeni modeller). Verilmezse modelin varsayılanı. */
   efor?: 'low' | 'medium' | 'high'
+  /** Bu isteğe özel zaman aşımı (ms). Verilirse yeniden deneme yapılmaz (sayfanın süre bütçesi aşılmasın). */
+  zamanAsimiMs?: number
 }
 
 export type AiYanit = {
@@ -246,7 +248,7 @@ export class AiOturumu {
             tool_choice: zorlanabilir ? { type: 'tool' as const, name: istek.arac.ad } : { type: 'auto' as const },
           }
         : {}),
-    })
+    }, istek.zamanAsimiMs ? { timeout: istek.zamanAsimiMs, maxRetries: 0 } : undefined)
 
     // 5) STOP REASON — reddetme sonucu kaydedilmez; yarım kalan yanıt çağırana bildirilir
     if ((res.stop_reason as string | null) === 'refusal') throw new AiReddettiHata()

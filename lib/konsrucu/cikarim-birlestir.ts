@@ -16,6 +16,7 @@
  *   - AI dekontları Odeme'ye YAZILMAZ: `cikarimJson.oneriler.dekontlar`'a gider; faiz başlangıcına dokunulmaz.
  *   - Bir alan yazıldıysa ya da borçlu eklendiyse avukat onayı (cikarimJson.onay) düşer — takibe giden veri değişti.
  */
+import { tcknGecerli } from '@/lib/ai/maske'
 
 /** Birleştiricinin tanıdığı alanlar ve ekrandaki adları. `aciklama` kolon değil, cikarimJson.aciklama'dır. */
 export const ALAN_ETIKET = {
@@ -60,7 +61,10 @@ export type CikarimOnerileri = { alanlar: AlanOnerisi[]; dekontlar: DekontOneris
 /** Kolon karşılığı olan yazılabilir anahtarlar (aciklama hariç) + yol eşlikçileri. */
 export type YazilacakAnahtar = Exclude<AlanAdi, 'aciklama'> | 'yolGuven' | 'yolNeden'
 
-type BorcluBenzeri = { adUnvan: string; tcVkn?: string | null }
+type BorcluBenzeri = { adUnvan: string; tcVkn?: string | null; adres?: string | null; telefon?: string | null }
+
+/** Mevcut borçlunun boş alanına AI'dan gelen değer (yalnız boş alan; dolu alan değişmez). */
+export type BorcluTamamlama = { index: number; alanlar: { tcVkn?: string; adres?: string; telefon?: string } }
 type DekontGirdi = { tarih: Date | string | null; tutar: unknown; haricMi?: boolean | null; aciklama?: string | null }
 
 export type BirlestirGirdi<B extends BorcluBenzeri> = {
@@ -91,6 +95,8 @@ export type BirlestirSonuc<B> = {
   dekontOnerileri: DekontOnerisi[]
   /** Mevcut hiçbir borçluyla eşleşmeyen AI borçluları (eklenecek). */
   yeniBorclular: B[]
+  /** Mevcut borçlularla eşleşen AI borçlularından boş alanlara yazılacaklar (index = mevcut.borclular sırası). */
+  borcluTamamlama: BorcluTamamlama[]
   /** Birleştirilmiş cikarimJson (korunan anahtarlar + tazelenen analiz + öneri listeleri). */
   cikarimJson: Record<string, unknown>
   /** Takibe giden veri değişti mi (alan yazıldı / borçlu eklendi) → avukat onayı düştü. */
@@ -142,6 +148,8 @@ export function dekontAnahtari(tarih: Date | string | null | undefined, tutar: u
 }
 
 const tcNorm = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '')
+/** Geçerli TCKN (kontrol haneli) ya da 10 haneli VKN. El yazısından yanlış okunan kimlik yazılmasın. */
+const kimlikGecerli = (d: string) => (d.length === 11 && tcknGecerli(d)) || d.length === 10
 const adNorm = (s: string | null | undefined) => (s ?? '').toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim()
 
 // ───────────────────────── öneri listesi okuma/yazma ─────────────────────────
@@ -251,10 +259,22 @@ export function cikarimBirlestir<B extends BorcluBenzeri>(g: BirlestirGirdi<B>):
   const gorulenTc = new Set(g.mevcut.borclular.map((b) => tcNorm(b.tcVkn)).filter(Boolean))
   const gorulenAd = new Set(g.mevcut.borclular.map((b) => adNorm(b.adUnvan)).filter(Boolean))
   const yeniBorclular: B[] = []
+  const tamamlama = new Map<number, BorcluTamamlama['alanlar']>()
   for (const b of g.ai.borclular ?? []) {
     const ad = adNorm(b.adUnvan)
     if (!ad) continue
     const tc = tcNorm(b.tcVkn)
+    // eşleşen mevcut borçlu: boş kimlik/adres/telefon AI'dan tamamlanır (el yazısından okunan kimlik kontrol hanesinden geçmeli)
+    const i = g.mevcut.borclular.findIndex((m) => (tc && tcNorm(m.tcVkn) === tc) || adNorm(m.adUnvan) === ad)
+    if (i >= 0) {
+      const m = g.mevcut.borclular[i]
+      const ek: BorcluTamamlama['alanlar'] = { ...tamamlama.get(i) }
+      if (!tcNorm(m.tcVkn) && !ek.tcVkn && kimlikGecerli(tc)) ek.tcVkn = tc
+      const adres = (b as BorcluBenzeri).adres?.trim(), telefon = (b as BorcluBenzeri).telefon?.trim()
+      if (!m.adres?.trim() && !ek.adres && adres) ek.adres = adres.slice(0, 500)
+      if (!m.telefon?.trim() && !ek.telefon && telefon) ek.telefon = telefon.slice(0, 40)
+      if (Object.keys(ek).length) tamamlama.set(i, ek)
+    }
     if ((tc && gorulenTc.has(tc)) || gorulenAd.has(ad)) continue
     yeniBorclular.push(b)
     if (tc) gorulenTc.add(tc)
@@ -291,8 +311,9 @@ export function cikarimBirlestir<B extends BorcluBenzeri>(g: BirlestirGirdi<B>):
     dekontlar: [...kalanDekont, ...dekontOnerileri],
   })
 
-  const degisti = alanYazildi || yeniBorclular.length > 0
+  const borcluTamamlama = [...tamamlama].map(([index, alanlar]) => ({ index, alanlar }))
+  const degisti = alanYazildi || yeniBorclular.length > 0 || borcluTamamlama.length > 0
   if (degisti) delete cj.onay
 
-  return { yazilacak, oneriler, dekontOnerileri, yeniBorclular, cikarimJson: cj, degisti }
+  return { yazilacak, oneriler, dekontOnerileri, yeniBorclular, borcluTamamlama, cikarimJson: cj, degisti }
 }

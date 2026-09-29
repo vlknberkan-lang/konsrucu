@@ -59,11 +59,12 @@ export function anthropic(apiKey: string, baglam: AiBaglam): Anthropic {
 
   const ham = client.messages.create.bind(client.messages) as (
     params: Anthropic.MessageCreateParamsNonStreaming,
+    options?: Anthropic.RequestOptions,
   ) => Promise<Anthropic.Message>
   let rezerve = 0 // bu istemci (≈bu işlem) için düşülen kredi; log'a bir kez yazılır
   let bedelYazildi = false
 
-  const olcumlu = async (params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> => {
+  const olcumlu = async (params: Anthropic.MessageCreateParamsNonStreaming, options?: Anthropic.RequestOptions): Promise<Anthropic.Message> => {
     aiKapisi(baglam) // her çağrıda: bayrak işlem ortasında kapanırsa sonraki adım da durur
     if (aiDurduruldu()) throw new AiDurdurulduHata()
     const bedel = KREDI_BEDELI[krediAnahtari(baglam.yuzey)] ?? 0
@@ -72,7 +73,7 @@ export function anthropic(apiKey: string, baglam: AiBaglam): Anthropic {
       rezerve = bedel
     }
     try {
-      const res = await ham(params)
+      const res = await ham(params, options)
       const krediBedeli = bedelYazildi ? 0 : rezerve
       bedelYazildi = true
       await kullanimLogla({

@@ -147,6 +147,33 @@ describe('borçlular — hiçbiri silinmez', () => {
   it('AI hiç borçlu döndürmezse liste değişmez', () => {
     expect(cikarimBirlestir(girdi({ mevcut: { borclular: mevcut } })).yeniBorclular).toEqual([])
   })
+
+  it('eşleşen borçlunun yalnız BOŞ kimlik/adres/telefonu tamamlanır; kontrol hanesi tutmayan kimlik yazılmaz', () => {
+    type BT = B & { adres?: string | null; telefon?: string | null }
+    const r = cikarimBirlestir<BT>({
+      mevcut: {
+        alanlar: {}, cikarimJson: { onay: { ok: true } }, odemeler: [],
+        borclular: [
+          { adUnvan: '[Kurgusal Sürücü]', tcVkn: null, adres: null },
+          { adUnvan: '[Kurgusal İşleten]', tcVkn: '1234567890', adres: 'Kurgusal Mah.' },
+          { adUnvan: '[Kurgusal Tanık]', tcVkn: null },
+        ],
+      },
+      ai: {
+        alanlar: {}, analiz: {}, dekontlar: [],
+        borclular: [
+          { adUnvan: '[kurgusal sürücü]', tcVkn: '10000000146', adres: 'Kurgusal Sok. 1', telefon: '0500 000 00 00' },
+          { adUnvan: '[Kurgusal İşleten]', tcVkn: '1234567890', adres: 'Başka Adres' },
+          { adUnvan: '[Kurgusal Tanık]', tcVkn: '12345678901' },
+        ],
+      },
+      simdi: SIMDI,
+    })
+    expect(r.borcluTamamlama).toEqual([{ index: 0, alanlar: { tcVkn: '10000000146', adres: 'Kurgusal Sok. 1', telefon: '0500 000 00 00' } }])
+    expect(r.yeniBorclular).toEqual([])
+    expect(r.degisti).toBe(true)
+    expect(r.cikarimJson.onay).toBeUndefined()
+  })
 })
 
 describe('dekontlar — ödeme olmaz, öneri olur', () => {
