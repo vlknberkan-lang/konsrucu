@@ -20,7 +20,7 @@ import { prisma } from '@/lib/prisma'
 import { etkinlikHatirlatmaHtml } from '@/lib/konsrucu/hatirlatma-mail'
 import { durumAsama, ASAMA_META } from '@/lib/konsrucu/asama'
 import { mailGonder } from '@/lib/konsrucu/mail'
-import { cronYetkisiz, cronTenantlar, konuTenantli, cronYanit } from '@/lib/konsrucu/cron-ortak'
+import { cronYetkisiz, cronTenantlar, konuTenantli, cronYanit, sorumluAlicilari } from '@/lib/konsrucu/cron-ortak'
 import { kalanGun } from '@/lib/konsrucu/format'
 import { sureHatirlatmalariniIsle, type SureHatirlatmaDetay } from '@/lib/konsrucu/sure/hatirlatma-gorevi'
 
@@ -86,7 +86,7 @@ async function handle(req: Request) {
       })
       const konuT = tenantlar.length > 1 ? konuTenantli(konu, t.musteriAd) : konu
       if (dry) { detay.push({ tenant: t.musteriAd, id: e.id, baslik: e.baslik, baslar: e.baslar.toISOString(), ok: true }); continue }
-      const r = await mailGonder({ to: t.alicilar, konu: konuT, html, text })
+      const r = await mailGonder({ to: sorumluAlicilari(t, e.sorumluId, d.atananKullaniciId), konu: konuT, html, text })
       if (r.ok) { await prisma.etkinlik.update({ where: { id: e.id }, data: { hatirlatmaGonderildiAt: new Date() } }); gonderilen++ }
       else hata++
       detay.push({ tenant: t.musteriAd, id: e.id, baslik: e.baslik, baslar: e.baslar.toISOString(), ok: r.ok, err: r.error })
@@ -98,6 +98,7 @@ async function handle(req: Request) {
         musteriId: t.musteriId,
         musteriAd: t.musteriAd,
         alicilar: t.alicilar,
+        aliciSec: (...adaylar) => sorumluAlicilari(t, ...adaylar),
         aliciAd: t.aliciAd,
         konuEki: tenantlar.length > 1 ? (k) => konuTenantli(k, t.musteriAd) : undefined,
         simdi: now,

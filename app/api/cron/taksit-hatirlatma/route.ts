@@ -13,7 +13,7 @@ import { HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
 import { prisma } from '@/lib/prisma'
 import { taksitHatirlatmaHtml } from '@/lib/konsrucu/taksit-mail'
 import { mailGonder } from '@/lib/konsrucu/mail'
-import { cronYetkisiz, cronTenantlar, konuTenantli, cronYanit } from '@/lib/konsrucu/cron-ortak'
+import { cronYetkisiz, cronTenantlar, konuTenantli, cronYanit, sorumluAlicilari } from '@/lib/konsrucu/cron-ortak'
 import { kalanGun as kalanGunIst } from '@/lib/konsrucu/format'
 
 export const dynamic = 'force-dynamic'
@@ -99,7 +99,7 @@ async function handle(req: Request) {
       const konuT = tenantlar.length > 1 ? konuTenantli(konu, tn.musteriAd) : konu
 
       if (dry) { detay.push({ tenant: tn.musteriAd, id: t.id, tur, sira: t.sira, vade: t.vadeTarihi.toISOString(), ok: true }); continue }
-      const r = await mailGonder({ to: tn.alicilar, konu: konuT, html, text })
+      const r = await mailGonder({ to: sorumluAlicilari(tn, t.plan.dosya.atananKullaniciId), konu: konuT, html, text })
       if (r.ok) {
         await prisma.taksit.update({
           where: { id: t.id },

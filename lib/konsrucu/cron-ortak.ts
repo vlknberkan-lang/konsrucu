@@ -27,7 +27,24 @@ export type CronTenant = {
   musteriAd: string
   alicilar: string[]
   aliciAd: string
-  uyeler: { eposta: string; ad: string }[] // kişi-bazlı (birleşik) mailler için: alıcı adını e-postadan çöz
+  uyeler: { id: string; eposta: string; ad: string; rol: string }[] // kişi-bazlı mailler: alıcı adı + sorumlu seçimi
+  /** ?to= test alıcısı verildi mi (sorumluAlicilari o zaman yalnız test adresini döner). */
+  test: boolean
+}
+
+/**
+ * Tek işe ait hatırlatmanın alıcısı (29.09 sadeleştirme: "3 kişiye gidiyor, işi biri yapıyor"): verilen
+ * adaylardan (ör. etkinliğin sorumlusu, dosyanın atananı) ilk AKTİF üye; yoksa şirketin avukatları (ADMIN/AVUKAT);
+ * o da yoksa eski davranış (tüm ekip / RAPOR_ALICI). Test (?to=) çağrısında yalnız test adresi.
+ */
+export function sorumluAlicilari(t: CronTenant, ...adaylar: (string | null | undefined)[]): string[] {
+  if (t.test) return t.alicilar
+  for (const id of adaylar) {
+    const u = id ? t.uyeler.find((x) => x.id === id) : undefined
+    if (u) return [u.eposta]
+  }
+  const avukatlar = t.uyeler.filter((u) => u.rol === Rol.ADMIN || u.rol === Rol.AVUKAT).map((u) => u.eposta)
+  return avukatlar.length ? avukatlar : t.alicilar
 }
 
 /**
@@ -46,7 +63,7 @@ export async function cronTenantlar(override?: string | null): Promise<CronTenan
       ad: true,
       kullanicilar: {
         where: { kullanici: { aktif: true } },
-        select: { kullanici: { select: { eposta: true, ad: true, rol: true, createdAt: true } } },
+        select: { kullanici: { select: { id: true, eposta: true, ad: true, rol: true, createdAt: true } } },
       },
     },
   })
@@ -56,7 +73,7 @@ export async function cronTenantlar(override?: string | null): Promise<CronTenan
     const admin = uyeler.find((u) => u.rol === Rol.ADMIN)
     const alicilar = override ? [override] : ekipMail.length ? ekipMail : process.env.RAPOR_ALICI ? [process.env.RAPOR_ALICI] : []
     const aliciAd = alicilar.length > 1 ? 'Ekip' : (admin?.ad ?? uyeler[0]?.ad)?.split(/\s+/)[0] || 'Avukat'
-    return { musteriId: m.id, musteriAd: m.ad, alicilar, aliciAd, uyeler: uyeler.flatMap((u) => (u.eposta ? [{ eposta: u.eposta, ad: u.ad }] : [])) }
+    return { musteriId: m.id, musteriAd: m.ad, alicilar, aliciAd, test: !!override, uyeler: uyeler.flatMap((u) => (u.eposta ? [{ id: u.id, eposta: u.eposta, ad: u.ad, rol: u.rol as string }] : [])) }
   })
 }
 

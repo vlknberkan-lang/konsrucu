@@ -38,6 +38,8 @@ export type SureHatirlatmaGirdi = {
   musteriId: string
   musteriAd: string
   alicilar: string[]
+  /** Süre başına alıcı (sorumlu → dosyanın atananı → avukat). Verilmezse `alicilar`. */
+  aliciSec?: (...adaylar: (string | null | undefined)[]) => string[]
   aliciAd: string
   /** Birden çok tenant varsa konuya tenant adı eklenir (etkinlik hatırlatmasıyla aynı). */
   konuEki?: (konu: string) => string
@@ -50,9 +52,9 @@ export type SureHatirlatmaGirdi = {
 }
 
 const SURE_HATIRLATMA_SELECT = {
-  id: true, dosyaId: true, borcluId: true, tur: true, dayanak: true, durum: true, silindiAt: true,
+  id: true, dosyaId: true, borcluId: true, tur: true, dayanak: true, durum: true, silindiAt: true, sorumluId: true,
   onaylananSonGun: true, onerilenIhtiyatli: true, hatirlatmaJson: true,
-  dosya: { select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true, icraDosyaNo: true, durum: true, uyapDurum: true } },
+  dosya: { select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true, icraDosyaNo: true, durum: true, uyapDurum: true, atananKullaniciId: true } },
 } satisfies Prisma.SureSelect
 
 export async function sureHatirlatmalariniIsle(g: SureHatirlatmaGirdi): Promise<SureHatirlatmaSonucu> {
@@ -115,7 +117,7 @@ export async function sureHatirlatmalariniIsle(g: SureHatirlatmaGirdi): Promise<
       konsolaDusenler.push(s.id)
       sonuc.detay.push({ ...temelDetay, ok: false, kip: kip.kip, err: 'console kipi: gönderilmedi' })
     } else {
-      const r = await mailGonder({ to: g.alicilar, konu, html: mail.html, text: mail.text })
+      const r = await mailGonder({ to: g.aliciSec ? g.aliciSec(s.sorumluId, s.dosya.atananKullaniciId) : g.alicilar, konu, html: mail.html, text: mail.text })
       kayit = { esik: karar.esik, hedef: karar.hedef, kaynak: karar.kaynak, at: simdi.toISOString(), kip: kip.kip, gonderildi: r.ok, ...(r.ok ? {} : { hata: (r.error ?? 'bilinmeyen hata').slice(0, 300) }) }
       if (r.ok) sonuc.gonderilen++
       else sonuc.hata++

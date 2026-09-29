@@ -137,7 +137,7 @@ export function haftalikRaporHtml(g: RaporGirdi): { konu: string; html: string; 
   const zaGectiEk = zaGecti.length ? ` · ⛔ ${zaGecti.length} zamanaşımı geçti` : ''
   const konu = cok
     ? `Sabah Özeti · ${pencere.length} etkinlik (${bolumSayilar.map((b) => `${b.etiket} ${b.adet}`).join(' · ')})${zaGectiEk} · ${tarihAraligi}`
-    : `Haftalık Takvim · ${pencere.length} etkinlik${zaGectiEk} · ${tarihAraligi}${g.bolumler[0]?.musteriAd ? ` · ${g.bolumler[0].musteriAd}` : ''}`
+    : `${gunSayisi >= 7 ? 'Haftalık Takvim' : 'Sabah Özeti'} · ${pencere.length} etkinlik${zaGectiEk} · ${tarihAraligi}${g.bolumler[0]?.musteriAd ? ` · ${g.bolumler[0].musteriAd}` : ''}`
 
   const etiketHtml = (e: Ek) => (e.etiket ? `<span style="display:inline-block;background:${e.renk.bg};color:${e.renk.fg};font-size:10.5px;font-weight:bold;padding:1px 8px;border-radius:999px;white-space:nowrap;">${esc(e.etiket)}</span>` : '')
 
@@ -212,7 +212,7 @@ export function haftalikRaporHtml(g: RaporGirdi): { konu: string; html: string; 
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid ${BORDER};font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
         <tr><td style="background:${AKSAN};padding:20px 24px;">
           <div style="color:#bdeef1;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;font-family:monospace;">KonsRücu · Ajanda</div>
-          <div style="color:#ffffff;font-size:22px;font-weight:800;margin-top:4px;">${cok ? 'Sabah Özeti' : 'Haftalık Takvim Raporu'}</div>
+          <div style="color:#ffffff;font-size:22px;font-weight:800;margin-top:4px;">${cok || gunSayisi < 7 ? 'Sabah Özeti' : 'Haftalık Takvim Raporu'}</div>
           <div style="color:#d7f3f5;font-size:13px;margin-top:4px;">${esc(aralik)}${cok ? ` · ${g.bolumler.map((b) => esc(b.musteriAd ?? '—')).join(' + ')}` : ''}</div>
         </td></tr>
         <tr><td style="padding:20px 24px 4px;">
@@ -230,7 +230,7 @@ export function haftalikRaporHtml(g: RaporGirdi): { konu: string; html: string; 
           <a href="${esc(g.panelUrl)}" style="display:inline-block;background:${AKSAN};color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 18px;border-radius:10px;">Takvimi aç →</a>
         </td></tr>` : ''}
         <tr><td style="background:#f8fafc;border-top:1px solid ${BORDER};padding:14px 24px;">
-          <div style="font-size:11.5px;color:${MUTED};">Bu otomatik rapor her sabah 07:00'de gönderilir · <a href="mailto:info@konstraerp.com" style="color:${AKSAN};text-decoration:none;">info@konstraerp.com</a></div>
+          <div style="font-size:11.5px;color:${MUTED};">Pazartesi 07:00'de haftalık tam özet; diğer sabahlar yalnız bugün ve yarının işleri (iş yoksa gönderilmez) · <a href="mailto:info@konstraerp.com" style="color:${AKSAN};text-decoration:none;">info@konstraerp.com</a></div>
         </td></tr>
       </table>
     </td></tr>
@@ -248,7 +248,7 @@ export function haftalikRaporHtml(g: RaporGirdi): { konu: string; html: string; 
   const textZa = za.length ? `\n\nYAKLAŞAN ZAMANAŞIMI (${za.length}):\n` + zaGoster.map((z) => `  ${z.borclu ?? z.hukukNo ?? '—'} · ${z.hukukNo ?? ''} · ${tarihTR(z.tarih)} (${z.kalanGun}g)${tag(z)}`).join('\n') + (zaKalan > 0 ? `\n  … ve ${zaKalan} dosya daha (panelde)` : '') : ''
   const textZaGecti = zaGecti.length ? `\n\n⛔ ZAMANAŞIMI GEÇTİ — TAKİP AÇILMAMIŞ (${zaGecti.length}):\n` + zaGectiGoster.map((z) => `  ${z.borclu ?? z.hukukNo ?? '—'} · ${z.hukukNo ?? ''} · ${tarihTR(z.tarih)} (${Math.abs(z.kalanGun)}g önce)${tag(z)}`).join('\n') + (zaGectiKalan > 0 ? `\n  … ve ${zaGectiKalan} dosya daha (panelde)` : '') : ''
   const textZaBos = zaBosNot.length ? `\n\nUYARI: ${zaBosNot.map((b) => (cok ? `${b.etiket}: ${b.zaBos}` : `${b.zaBos}`)).join(', ')} açık dosyada zamanaşımı tarihi boş — bu dosyalar zamanaşımı radarının DIŞINDA.` : ''
-  const text = `Günaydın ${g.aliciAd},\nÖnümüzdeki ${gunSayisi} günde ${pencere.length} etkinlik${cok ? ` (${bolumSayilar.map((b) => `${b.etiket} ${b.adet}`).join(' · ')})` : ''}.\n${aralik}${textZaGecti}\n\n${textGun}${textZa}${textZaBos}\n\n—\nBu otomatik rapor her sabah 07:00'de gönderilir · info@konstraerp.com`
+  const text = `Günaydın ${g.aliciAd},\nÖnümüzdeki ${gunSayisi} günde ${pencere.length} etkinlik${cok ? ` (${bolumSayilar.map((b) => `${b.etiket} ${b.adet}`).join(' · ')})` : ''}.\n${aralik}${textZaGecti}\n\n${textGun}${textZa}${textZaBos}\n\n—\nPazartesi 07:00'de haftalık tam özet; diğer sabahlar yalnız bugün ve yarının işleri · info@konstraerp.com`
 
   return { konu, html, text }
 }

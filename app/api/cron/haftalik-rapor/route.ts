@@ -40,8 +40,13 @@ async function handle(req: Request) {
 
   const simdi = new Date()
   const bas = bugunIstBasi(simdi)
-  const son = new Date(bas.getTime() + 7 * 86_400_000)
-  const zaSon = new Date(bas.getTime() + 30 * 86_400_000)
+  // Sadeleştirme (29.09 — "aynı liste 7 sabah üst üste geliyor"): PAZARTESİ tam özet (7 gün etkinlik, 30 gün
+  // zamanaşımı, geçmiş ve tarihsiz); diğer günler yalnız bugün+yarın etkinlikleri ve 7 gün içinde dolan zamanaşımı,
+  // o da boşsa mail GİTMEZ. ?tam=1 her gün tam özet (test).
+  const tam = new URL(req.url).searchParams.get('tam') === '1' || new Date(bas.getTime() + 3 * 3_600_000).getUTCDay() === 1
+  const gunSayisi = tam ? 7 : 2
+  const son = new Date(bas.getTime() + gunSayisi * 86_400_000)
+  const zaSon = new Date(bas.getTime() + (tam ? 30 : 7) * 86_400_000)
 
   let hata = 0
   const detay: Record<string, unknown>[] = []
@@ -94,7 +99,7 @@ async function handle(req: Request) {
     const zamanasimi = zaKayit.filter((d) => d.zamanasimi && zamanasimiRadarinda(d)).map(zaSatir)
     const zamanasimiGecti = zaGectiKayit.filter((d) => d.zamanasimi && zamanasimiRadarinda(d)).map(zaSatir)
 
-    bolumler.push({ tenant: t, bolum: { musteriAd: t.musteriAd, etkinlikler, zamanasimi, zamanasimiGecti, zamanasimiBosSayisi: zaBosSayisi } })
+    bolumler.push({ tenant: t, bolum: { musteriAd: t.musteriAd, etkinlikler, zamanasimi, zamanasimiGecti: tam ? zamanasimiGecti : [], zamanasimiBosSayisi: tam ? zaBosSayisi : 0 } })
   }
 
   // 2) alıcıları kişi bazında grupla — çok şirkete üye olan tüm bölümlerini tek mailde alır
@@ -110,10 +115,12 @@ async function handle(req: Request) {
 
   // 3) kişi başına TEK mail gönder
   for (const [eposta, k] of kisiler) {
+    const bos = k.bolumler.every((b) => !b.etkinlikler.length && !(b.zamanasimi?.length ?? 0) && !(b.zamanasimiGecti?.length ?? 0))
+    if (!tam && bos) { detay.push({ alici: eposta, atlandi: 'bugün/yarın iş yok' }); continue }
     const { konu, html, text } = haftalikRaporHtml({
       aliciAd: k.ad,
       bugun: bas.toISOString(),
-      gunSayisi: 7,
+      gunSayisi,
       bolumler: k.bolumler,
       panelUrl: `${BASE}/takvim`,
     })

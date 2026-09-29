@@ -13,7 +13,7 @@
 import type { DosyaDurum } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { mailGonder } from '@/lib/konsrucu/mail'
-import { cronYetkisiz, cronTenantlar, cronYanit } from '@/lib/konsrucu/cron-ortak'
+import { cronYetkisiz, cronTenantlar, cronYanit, sorumluAlicilari } from '@/lib/konsrucu/cron-ortak'
 import { KAPALI_DURUMLAR } from '@/lib/konsrucu/aktiflik'
 import { tarihSaatTR } from '@/lib/konsrucu/format'
 
@@ -86,11 +86,16 @@ async function handle(req: Request) {
     })
 
     if (!bayat) { detay.push({ tenant: t.musteriAd, saglikli: true, sonSenkron: sonSenkron?.toISOString(), saatOnce, aktifToplam }); continue }
+    // Sadeleştirme (29.09): sorun sürdükçe her sabah değil — ilk tespit günü, sonra 3 günde bir. Hiç senkron
+    // göndermemiş şirkette haftada bir (pazartesi). ?to= test çağrısı her zaman gönderir.
+    const sustuGun = saatOnce == null ? null : Math.floor((saatOnce - esikSaat) / 24)
+    const bugunGonder = t.test || (sustuGun == null ? istGun === 1 : sustuGun % 3 === 0)
+    if (!bugunGonder) { detay.push({ tenant: t.musteriAd, uyari: true, atlandi: 'tekrar araligi', saatOnce, sustuGun }); continue }
     if (!t.alicilar.length) { hata++; detay.push({ tenant: t.musteriAd, ok: false, err: 'Alıcı bulunamadı' }); continue }
 
     const { konu, html, text } = uyariMail({ aliciAd: t.aliciAd, musteriAd: t.musteriAd, sonSenkron, saatOnce, aktifToplam, bekleyen })
     if (dry) { detay.push({ tenant: t.musteriAd, dry: true, uyari: true, sonSenkron: sonSenkron?.toISOString() ?? null, saatOnce, esikSaat, aktifToplam, bekleyen, konu }); continue }
-    const r = await mailGonder({ to: t.alicilar, konu, html, text })
+    const r = await mailGonder({ to: sorumluAlicilari(t), konu, html, text })
     if (!r.ok) hata++
     detay.push({ tenant: t.musteriAd, uyari: true, ok: r.ok, sonSenkron: sonSenkron?.toISOString() ?? null, saatOnce, aktifToplam, bekleyen, err: r.error })
   }
