@@ -161,9 +161,12 @@ export type AiCikarimVerisi = {
   yetki: KullaniciYetkisi
   /** AI çıkarım yüzeyi açık mı. Kapalıyken düğme yalnız kural ve Excel önerilerini üretir. */
   aiAcik: boolean
+  /** Görsel okuma açık mı (AI_GORSEL): taranmış belgeler düğmeyle görsel yapay zekâyla okunur. */
+  gorselAcik: boolean
   /** Metni okunmuş belge sayısı (yapay zekânın okuyabileceği). */
   metinliBelge: number
-  /** Fotoğraf dışı ama metni olmayan belge (taranmış görüntü, ör. el yazılı tutanak): yapay zekâ okumaz. */
+  /** Metni olmayan, henüz incelenmemiş belge. Görsel AI açıkken bütün görüntü ve PDF'ler (düğme hepsine bakar);
+   *  kapalıyken yalnız fotoğraf dışı olanlar (taranmış görüntü, ör. el yazılı tutanak). */
   metinsizBelge: number
   /** Son başarılı yapay zekâ çıkarımı (eski ya da yeni ekrandan). */
   sonCalisma: { at: string; kim: string | null } | null

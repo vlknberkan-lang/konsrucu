@@ -24,8 +24,8 @@ import { davaPaneli } from '@/lib/konsrucu/dava/veri'
 import { dilekceV2Acik } from '@/lib/konsrucu/dilekce-v2/bayrak'
 import { dilekceV2Ozeti } from '@/lib/konsrucu/dilekce-v2/kart-veri'
 
-/** "Belgelerden yeniden bul" yapay zekâ çıkarımını bu sayfanın sunucu eyleminde çalıştırır (model çağrısı uzun sürer). */
-export const maxDuration = 120
+/** "AI ile Çıkarım Yap" bu sayfanın sunucu eyleminde çalışır: taranmış belgelerin görsel okuması (≤110 sn) + çıkarım. */
+export const maxDuration = 300
 
 /** Eylem çapası (EYLEM_CAPA değeri, "yh-" öneki hariç) → durağı ("Bağla" aşaması; 06 §2). */
 const CAPA_DURAK: Record<string, DurakNo> = {

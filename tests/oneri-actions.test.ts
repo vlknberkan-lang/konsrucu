@@ -179,7 +179,7 @@ describe('kural önerileri ve kişisel veri', () => {
     m.dosyaTek.mockResolvedValue({ rucuSebebi: 'Hizmet kusuru', brans: 'KASKO', rucuTutari: null, hasarTarihi: null, kaynakJson: { kaynak: 'hugo' } })
     m.dosyaSayfalari.mockResolvedValue([{ belgeId: 'b', sayfaNo: 1, metin: 'Poliçe No: KRG-1234', kategori: 'POLICE', altTur: null }])
     const r = await kuralOnerileriniUretEylem({ dosyaId })
-    expect(r).toEqual({ ok: true, eklenen: 2, atlanan: 1, kaynaksiz: 0, ai: 'KAPALI', aiHata: null, yeniBorclu: 0, yazilanAlan: 0 })
+    expect(r).toEqual({ ok: true, eklenen: 2, atlanan: 1, kaynaksiz: 0, ai: 'KAPALI', aiHata: null, yeniBorclu: 0, yazilanAlan: 0, gorsel: '', gorselKapali: true })
     const oneriler = m.onerileriKaydet.mock.calls[0][2] as { alan: string; kaynakTuru: string }[]
     expect(oneriler.map((o) => [o.alan, o.kaynakTuru])).toEqual([['policeNo', 'KURAL'], ['rucuSebebiKod', 'HUGO']])
     expect(m.aiYaz).not.toHaveBeenCalled()
@@ -197,6 +197,17 @@ describe('kural önerileri ve kişisel veri', () => {
     expect(oneriler.map((o) => [o.alan, o.kaynakTuru])).toContainEqual(['asilAlacak', 'AI'])
     expect(m.aiYaz).toHaveBeenCalledWith(expect.anything(), dosyaId, analiz)
     expect(m.aktivite).toHaveBeenCalledWith({ data: expect.objectContaining({ eylem: expect.stringMatching(/yapay zekâ: 1 öneri.*onay sıfırlandı/) }) })
+  })
+
+  it("taranmış belgelerin görsel okuması sonuca ve Aktivite'ye yazılır", async () => {
+    const analiz = { yol: 'klasik', yolGuven: 0.9, borclular: [], aciklama: 'Kurgusal', olayBaglami: '', teyit: [] }
+    const gorsel = { durum: 'TAMAM', bakilan: 0, okunan: 2, tutanak: 1, fotoAyrilan: 15, kvkkAtlanan: 0, hatali: 0, kalan: 0, hata: null }
+    m.aiCalistir.mockResolvedValue({ durum: 'TAMAM', oneriler: [], analiz, uyari: null, gorselNotu: '', gorsel })
+    m.aiYaz.mockResolvedValue({ yazilanAlanlar: [], yeniBorclu: 1, farkliDeger: 0, onayDustu: false })
+    m.dosyaTek.mockResolvedValue({ rucuSebebi: null, brans: null, rucuTutari: null, hasarTarihi: null, kaynakJson: null })
+    const r = await kuralOnerileriniUretEylem({ dosyaId })
+    expect(r).toMatchObject({ ok: true, gorselKapali: false, gorsel: '2 taranmış belge görsel yapay zekâyla okundu (1 tutanak), 15 görüntü hasar fotoğrafı çıktı' })
+    expect(m.aktivite).toHaveBeenCalledWith({ data: expect.objectContaining({ eylem: expect.stringContaining('2 taranmış belge görsel yapay zekâyla okundu (1 tutanak)') }) })
   })
 
   it('yapay zekâ hata verirse kural önerileri yine kaydedilir ve hata kullanıcıya döner', async () => {

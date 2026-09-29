@@ -28,7 +28,7 @@ const MODEL_FIYAT: Record<string, [number, number]> = {
   'claude-sonnet-4-6': [3, 15],
   // Opus sınıfı (dilekçe v2 kart ve birleştirici) — liste fiyatı $/MTok, teyit edilmeli
   'claude-opus-4-8': [5, 25],
-  'claude-opus-5-5': [5, 25],
+  'claude-opus-5-5': [4, 20],
   'claude-haiku-4-5-20251001': [1, 5],
   'claude-haiku-4-5': [1, 5],
 }

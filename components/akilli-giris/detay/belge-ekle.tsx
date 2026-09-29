@@ -55,15 +55,18 @@ export function BelgeEkle({ dosyaId, compact = false, otomatikBul = false }: { d
       router.refresh()
 
       const notlar: string[] = []
-      if (otomatikBul && belgeler.some((b) => b.extractedText)) {
-        setFaz('Belgelerden bilgiler bulunuyor (bir dakika kadar sürebilir)'); setPct(-1); setAktif('')
+      // metinli belge ya da taranmış görüntü geldiyse (görsel AI açıksa okunur); yalnız fotoğraf model çağırmaz
+      let gorselKapali = true
+      if (otomatikBul && belgeler.some((b) => b.extractedText || b.ocrGerekli)) {
+        setFaz('Belgelerden bilgiler bulunuyor (birkaç dakika sürebilir)'); setPct(-1); setAktif('')
         const b = await kuralOnerileriniUretEylem({ dosyaId }).catch((e) => ({ ok: false as const, error: (e as Error).message }))
-        notlar.push(b.ok ? bulMesaji(b) : `Belgeler eklendi ama bilgiler bulunamadı (${b.error}). "Belgelerden yeniden bul" ile tekrar deneyin.`)
+        notlar.push(b.ok ? bulMesaji(b) : `Belgeler eklendi ama bilgiler bulunamadı (${b.error}). "AI ile Çıkarım Yap" ile tekrar deneyin.`)
+        if (b.ok) gorselKapali = b.gorselKapali
         router.refresh()
       }
       // taranmış görüntü (dikey A4 oranlı resim): metni yok, yapay zekâya da gitmez (görsel KVKK kapısı)
       const taranan = belgeler.filter((b) => b.ocrGerekli && !b.extractedText).length
-      if (taranan) notlar.push(`${taranan} taranmış görüntü (ör. el yazılı kaza tespit tutanağı) metne çevrilemedi; yapay zekâ bunları okumaz. Evrak listesinde belgeyi açıp türünü seçin, borçlu bilgisini tutanaktan elle girin.`)
+      if (taranan && gorselKapali) notlar.push(`${taranan} taranmış görüntü (ör. el yazılı kaza tespit tutanağı) metne çevrilemedi; yapay zekâ bunları okumaz. Evrak listesinde belgeyi açıp türünü seçin, borçlu bilgisini tutanaktan elle girin.`)
       setBilgi(notlar.join(' ') || null)
     } catch (e) {
       setErr('İşleme hatası: ' + (e as Error).message)

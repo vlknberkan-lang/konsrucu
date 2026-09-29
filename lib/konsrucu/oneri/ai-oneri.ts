@@ -1,7 +1,9 @@
 /**
  * KonsRücü — "Belgelerden yeniden bul"un yapay zekâ ayağı · lib/konsrucu/oneri/ai-oneri.ts  (sunucu)
  *
- * AI_YUZEY_CIKARIM açıkken dosyanın belge metni maskeli ve görselsiz olarak analizEt'e gider. Sonuç üç yola ayrılır:
+ * AI_YUZEY_CIKARIM açıkken dosyanın belge metni maskeli ve görselsiz olarak analizEt'e gider. Önce, görsel AI
+ * açıksa (AI_GORSEL), metni olmayan taranmış belgeler bir kez görsel okumadan geçer (evrak-metin/ai-okuma): el
+ * yazısı dahil metinleri belgeye yazılır ve analizEt'e öteki metinlerle birlikte, maskeli gider. Sonuç üç yola ayrılır:
  *   - Kart alanları (branş, plakalar, kaza yeri, tutarlar, oran, dekontlar) AlanDegeri ÖNERİSİ olur (aiOnerileri);
  *     kolona yazılmaz, kritikleri avukat onaylar.
  *   - Kartta olmayanlar (takip açıklaması, oluş şekli, kusur, sigortalı, il, triyaj yolu) eski çıkarım gibi yalnız
@@ -18,18 +20,24 @@ import { gorselAdaylari, gorselAktiviteMetni } from '@/lib/ai/gorsel-aday'
 import { mentorKurallariMetne, mentorKurallariOku } from '@/lib/konsrucu/mentor-kural'
 import { cikarimBirlestir } from '@/lib/konsrucu/cikarim-birlestir'
 import { ALAN_SELECT, alanVerisi, cikarimMetni, mevcutAlanlar, rolDb } from '@/lib/konsrucu/cikarim-yaz'
+import { taranmisBelgeleriOku, type GorselOkumaOzeti } from '@/lib/konsrucu/evrak-metin/ai-okuma'
 import { aiDigerAlanlari, aiOnerileri, rucuOraniTuret } from './kaynaklar'
 import type { YeniOneri } from './tipler'
 
 export type AiOneriSonucu =
   | { durum: 'KAPALI' }
-  | { durum: 'METIN_YOK' }
-  | { durum: 'HATA'; hata: string }
-  | { durum: 'TAMAM'; oneriler: YeniOneri[]; analiz: AnalizSonuc; uyari: string | null; gorselNotu: string }
+  | { durum: 'METIN_YOK'; gorsel: GorselOkumaOzeti | null }
+  | { durum: 'HATA'; hata: string; gorsel?: GorselOkumaOzeti | null }
+  | { durum: 'TAMAM'; oneriler: YeniOneri[]; analiz: AnalizSonuc; uyari: string | null; gorselNotu: string; gorsel: GorselOkumaOzeti | null }
+
+/** Görsel okumaya ayrılan süre: sayfanın maxDuration'ı (300 sn) içinde analizEt'e yer kalsın. */
+const GORSEL_BUTCE_MS = 110_000
 
 /** Yüzey kapalıysa hiçbir şey göndermez. Belge metni yoksa model çağrılmaz. Hata fırlatmaz; durumu döndürür. */
 export async function aiOneriCalistir(dosyaId: string): Promise<AiOneriSonucu> {
   if (!yuzeyAcik('cikarim')) return { durum: 'KAPALI' }
+  // taranmış belge (el yazılı tutanak …) önce metne çevrilir; görsel AI kapalıysa hiçbir şey gönderilmez
+  const gorsel = await taranmisBelgeleriOku(dosyaId, { butceMs: GORSEL_BUTCE_MS })
   const dosya = await prisma.rucuDosyasi.findUnique({
     where: { id: dosyaId },
     select: {
@@ -38,11 +46,12 @@ export async function aiOneriCalistir(dosyaId: string): Promise<AiOneriSonucu> {
       borclular: { select: { adUnvan: true, tcVkn: true, telefon: true }, orderBy: { id: 'asc' } },
     },
   })
-  if (!dosya) return { durum: 'HATA', hata: 'Dosya bulunamadı.' }
+  if (!dosya) return { durum: 'HATA', hata: 'Dosya bulunamadı.', gorsel }
   const metin = cikarimMetni(dosya.belgeler)
-  if (!metin) return { durum: 'METIN_YOK' }
+  if (!metin) return { durum: 'METIN_YOK', gorsel }
   // Görseller gitmez (S02/S09): not yalnız Aktivite'deki "N görsel KVKK nedeniyle atlandı" satırı için.
-  const gorselNotu = gorselAktiviteMetni(gorselAdaylari(dosya.belgeler, { gorselAcik: false }), 0)
+  // görsel okuma kapalıysa "N görsel KVKK nedeniyle atlandı" notu; açıksa görseller okuma adımında işlendi
+  const gorselNotu = gorsel.durum === 'KAPALI' ? gorselAktiviteMetni(gorselAdaylari(dosya.belgeler, { gorselAcik: false }), 0) : ''
 
   const [ayarlar, mentorKurallar] = await Promise.all([
     prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { aciklamaFooter: true, alacakliUnvan: true } }),
@@ -64,11 +73,11 @@ export async function aiOneriCalistir(dosyaId: string): Promise<AiOneriSonucu> {
   })
   if (!analiz) {
     const neden = hata as string | null
-    if (neden === KVKK_KAPALI_MESAJI) return { durum: 'HATA', hata: neden }
-    return { durum: 'HATA', hata: neden ? `Yapay zekâ çıkarımı başarısız: ${neden}` : 'Yapay zekâ çıkarımı sonuç vermedi (model yanıtı boş).' }
+    if (neden === KVKK_KAPALI_MESAJI) return { durum: 'HATA', hata: neden, gorsel }
+    return { durum: 'HATA', hata: neden ? `Yapay zekâ çıkarımı başarısız: ${neden}` : 'Yapay zekâ çıkarımı sonuç vermedi (model yanıtı boş).', gorsel }
   }
   const oneriler = aiOnerileri({ ...analiz, rucuOrani: rucuOraniTuret(analiz.asilAlacak, analiz.rucuTutari, analiz.rucuOrani) })
-  return { durum: 'TAMAM', oneriler, analiz, uyari: uyari as string | null, gorselNotu }
+  return { durum: 'TAMAM', oneriler, analiz, uyari: uyari as string | null, gorselNotu, gorsel }
 }
 
 export type AiYazimSonucu = { yazilanAlanlar: string[]; yeniBorclu: number; farkliDeger: number; onayDustu: boolean }

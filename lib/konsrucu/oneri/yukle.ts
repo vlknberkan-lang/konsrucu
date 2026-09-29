@@ -11,7 +11,7 @@
 import 'server-only'
 import { prisma } from '@/lib/prisma'
 import { ctx } from '@/lib/konsrucu/db'
-import { yuzeyAcik } from '@/lib/ai/bayrak'
+import { gorselAiAcik, yuzeyAcik } from '@/lib/ai/bayrak'
 import { rucuSebebiKoduMu, type RucuSebebiKodu } from '@/lib/konsrucu/rucu-sebebi'
 import { kullaniciYetkisi } from './karar'
 import { listeKaynagi } from './kaynaklar'
@@ -50,6 +50,20 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
   if (!dosya) return null
 
   const bizimBelge = { dosyaId, silindiAt: null, kaynakRef: null }
+  const gorselAcik = gorselAiAcik()
+  // İncelenmeyi bekleyen: metni yok ve görsel okumadan geçmemiş (AI_OKUMA/GEREKSIZ/KVKK_ATLANDI/OKUNAMADI değil).
+  // Görsel AI açıksa her görüntü ve PDF (yerelde "Hasar fotoğrafı" sayılan yatay tutanak dahil) okumaya aday;
+  // kapalıyken yalnız fotoğraf dışı olanlar sayılır (kartta "okunmuyor" uyarısı).
+  const bekleyenOkuma = {
+    ...bizimBelge, extractedText: null, NOT: { storagePath: '' },
+    AND: [
+      { OR: [{ metinDurumu: null }, { metinDurumu: 'BEKLIYOR' }] },
+      { OR: [{ aiIzni: null }, { aiIzni: { not: 'YASAK' } }] },
+      gorselAcik
+        ? { OR: ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf'].map((u) => ({ dosyaAdi: { endsWith: u, mode: 'insensitive' as const } })) }
+        : { kategori: { not: 'HASAR_FOTO' as const } },
+    ],
+  }
   const [satirlarHam, ayarlar, metinliBelge, metinsizBelge, sonAi] = await Promise.all([
     prisma.alanDegeri.findMany({
       where: { dosyaId, silindiAt: null, durum: { in: ['ONERI', 'ONAYLI'] } },
@@ -62,7 +76,7 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
     }),
     prisma.ayarlar.findUnique({ where: { musteriId: dosya.musteriId }, select: { vekilAd: true } }),
     prisma.belge.count({ where: { ...bizimBelge, extractedText: { not: null } } }),
-    prisma.belge.count({ where: { ...bizimBelge, extractedText: null, kategori: { not: 'HASAR_FOTO' } } }),
+    prisma.belge.count({ where: bekleyenOkuma }),
     sonAiCikarimi(dosyaId),
   ])
   const satirlar = satirlarHam as PanelSatiri[]
@@ -85,7 +99,7 @@ export async function oneriPaneliYukle(dosyaId: string): Promise<OneriPaneli | n
 
   return {
     aiCikarim: aiCikarimKur({
-      dosyaId, yetki, aiAcik: yuzeyAcik('cikarim'), cikarimJson: dosya.cikarimJson,
+      dosyaId, yetki, aiAcik: yuzeyAcik('cikarim'), gorselAcik, cikarimJson: dosya.cikarimJson,
       yol: dosya.yol, yolGuven: dosya.yolGuven, yolNeden: dosya.yolNeden, metinliBelge, metinsizBelge,
       sonCalisma: sonAi ? { at: sonAi.createdAt, kim: sonAi.kullanici?.ad ?? null } : null,
     }),

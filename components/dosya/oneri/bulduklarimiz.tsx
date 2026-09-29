@@ -124,14 +124,17 @@ type BulSonucu = Extract<Awaited<ReturnType<typeof kuralOnerileriniUretEylem>>, 
 
 /** "Belgelerden yeniden bul" sonucunu tek cümleye çevirir (yapay zekâ adımı dahil). Evrak yüklemesi de kullanır. */
 export function bulMesaji(r: BulSonucu): string {
-  let m = r.eklenen ? `${r.eklenen} yeni öneri bulundu${r.kaynaksiz ? `, ${r.kaynaksiz} tanesi kaynaksız` : ''}.` : 'Yeni öneri çıkmadı; mevcut öneriler yerinde.'
+  let m = r.gorsel ? `${r.gorsel.charAt(0).toLocaleUpperCase('tr-TR')}${r.gorsel.slice(1)}. ` : ''
+  m += r.eklenen ? `${r.eklenen} yeni öneri bulundu${r.kaynaksiz ? `, ${r.kaynaksiz} tanesi kaynaksız` : ''}.` : 'Yeni öneri çıkmadı; mevcut öneriler yerinde.'
   if (r.ai === 'TAMAM') {
     const ek = [r.yazilanAlan ? `${r.yazilanAlan} boş alanı doldurdu` : '', r.yeniBorclu ? `${r.yeniBorclu} borçlu ekledi (teyit gerek)` : ''].filter(Boolean)
     m += ` Yapay zekâ belgeleri okudu${ek.length ? `; ${ek.join(', ')}` : ''}.`
   } else if (r.ai === 'HATA') {
     m += ` Yapay zekâ çalışmadı (${r.aiHata}); yalnız kural ve Excel önerileri eklendi.`
   } else if (r.ai === 'METIN_YOK') {
-    m += ' Yapay zekânın okuyacağı belge metni yok: fotoğraf ve taranmış görüntüler (ör. el yazılı tutanak) okunmuyor.'
+    m += r.gorselKapali
+      ? ' Yapay zekânın okuyacağı belge metni yok: fotoğraf ve taranmış görüntüler (ör. el yazılı tutanak) okunmuyor.'
+      : ' Yapay zekânın okuyacağı belge metni yok.'
   }
   return m
 }

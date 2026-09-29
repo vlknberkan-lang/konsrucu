@@ -42,6 +42,8 @@ export type AiIstek = {
   arac?: { ad: string; aciklama: string; sema: Anthropic.Tool.InputSchema }
   /** false: yanıt geri AÇILMAZ (ör. dış servise gidecek arama ifadesi). Varsayılan true. */
   geriAc?: boolean
+  /** output_config.effort (yeni modeller). Verilmezse modelin varsayılanı. */
+  efor?: 'low' | 'medium' | 'high'
 }
 
 export type AiYanit = {
@@ -237,6 +239,7 @@ export class AiOturumu {
       max_tokens: istek.maxTokens,
       system: `${istek.sistem}${sistemEk ? `\n${sistemEk}` : ''}${aracTalimati}\n\n${GUVENLIK_BLOGU}`,
       messages: [{ role: 'user', content: bloklar }],
+      ...(istek.efor ? { output_config: { effort: istek.efor } } : {}),
       ...(istek.arac
         ? {
             tools: [{ name: istek.arac.ad, description: istek.arac.aciklama, input_schema: istek.arac.sema }],

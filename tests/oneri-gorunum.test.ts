@@ -161,7 +161,7 @@ describe('yetkiliIcraKur', () => {
 })
 
 describe('aiCikarimKur', () => {
-  const temel = { dosyaId: 'd1', yetki: AVUKAT, aiAcik: true, yol: 'KLASIK', yolGuven: 0.82, metinliBelge: 7, metinsizBelge: 20 }
+  const temel = { dosyaId: 'd1', yetki: AVUKAT, aiAcik: true, gorselAcik: true, yol: 'KLASIK', yolGuven: 0.82, metinliBelge: 7, metinsizBelge: 20 }
 
   it('cikarimJson özetini karta çevirir; serbest metindeki TCKN ve telefon maskelenir', () => {
     const v = aiCikarimKur({

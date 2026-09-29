@@ -21,6 +21,7 @@ import { kullaniciYetkisi, KARAR_YETKI_YOK, YETKI_YOK } from '@/lib/konsrucu/one
 import { kuralCikar } from '@/lib/konsrucu/oneri/kural-cikarici'
 import { hugoOnerileri } from '@/lib/konsrucu/oneri/kaynaklar'
 import { aiOneriCalistir, aiSonucunuYaz, type AiOneriSonucu, type AiYazimSonucu } from '@/lib/konsrucu/oneri/ai-oneri'
+import { gorselOkumaMetni } from '@/lib/konsrucu/evrak-metin/ai-okuma-cozum'
 import { yetkiliIcraSecenekleri } from '@/lib/konsrucu/oneri/yetkili-icra'
 import {
   dosyaSayfalari, elleOnayla, oneriOnayla, oneriReddet, onerileriKaydet, OneriHata, tekilIhlalMi, topluOnayla,
@@ -150,6 +151,8 @@ type BulSonucu = {
   eklenen: number; atlanan: number; kaynaksiz: number
   /** Yapay zekâ adımı: KAPALI (yüzey kapalı) · METIN_YOK · HATA · TAMAM */
   ai: AiOneriSonucu['durum']; aiHata: string | null; yeniBorclu: number; yazilanAlan: number
+  /** Taranmış belge görsel okuması: özet cümlesi (okuma olmadıysa boş) ve görsel AI kapalı mı. */
+  gorsel: string; gorselKapali: boolean
 }
 
 /**
@@ -178,6 +181,7 @@ export async function kuralOnerileriniUretEylem(input: z.input<typeof dosyaGirdi
           detayJson: {
             tur: 'KURAL_ONERI', sayfa: sayfalar.length, ...s, ai: ai.durum,
             ...(ai.durum === 'TAMAM' ? { aiOneri: ai.oneriler.length, acilamayanJeton: !!ai.uyari } : {}),
+            ...(gorselOzeti(ai) ? { gorselOkuma: gorselOzeti(ai) } : {}),
             ...(y ? { yazilan: y.yazilanAlanlar, yeniBorclu: y.yeniBorclu, farkliDeger: y.farkliDeger } : {}),
           } as Prisma.InputJsonValue,
         },
@@ -189,15 +193,20 @@ export async function kuralOnerileriniUretEylem(input: z.input<typeof dosyaGirdi
       ok: true, eklenen: r.s.eklenen, atlanan: r.s.atlanan, kaynaksiz: r.s.kaynaksiz,
       ai: ai.durum, aiHata: ai.durum === 'HATA' ? ai.hata : null,
       yeniBorclu: r.y?.yeniBorclu ?? 0, yazilanAlan: r.y?.yazilanAlanlar.length ?? 0,
+      gorsel: gorselOkumaMetni(gorselOzeti(ai)), gorselKapali: (gorselOzeti(ai)?.durum ?? 'KAPALI') === 'KAPALI',
     }
   } catch (e) {
     return { ok: false, error: hataMetni(e) }
   }
 }
 
+const gorselOzeti = (ai: AiOneriSonucu) => (ai.durum === 'KAPALI' ? null : ai.gorsel ?? null)
+
 function bulAktiviteMetni(s: { eklenen: number; atlanan: number }, ai: AiOneriSonucu, y: AiYazimSonucu | null): string {
   const kaynak = ai.durum === 'TAMAM' ? 'kural, Hugo ve yapay zekâ' : 'kural ve Hugo'
   let m = `Belgelerden öneriler bulundu (${kaynak}): ${s.eklenen} yeni, ${s.atlanan} zaten vardı`
+  const g = gorselOkumaMetni(gorselOzeti(ai))
+  if (g) m += ` · ${g}`
   if (ai.durum === 'TAMAM' && y) {
     m += ` · yapay zekâ: ${ai.oneriler.length} öneri, ${y.yazilanAlanlar.length} boş alan dolduruldu, ${y.yeniBorclu} yeni borçlu (teyitsiz)`
     if (y.onayDustu) m += ' · onay sıfırlandı'

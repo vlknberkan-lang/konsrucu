@@ -67,6 +67,9 @@ import { dilekceV2Acik } from '@/lib/konsrucu/dilekce-v2/bayrak'
 import { dilekceV2Ozeti } from '@/lib/konsrucu/dilekce-v2/kart-veri'
 import { DilekceV2Giris } from '@/components/dilekce-v2/dilekce-v2-giris'
 
+/** Bulduklarımız'daki "Belgelerden yeniden bul" taranmış belgeleri görsel okuyup çıkarım yapar (uzun sürer). */
+export const maxDuration = 300
+
 const fmtTRY = (n: number | null | undefined) =>
   n != null && Number.isFinite(Number(n)) ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n)) + ' ₺' : null
 const fmtDate = (d: Date | null | undefined) => tarihTR(d, { day: '2-digit', month: '2-digit', year: 'numeric' })

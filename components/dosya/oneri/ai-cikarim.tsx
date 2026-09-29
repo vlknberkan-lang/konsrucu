@@ -43,7 +43,10 @@ export function AiCikarim({ veri, capa = 'yh-ai-cikarim' }: { veri: AiCikarimVer
     <button
       type="button" disabled={bekliyor} className={DUGME}
       onClick={() => calistir('ai', async () => {
-        setBilgi(veri.aiAcik ? 'Belgeler yapay zekâyla okunuyor; bu bir dakika kadar sürebilir.' : null)
+        setBilgi(!veri.aiAcik ? null
+          : veri.gorselAcik && veri.metinsizBelge
+            ? `Önce ${veri.metinsizBelge} görüntüye bakılıyor, belgeler (el yazısı dahil) metne çevriliyor, sonra çıkarım yapılıyor; birkaç dakika sürebilir.`
+            : 'Belgeler yapay zekâyla okunuyor; bu bir dakika kadar sürebilir.')
         const r = await kuralOnerileriniUretEylem({ dosyaId: veri.dosyaId })
         setBilgi(r.ok ? bulMesaji(r) : null)
         return r
@@ -58,14 +61,25 @@ export function AiCikarim({ veri, capa = 'yh-ai-cikarim' }: { veri: AiCikarimVer
       <BolumBasligi
         id="ai-cikarim-baslik" kicker="Yapay zekâ çıkarımı" baslik={baslik}
         alt={veri.aiAcik
-          ? <>Yapay zekâ {veri.metinliBelge} belgenin metnini okur: taraflar, borçlular, kaza, kusur, tutar ve ödemeler. Bulduğu her bilgi aşağıda Bulduklarımız&apos;da onay bekler; eklediği borçlular teyit ister.</>
+          ? <>Yapay zekâ {veri.metinliBelge} belgenin metnini okur{veri.gorselAcik ? '; taranmış belgeleri (el yazılı tutanak dahil) önce görsel olarak okuyup metne çevirir' : ''}: taraflar, borçlular, kaza, kusur, tutar ve ödemeler. Bulduğu her bilgi aşağıda Bulduklarımız&apos;da onay bekler; eklediği borçlular teyit ister.</>
           : <>Yapay zekâ kapalı: düğme belge kurallarından ve içe aktarılan Excel satırından öneri üretir.</>}
         sag={dugme}
       />
 
       {bilgi && <p role="status" className="border-b border-border-subtle px-5 py-2.5 text-[12.5px] text-foreground">{bilgi}</p>}
 
-      {veri.metinsizBelge > 0 && (
+      {veri.metinsizBelge > 0 && veri.gorselAcik && (
+        <div className="flex items-start gap-2.5 border-b border-border-subtle bg-kr-soft px-5 py-2.5 text-[12.5px] text-kr-ink">
+          <ImageOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            {veri.metinsizBelge} görüntü ve taranmış belge henüz yapay zekâyla incelenmedi. &ldquo;{etiket}&rdquo; önce hepsine bakar:
+            belgeleri (el yazılı kaza tespit tutanağı dahil) metne çevirip türünü düzeltir, fotoğrafları Hasar fotoğrafı grubunda bırakır.
+            Kimlik, ehliyet, ruhsat ve sağlık belgelerinin metni yazılmaz.
+          </span>
+        </div>
+      )}
+
+      {veri.metinsizBelge > 0 && !veri.gorselAcik && (
         <div className="flex items-start gap-2.5 border-b border-border-subtle bg-warning-soft px-5 py-2.5 text-[12.5px] text-[hsl(var(--warning-fg))]">
           <ImageOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>

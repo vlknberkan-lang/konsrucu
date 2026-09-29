@@ -205,6 +205,7 @@ export function aiCikarimKur(g: {
   dosyaId: string
   yetki: KullaniciYetkisi
   aiAcik: boolean
+  gorselAcik: boolean
   cikarimJson: unknown
   yol: string | null
   yolGuven: number | null
@@ -222,7 +223,7 @@ export function aiCikarimKur(g: {
     .map((s) => ekranMaskele(metinVeyaNull(s)))
     .filter((s): s is string => !!s)
   return {
-    dosyaId: g.dosyaId, yetki: g.yetki, aiAcik: g.aiAcik,
+    dosyaId: g.dosyaId, yetki: g.yetki, aiAcik: g.aiAcik, gorselAcik: g.aiAcik && g.gorselAcik,
     metinliBelge: g.metinliBelge, metinsizBelge: g.metinsizBelge,
     sonCalisma: g.sonCalisma ? { at: g.sonCalisma.at.toISOString(), kim: g.sonCalisma.kim } : null,
     olayTuru: metinVeyaNull(cj.olayTuru),
