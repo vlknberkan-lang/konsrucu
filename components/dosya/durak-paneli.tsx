@@ -5,6 +5,7 @@
  * Veri sunucu sayfasında (`app/(app)/dosya/[id]/page.tsx`) YALNIZ seçili durak için yüklenir; bu bileşen yalnız
  * çizer. Her panel eylem çapası kimliğiyle sarılır (ör. `yh-uyap`) — "Neden?" ve eylem bağlantıları oraya iner.
  */
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { Info } from 'lucide-react'
 import type { DurakNo } from '@/lib/konsrucu/yol-haritasi/tipler'
@@ -19,9 +20,7 @@ import { Bulduklarimiz } from '@/components/dosya/oneri/bulduklarimiz'
 import { HapBilgiler } from '@/components/dosya/oneri/hap-bilgiler'
 import { RucuSebebiSec } from '@/components/dosya/oneri/rucu-sebebi-sec'
 import { EksikEvrak } from '@/components/dosya/oneri/eksik-evrak'
-import { YetkiliIcraSec } from '@/components/dosya/oneri/yetkili-icra-sec'
 import { BelgeEkle } from '@/components/akilli-giris/detay/belge-ekle'
-import { ExcelOnerileri } from '@/components/takip-talebi/excel-onerileri'
 import { TakipTalebiPaneli } from '@/components/takip-talebi/takip-talebi-paneli'
 import { IcraNoSenkron } from '@/components/senkron/icra-no-senkron'
 import { TebligItirazPaneli } from '@/components/dosya/olay/teblig-itiraz-paneli'
@@ -91,7 +90,7 @@ export function DurakPaneli({
           )}
           <div id="yh-evrak" className="flex flex-col gap-2">
             <BelgeEkle dosyaId={dosyaId} otomatikBul />
-            <Link href={`/akilli-giris/${dosyaId}?belge=hasar`} className="self-start text-[12.5px] font-semibold text-kr hover:underline">
+            <Link href={`/dosya/${dosyaId}?sekme=evrak&evrak=bizim`} className="self-start text-[12.5px] font-semibold text-kr hover:underline">
               Tüm evrak
             </Link>
           </div>
@@ -100,8 +99,6 @@ export function DurakPaneli({
 
       {durak === 2 && (
         <>
-          {oneriPanel ? <YetkiliIcraSec veri={oneriPanel.yetkiliIcra} /> : <BosHal mesaj="Bu durakta henüz iş yok." eskiGorunumHref={eskiGorunumHref} />}
-          <ExcelOnerileri dosyaId={dosyaId} />
           <div id="yh-takip"><TakipTalebiPaneli dosyaId={dosyaId} /></div>
         </>
       )}
@@ -151,5 +148,76 @@ export function DurakPaneli({
         ) : <BosHal mesaj="Bu durakta henüz iş yok." eskiGorunumHref={eskiGorunumHref} />
       )}
     </section>
+  )
+}
+
+/** Başlıklı adım bölümü (icra öncesi hazırlık). */
+function Adim({ no, baslik, alt, id, children }: { no: number; baslik: string; alt: string; id: string; children: ReactNode }) {
+  return (
+    <section id={id} aria-labelledby={`${id}-baslik`} className="mt-5 flex scroll-mt-16 flex-col gap-3">
+      <div>
+        <h2 id={`${id}-baslik`} className="font-display text-[16px] font-bold tracking-[-0.01em]">
+          <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-kr text-[12px] text-white">{no}</span>{baslik}
+        </h2>
+        <p className="mt-0.5 text-[12.5px] text-muted-foreground">{alt}</p>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/**
+ * İcra öncesi hazırlık — üç adım, tek yol: 1 Evrak → 2 Kontrol → 3 Takibi aç. Takip açmayı etkilemeyen seçimler
+ * (yetkili icra dairesi: adliye kaza yerinden türetilir) ve boş Excel önerileri bu yolda yok. Tevziden sonra esas no
+ * alanı aynı ekranda, 3. adımın altında açılır (eski ekrana dönmek gerekmez).
+ */
+export function HazirlikPaneli({ dosyaId, icraDosyaNo, icraDairesi, yazabilirRol, oneriPanel, tevziEdildi }: {
+  dosyaId: string
+  icraDosyaNo: string | null
+  icraDairesi: string | null
+  yazabilirRol: boolean
+  oneriPanel: OneriPaneli | null
+  tevziEdildi: boolean
+}) {
+  return (
+    <>
+      <Adim no={1} id="yh-evrak" baslik="Evrak" alt="Poliçe, ekspertiz, kaza tutanağı ve ödeme dekontunu yükleyin. Yapay zekâ yüklenen evrakı kendiliğinden okur.">
+        <BelgeEkle dosyaId={dosyaId} otomatikBul />
+        {oneriPanel && <AiCikarim veri={oneriPanel.aiCikarim} />}
+        <Link href={`/dosya/${dosyaId}?sekme=evrak&evrak=bizim`} className="self-start text-[12.5px] font-semibold text-kr hover:underline">Tüm evrak</Link>
+      </Adim>
+
+      <Adim no={2} id="yh-hap" baslik="Kontrol" alt="Okunan bilgileri gözden geçirin, yanlışı yerinde düzeltin, sonra tek düğmeyle onaylayın.">
+        {oneriPanel ? (
+          <>
+            <HapBilgiler hap={oneriPanel.hap} bulgu={oneriPanel.bulduklarimiz} />
+            <RucuSebebiSec veri={oneriPanel.rucuSebebi} />
+            <EksikEvrak veri={oneriPanel.eksikEvrak} />
+            {oneriPanel.bulduklarimiz.satirlar.length > 0 && (
+              <details className="group rounded-2xl border border-border bg-card">
+                <summary className="cursor-pointer list-none px-5 py-3 text-[12.5px] font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                  <span className="mr-1 inline-block transition group-open:rotate-90 motion-reduce:transition-none" aria-hidden>›</span>
+                  Bilgilerin kaynakları ({oneriPanel.bulduklarimiz.satirlar.length}) · belge, sayfa, alıntı
+                </summary>
+                <div className="p-2 pt-0">
+                  <Bulduklarimiz veri={oneriPanel.bulduklarimiz} bulDugmesi={false} />
+                </div>
+              </details>
+            )}
+          </>
+        ) : (
+          <p className="rounded-2xl border border-dashed border-border bg-surface-muted/30 px-5 py-4 text-[13px] text-muted-foreground">Kontrol edilecek bilgi için önce evrak yükleyin.</p>
+        )}
+      </Adim>
+
+      <Adim no={3} id="yh-takip" baslik="Takibi aç" alt="Eksik kalan bir şey varsa düğmenin üstünde yazar. Takip UYAP sekmesindeki KonsLaw panelinden gönderilir.">
+        <TakipTalebiPaneli dosyaId={dosyaId} />
+        {tevziEdildi && (
+          <div id="yh-uyap">
+            <IcraNoSenkron dosyaId={dosyaId} icraDosyaNo={icraDosyaNo} icraDairesi={icraDairesi} yazabilir={yazabilirRol} />
+          </div>
+        )}
+      </Adim>
+    </>
   )
 }

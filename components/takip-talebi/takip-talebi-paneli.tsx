@@ -15,6 +15,7 @@ import { CanliSenkron } from '@/components/senkron/canli-senkron'
 import { FaizSecimi } from './faiz-secimi'
 import { HesapIziKarti } from './hesap-izi'
 import { TakipOnizleme } from './takip-onizleme'
+import { AciklamaDuzenle } from '@/components/akilli-giris/detay/aciklama-duzenle'
 
 export function TakipTalebiPaneli({ dosyaId }: { dosyaId: string }) {
   const [veri, setVeri] = useState<TakipTalebiGetirSonuc | null>(null)
@@ -66,10 +67,21 @@ export function TakipTalebiPaneli({ dosyaId }: { dosyaId: string }) {
       />
       <HesapIziKarti dosyaId={dosyaId} hesapIzi={g.hesapIzi} onay={g.hesapIziOnayi} gecerli={g.hesapIziGecerli} avukat={avukat} onOnaylandi={yukle} />
       <TakipOnizleme gorunum={g} />
+      {!g.tevziEdildi && (
+        <section aria-label="UYAP takip açıklaması" className="rounded-2xl border border-border bg-card p-4">
+          <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">UYAP takip açıklaması</div>
+          <AciklamaDuzenle
+            dosyaId={dosyaId}
+            init={g.aciklamaDuzen.ham}
+            alan={{ kazaTarihi: g.aciklamaDuzen.kazaTarihi, sigortaliPlaka: g.aciklamaDuzen.sigortaliPlaka, karsiPlaka: g.aciklamaDuzen.karsiPlaka, alacakliUnvan: g.aciklamaDuzen.alacakliUnvan }}
+            onKaydedildi={yukle}
+          />
+        </section>
+      )}
 
       <section aria-label="UYAP'ta takibi aç" className="rounded-2xl border border-border bg-card p-4">
         {g.tevziEdildi ? (
-          <p className="text-[13.5px] text-foreground">Bu dosyada UYAP tevzisi yapıldı. Harç ödenip esas no oluşunca Takip durağında &quot;Kaydet ve UYAP&apos;tan çek&quot; ile girin.</p>
+          <p className="text-[13.5px] text-foreground">UYAP tevzisi yapıldı. Harcı UYAP&apos;ta ödeyin; esas no oluşunca hemen aşağıya girin.</p>
         ) : (
           <>
             {kilitli && (

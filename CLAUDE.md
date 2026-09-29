@@ -35,6 +35,26 @@ otomatikleştirmesi** ve **hiçbir süreyi/dosyayı gözden kaçırmaması**.
 - Erişilebilirlik (görünür focus, klavye), responsive, `prefers-reduced-motion`.
 - İş bitince **typecheck + lint + build** çalıştır, özet ver.
 
+## Çalışma şekli ve ajanlar
+- **Ürün:** KonsLaw (konslaw.app) — artık yalnız Yelda'nın değil, satılan bir ürün. Ray/Zurich'e özgü her
+  kural yapılandırmaya (Ayarlar, müvekkil Excel eşlemesi) gitmeli, koda sabitlenmemeli.
+- **Ajan hiyerarşisi:** ana oturum planlar, KOD YAZAR ve ajan iddialarını doğrular; ajanlar (Sonnet/Haiku,
+  `.claude/agents/`) okur, arar, denetler. Alt ajan alt ajan açmaz (derinlik 1).
+- **İnceleme, işin riskine göre:**
+  - metin / stil / küçük düzeltme → ajan yok, doğrudan yap
+  - yeni ekran / server action / API rotası → `schema-guardian`; 🔴 varsa düzelt
+  - şema, yetki, para/faiz, süre hesabı, silme, UYAP senkron, cron, ödeme/kredi →
+    `schema-guardian` → `code-reviewer` → `verifier`, **SIRAYLA**
+  - hukuki kural / yeni takip türü → `icra-hukuku-uzmani`; rücu kuralı / yeni müvekkil → `sigorta-rucu-uzmani`;
+    kayıt, ödeme, AI yüzeyi, dışa aktarım → `kvkk-denetcisi` (yalnız açıkça gerekince)
+  - tekrar eden ajan bulgusu vitest testine ya da betiğe çevrilir
+- **Ajana iş tanımı 4 parça:** HEDEF · SINIR (okunacak/dokunulacak dosyalar) · DÖNÜŞ BİÇİMİ (≤30 satır,
+  dosya:satır) · BİTTİ ÖLÇÜTÜ. İnceleme ajanı prompt'una ekle: "SALT OKU; rm / git / temizlik komutu çalıştırma."
+  (`.claude/hooks/ajan-bash-bekci.mjs` salt okuma ajanlarının yazan Bash komutlarını zaten engeller.)
+- **Bütçe (Claude Max 100$):** aynı anda en çok 2 ajan; Workflow / geniş fan-out yok (kullanıcı açıkça
+  istemedikçe). Uzun komut çıktısı → `verifier`. Keşifte önce Grep/Read, ajan son çare.
+- **Deploy:** `vercel --prod` (GitHub push deploy etmez). Yeni tablo sonrası `node scripts/rls-ac.local.cjs --apply`.
+
 ## Önemli geçmiş kararlar
 - Toplu UYAP XML şu an kullanılmıyor (adliye manuel seçiliyor, dosyalar çok-adliyeli) → **tek tek** otomasyon.
 - Excel ayrıştırma kuralları: çok-değerli hücreler ("A + B") toplanır; geçersiz tarihler (ör. 36/03) boş bırakılır.

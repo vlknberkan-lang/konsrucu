@@ -197,7 +197,7 @@ export async function uyaptaTakibiAc(girdi: { dosyaId: string }): Promise<TakipI
   if (k.hata !== null) return { ok: false, error: k.hata }
   const g = await takipTalebiGorunumu(p.data.dosyaId, k.musteriId)
   if (!g) return { ok: false, error: 'Dosya bulunamadı veya yetkiniz yok.' }
-  if (g.tevziEdildi) return { ok: false, error: 'Bu dosyada tevzi yapılmış; takip yeniden açılamaz. Esas no gelince "Kaydet ve UYAP\'tan çek" ile girin.' }
+  if (g.tevziEdildi) return { ok: false, error: 'Bu dosyada tevzi yapılmış; takip yeniden açılamaz. Esas no oluşunca dosya ekranındaki esas no alanına girin.' }
   if (g.kilitSebepleri.length) return { ok: false, error: `Takip açılamaz: ${g.kilitSebepleri.join('; ')}` }
   if (!g.kopilotDestekli) return { ok: false, error: 'Bu faiz seçimi kopilotla aktarılamıyor (UYAP kodu keşifle teyit edilmedi). Takibi UYAP\'ta elle açın; faiz türünü elle seçin.' }
   if (!sunucuOzellikleri().isKuyrugu) return { ok: false, error: 'Programdan açma şu an kapalı. UYAP sekmesinde KonsLaw panelinden "⚖ Takip Aç"a basın; dosya orada listelenir.' }

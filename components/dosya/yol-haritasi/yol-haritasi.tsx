@@ -35,9 +35,11 @@ export interface DosyaYolHaritasiProps {
   seciliDurak?: number
   /** Durak listesi burada çizilsin mi (varsayılan evet; sekmeli dosya ekranı onu kendi sekmesinde çizer). */
   duraklarGoster?: boolean
+  /** Şimdi kartı + Sonra listesi çizilsin mi (varsayılan evet; icra öncesi hazırlıkta adım çubuğu yol gösterir). */
+  simdiGoster?: boolean
 }
 
-export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHrefSablonu, eskiGorunumHref, provaGoster = true, durakHref, seciliDurak, duraklarGoster = true }: DosyaYolHaritasiProps) {
+export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHrefSablonu, eskiGorunumHref, provaGoster = true, durakHref, seciliDurak, duraklarGoster = true, simdiGoster = true }: DosyaYolHaritasiProps) {
   const s = gorunum.sonuc
   const prova = gorunum.prova?.tarih ?? null
   return (
@@ -47,6 +49,8 @@ export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHr
         <ProvaBandi dosyaId={gorunum.dosyaId} prova={prova} bugun={gorunum.bugun} simdiKural={s.simdi?.kural ?? s.bekleme?.kural ?? null} kullaniciRol={kullaniciRol} />
       )}
       <p className="sr-only" aria-live="polite">{gorunum.tekCumle}</p>
+      {simdiGoster && (
+        <>
       <SimdiKarti
         dosyaId={gorunum.dosyaId}
         simdi={s.simdi}
@@ -57,6 +61,8 @@ export function DosyaYolHaritasi({ gorunum, kullaniciRol, eylemHrefleri, belgeHr
         belgeHrefSablonu={belgeHrefSablonu}
       />
       <SonraListesi sonra={s.sonra} sonraKatlanan={s.sonraKatlanan} ertelenenler={s.ertelenenler} bilgi={s.bilgi} />
+        </>
+      )}
       {duraklarGoster && <DurakListesi duraklar={gorunum.duraklar} durakHref={durakHref} secili={seciliDurak} />}
     </div>
   )

@@ -13,7 +13,7 @@ import { EYLEM_CAPA } from '@/components/dosya/yol-haritasi/eylem'
 import { yolHaritasiYukle, onbellekGuncelle } from '@/lib/konsrucu/yol-haritasi/yukle'
 import type { DurakNo, EylemHedef } from '@/lib/konsrucu/yol-haritasi/tipler'
 import type { YolHaritasiGorunum } from '@/lib/konsrucu/yol-haritasi/gorunum'
-import { DurakPaneli } from '@/components/dosya/durak-paneli'
+import { DurakPaneli, HazirlikPaneli } from '@/components/dosya/durak-paneli'
 import { SiraGecis } from '@/components/dosya/sira-gecis'
 import { DurakListesi } from '@/components/dosya/yol-haritasi/durak-listesi'
 import { SekmeCubugu, EvrakSekmesi, TaraflarSekmesi, GecmisSekmesi, HazirlikAdimlari, SEKMELER, type SekmeKey } from '@/components/dosya/sekmeler/sekmeler'
@@ -71,7 +71,7 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
 
   const dosya = await prisma.rucuDosyasi.findFirst({
     where: { musteriId: { in: izinli }, OR: [{ id: params.id }, { hasarDosyaNo: params.id }, { hukukDosyaNo: params.id }, { id: { startsWith: params.id } }] },
-    select: { id: true, musteriId: true, icraDosyaNo: true, icraDairesi: true, durum: true },
+    select: { id: true, musteriId: true, icraDosyaNo: true, icraDairesi: true, durum: true, cikarimJson: true },
   })
   if (!dosya) notFound()
   // icra öncesi: takip henüz açılmadı → "Hazırlık" ekranı (5 adım); sonrası "Takip" (yol haritası durakları)
@@ -126,6 +126,7 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
         durakHref={durakHref}
         seciliDurak={seciliDurak}
         duraklarGoster={false}
+        simdiGoster={!icraOncesi}
       />
 
       <div className="mt-5">
@@ -140,12 +141,16 @@ export default async function DosyaYolHaritasiSayfasi({ params, searchParams }: 
             <HazirlikAdimlari
               dosyaId={dosya.id}
               musteriId={dosya.musteriId}
-              adimHref={(capa) => (capa === 'evrak' ? `${sekmeHref('evrak')}&evrak=bizim` : capa === 'borclular' ? `${sekmeHref('taraflar')}#taraflar-borclular` : `${sekmeHref('is')}#${capa}`)}
+              adimHref={(capa) => `${sekmeHref('is')}#${capa}`}
             />
-            <DurakPaneli durak={1} dosyaId={dosya.id} icraDosyaNo={dosya.icraDosyaNo} icraDairesi={dosya.icraDairesi} yazabilirRol={yazabilirRol} avukatRol={avukatRol} eskiGorunumHref={eskiGorunumHref} oneriPanel={oneriPanel} olayPanel={null} arabPanel={null} davaPanel={null} dilekceKartlar={null} />
-            <div id="yh-hazirlik" className="mt-4">
-              <DurakPaneli durak={2} dosyaId={dosya.id} icraDosyaNo={dosya.icraDosyaNo} icraDairesi={dosya.icraDairesi} yazabilirRol={yazabilirRol} avukatRol={avukatRol} eskiGorunumHref={eskiGorunumHref} oneriPanel={oneriPanel} olayPanel={null} arabPanel={null} davaPanel={null} dilekceKartlar={null} />
-            </div>
+            <HazirlikPaneli
+              dosyaId={dosya.id}
+              icraDosyaNo={dosya.icraDosyaNo}
+              icraDairesi={dosya.icraDairesi}
+              yazabilirRol={yazabilirRol}
+              oneriPanel={oneriPanel}
+              tevziEdildi={!!(dosya.cikarimJson as { tevzi?: unknown } | null)?.tevzi}
+            />
           </>
         )}
 

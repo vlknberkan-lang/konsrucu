@@ -211,35 +211,36 @@ export async function GecmisSekmesi({ dosyaId, kullaniciAd }: { dosyaId: string;
   )
 }
 
-/** Hazırlık adımları (icra öncesi): 5 adım, her biri kendi paneline götürür. */
+/** Hazırlık adımları (icra öncesi): üç adım — Evrak → Kontrol → Takibi aç. Adıma tıklayınca o bölüme iner. */
 export async function HazirlikAdimlari({ dosyaId, musteriId, adimHref }: { dosyaId: string; musteriId: string; adimHref: (capa: string) => string }) {
-  const [d, belge, borclu, teyitli, oneri, talep, metinli, sonAi] = await Promise.all([
-    prisma.rucuDosyasi.findFirst({ where: { id: dosyaId, musteriId }, select: { yetkiliIcra: true, rucuSebebiKod: true } }),
+  const [d, belge, borclu, teyitli, oneri, metinli, sonAi] = await Promise.all([
+    prisma.rucuDosyasi.findFirst({ where: { id: dosyaId, musteriId }, select: { cikarimJson: true, icraDosyaNo: true } }),
     prisma.belge.count({ where: { dosyaId, kaynakRef: null } }),
     prisma.borclu.count({ where: { dosyaId } }),
     prisma.borclu.count({ where: { dosyaId, teyitDurumu: 'TEYIT_EDILDI' } }),
     prisma.alanDegeri.count({ where: { dosyaId, durum: 'ONERI', silindiAt: null } }),
-    prisma.takipTalebi.count({ where: { dosyaId } }).catch(() => 0),
     prisma.belge.count({ where: { dosyaId, kaynakRef: null, silindiAt: null, extractedText: { not: null } } }),
     sonAiCikarimi(dosyaId),
   ])
-  // metni okunan evrak var ama yapay zekâ hiç çalışmadı → 2. adım "AI ile Çıkarım Yap"a götürür
+  const cj = (d?.cikarimJson ?? {}) as { onay?: { ok?: boolean }; tevzi?: unknown }
+  const onayli = !!cj.onay?.ok
+  const tevzi = !!cj.tevzi
+  // metni okunan evrak var ama yapay zekâ hiç çalışmadı → kontrol adımı önce çıkarımı ister
   const aiBekliyor = metinli > 0 && yuzeyAcik('cikarim') && !sonAi
+  const kontrolDetay = aiBekliyor ? 'Önce evrak okunmalı'
+    : oneri > 0 ? `${oneri} bilgi kontrol bekliyor`
+      : borclu > teyitli ? `${borclu - teyitli} borçlu teyit bekliyor`
+        : onayli ? 'Onaylandı' : 'Onay bekliyor'
   const adimlar = [
-    { no: 1, ad: 'Evrakı yükle', durum: belge > 0 ? 'tamam' : 'simdi', detay: belge > 0 ? `${belge} belge` : 'Poliçe, ekspertiz, tutanak, dekont', capa: 'evrak' },
-    aiBekliyor
-      ? { no: 2, ad: 'Hap bilgileri kontrol et', durum: 'simdi', detay: 'Önce "AI ile Çıkarım Yap"', capa: 'yh-ai-cikarim' }
-      : { no: 2, ad: 'Hap bilgileri kontrol et', durum: oneri > 0 ? 'simdi' : belge > 0 ? 'tamam' : 'sirada', detay: oneri > 0 ? `${oneri} bilgi kontrol bekliyor` : d?.rucuSebebiKod ? 'Rücu sebebi seçildi' : 'Rücu sebebini seçin', capa: 'yh-hap' },
-    { no: 3, ad: 'Borçluyu teyit et', durum: borclu > 0 && teyitli === borclu ? 'tamam' : borclu > 0 ? 'simdi' : 'sirada', detay: borclu ? `${teyitli}/${borclu} borçlu teyitli` : 'Borçlu yok', capa: 'borclular' },
-    { no: 4, ad: 'Yetkili icra dairesini seç', durum: d?.yetkiliIcra ? 'tamam' : 'sirada', detay: d?.yetkiliIcra ?? 'Kaza yerine göre', capa: 'yh-hazirlik' },
-    { no: 5, ad: "Takip talebi → UYAP'ta aç", durum: talep > 0 ? 'simdi' : 'sirada', detay: talep > 0 ? 'Takip talebi hazırlandı' : 'Önceki adımlardan sonra', capa: 'yh-takip' },
+    { no: 1, ad: 'Evrak', durum: belge > 0 ? 'tamam' : 'simdi', detay: belge > 0 ? `${belge} belge` : 'Poliçe, ekspertiz, tutanak, dekont', capa: 'yh-evrak' },
+    { no: 2, ad: 'Kontrol', durum: onayli ? 'tamam' : belge > 0 ? 'simdi' : 'sirada', detay: kontrolDetay, capa: 'yh-hap' },
+    { no: 3, ad: 'Takibi aç', durum: d?.icraDosyaNo ? 'tamam' : onayli ? 'simdi' : 'sirada', detay: tevzi ? 'Esas no bekleniyor' : onayli ? "UYAP'ta açılmaya hazır" : 'Kontrolden sonra', capa: 'yh-takip' },
   ] as const
   // İlk "simdi" dışındakiler "sırada" görünür: tek odak
   const ilk = adimlar.find((a) => a.durum === 'simdi')?.no
   return (
-    <nav aria-label="Hazırlık adımları" className={`${kutu} mb-4`}>
-      <Baslik baslik="Hazırlık" alt="İcra öncesi: dosyayı takibe hazırlayan beş adım. Adıma tıklayınca ilgili bölüme gider." />
-      <ol className="grid gap-2 sm:grid-cols-5">
+    <nav aria-label="Hazırlık adımları" className={`${kutu} mb-2`}>
+      <ol className="grid gap-2 sm:grid-cols-3">
         {adimlar.map((a) => {
           const tamam = a.durum === 'tamam'
           const simdi = a.no === ilk

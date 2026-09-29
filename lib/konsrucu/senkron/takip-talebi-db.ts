@@ -102,6 +102,8 @@ export type TakipTalebiGorunumu = {
   avukatOnayi: boolean
   tevziEdildi: boolean
   kilitSebepleri: string[]
+  /** Açıklama düzenleyicisi için: kayıtlı ham açıklama + şablon alanları (UYAP takip açıklaması tek yerden düzenlenir). */
+  aciklamaDuzen: { ham: string; kazaTarihi: string; sigortaliPlaka: string; karsiPlaka: string; alacakliUnvan: string }
   onizleme: {
     alacakli: string | null
     borclular: { ad: string; tur: string }[]
@@ -125,8 +127,8 @@ export async function takipTalebiGorunumu(dosyaId: string, musteriId: string): P
     where: { id: dosyaId, musteriId },
     select: {
       id: true, rucuTutari: true, asilAlacak: true, rucuOrani: true, faizTutari: true, faizBaslangic: true, faizBitis: true,
-      kazaYeri: true, il: true, cikarimJson: true,
-      borclular: { select: { adUnvan: true, tcVkn: true } },
+      kazaYeri: true, il: true, cikarimJson: true, kazaTarihi: true, hasarTarihi: true, sigortaliPlaka: true, karsiPlaka: true,
+      borclular: { select: { adUnvan: true, tcVkn: true, teyitDurumu: true } },
       odemeler: { select: { tarih: true, tutar: true, haricMi: true } },
       takipTalepleri: {
         where: { silindiAt: null },
@@ -140,7 +142,7 @@ export async function takipTalebiGorunumu(dosyaId: string, musteriId: string): P
     },
   })
   if (!d) return null
-  const ay = await prisma.ayarlar.findUnique({ where: { musteriId }, select: { alacakliUnvan: true, faizJson: true, aciklamaFooter: true } })
+  const ay = await prisma.ayarlar.findUnique({ where: { musteriId }, select: { alacakliUnvan: true, mersis: true, faizJson: true, aciklamaFooter: true } })
   const cj = (d.cikarimJson ?? {}) as Cikarim
   const tt = d.takipTalepleri.find((t) => t.gecerli) ?? null
 
@@ -170,8 +172,23 @@ export async function takipTalebiGorunumu(dosyaId: string, musteriId: string): P
   const kilit = takipTalebiKilitSebepleri(tt ? { ...faiz, asilAlacak: anapara, hesapIziOnayli: hesapIziGecerli, dondurulduAt: tt.dondurulduAt } : null)
   if (tt && onay && !hesapIziGecerli) kilit.push('Hesap izi onaydan sonra değişti (ödeme ya da oran); yeniden onaylayın')
   if (alacak.islemisFaiz == null && alacak.uyari) kilit.push(alacak.uyari)
-  if (!avukatOnayi) kilit.push('Avukat onayı ("Takibe hazır") verilmedi')
+  if (!avukatOnayi) kilit.push('Avukat onayı verilmedi ("Hap bilgileri kontrol ettim")')
   const adli = yetkiliIcraOner(d.kazaYeri, d.il)
+  const aciklama = aciklamaTam(cj.aciklama, footerOlustur(ay))
+  // Eklentinin ön kontrolüyle (app/api/uyap/takip-hedefler) AYNI engeller: düğme açık görünüp eklenti reddetmesin.
+  if (!d.borclular.length) kilit.push('Borçlu yok')
+  for (const b of d.borclular) {
+    const tc = (b.tcVkn ?? '').replace(/\D/g, '')
+    if (!tc) kilit.push(`${b.adUnvan}: TC kimlik no eksik`)
+    else if (tc.length === 10) kilit.push(`${b.adUnvan}: kurum borçlu (VKN) kopilotla açılamıyor; takibi UYAP'ta elle açın`)
+    else if (tc.length !== 11) kilit.push(`${b.adUnvan}: TC kimlik no 11 hane değil`)
+    if (b.teyitDurumu !== 'TEYIT_EDILDI') kilit.push(`${b.adUnvan}: borçlu teyit edilmedi`)
+  }
+  if (!alacak.faizBaslangic) kilit.push('Faiz başlangıcı yok (ödeme dekontu tarihi eksik)')
+  if (!aciklama.trim()) kilit.push('Takip açıklaması yok')
+  if (!ay?.alacakliUnvan) kilit.push('Alacaklı unvanı tanımsız (Şirket Bilgileri)')
+  if (!ay?.mersis) kilit.push('Alacaklı MERSİS no tanımsız (Şirket Bilgileri)')
+  if (!adli) kilit.push(`Yetkili adliye bulunamadı (kaza yeri: ${d.kazaYeri ?? 'yok'})`)
 
   return {
     dosyaId: d.id,
@@ -192,13 +209,20 @@ export async function takipTalebiGorunumu(dosyaId: string, musteriId: string): P
     alacak,
     avukatOnayi,
     tevziEdildi,
-    kilitSebepleri: kilit,
+    kilitSebepleri: [...new Set(kilit)],
+    aciklamaDuzen: {
+      ham: cj.aciklama ?? '',
+      kazaTarihi: (d.kazaTarihi ?? d.hasarTarihi)?.toISOString() ?? '',
+      sigortaliPlaka: d.sigortaliPlaka ?? '',
+      karsiPlaka: d.karsiPlaka ?? '',
+      alacakliUnvan: ay?.alacakliUnvan ?? '',
+    },
     onizleme: {
       alacakli: ay?.alacakliUnvan ?? null,
       borclular: d.borclular.map((b) => ({ ad: b.adUnvan, tur: borcluTuru(b.tcVkn) })),
       adliye: adli ? `${adli.adliye} Adliyesi (kaza yeri; tevzi daireyi atar)` : null,
       yolOrnek: 'İlamsız · Örnek 7 · genel haciz yolu',
-      aciklama: aciklamaTam(cj.aciklama, footerOlustur(ay)),
+      aciklama,
     },
   }
 }

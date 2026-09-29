@@ -13,7 +13,7 @@ import { aciklamaGuncelle } from '@/app/(app)/akilli-giris/actions'
 
 type Alan = { kazaTarihi: string; sigortaliPlaka: string; karsiPlaka: string; alacakliUnvan: string }
 
-export function AciklamaDuzenle({ dosyaId, init, alan }: { dosyaId: string; init: string; alan: Alan }) {
+export function AciklamaDuzenle({ dosyaId, init, alan, onKaydedildi }: { dosyaId: string; init: string; alan: Alan; onKaydedildi?: () => void }) {
   const [edit, setEdit] = useState(false)
   const [metin, setMetin] = useState(init)
   const [pending, start] = useTransition()
@@ -24,7 +24,7 @@ export function AciklamaDuzenle({ dosyaId, init, alan }: { dosyaId: string; init
     setErr(null)
     start(async () => {
       const r = await aciklamaGuncelle(dosyaId, metin.trim())
-      if (r.ok) { setEdit(false); router.refresh() } else setErr(r.error ?? 'Kaydedilemedi')
+      if (r.ok) { setEdit(false); onKaydedildi?.(); router.refresh() } else setErr(r.error ?? 'Kaydedilemedi')
     })
   }
 
