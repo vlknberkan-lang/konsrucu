@@ -39,6 +39,8 @@ import {
 import { takipOlayKaydet } from '@/lib/konsrucu/takip-olay'
 import { onemliOlayTespit } from '@/lib/konsrucu/onemli-olay'
 import { tarihTR } from '@/lib/konsrucu/format'
+import { isoGundenTarih } from '@/lib/konsrucu/sure/takvim'
+const ist2 = (s: string) => isoGundenTarih(s)!.getTime()
 
 const findUnique = vi.mocked(prisma.rucuDosyasi.findUnique)
 const gorevFindFirst = vi.mocked(prisma.takipGorevi.findFirst)
@@ -98,16 +100,16 @@ describe('tebligGorevleriOlustur', () => {
     expect(data.aciklama).not.toContain(ITIRAZ_NOT_ISARETI) // itiraz yok → not yok
   })
 
-  it('mükerrer / en erken kontrolü önek + vade ile yapılır; IPTAL görev sayılmaz', async () => {
+  it('mükerrer kontrolü AYNI tebliğ günüyle yapılır (önek + vade günü); IPTAL görev sayılmaz', async () => {
     findUnique.mockResolvedValueOnce(aktifDosya as never)
-    await tebligGorevleriOlustur('d1', new Date(2026, 2, 15), null)
-    const vade = new Date(new Date(2027, 2, 15).getTime() - HACIZ_UYARI_ERKEN_GUN * 86_400_000)
+    await tebligGorevleriOlustur('d1', isoGundenTarih('2026-03-15')!, null)
+    const vade = new Date(ist2('2027-03-15') - HACIZ_UYARI_ERKEN_GUN * 86_400_000)
     expect(gorevFindFirst).toHaveBeenCalledWith({
       where: {
         dosyaId: 'd1',
         baslik: { startsWith: HACIZ_GOREV_ONEK },
         durum: { in: ['ACIK', 'ISLEMDE', 'TAMAMLANDI'] },
-        sonTarih: { lt: new Date(vade.getTime() + 86_400_000) },
+        sonTarih: { gte: vade, lt: new Date(vade.getTime() + 86_400_000) },
       },
       select: { id: true },
     })
@@ -148,9 +150,14 @@ describe('tebligGorevleriOlustur', () => {
 
 describe('hacizSonGun', () => {
   it('tebliğ + 1 yıl; ayın o günü yoksa ayın son günü', () => {
-    expect(hacizSonGun(new Date(2026, 2, 15)).getTime()).toBe(new Date(2027, 2, 15).getTime())
-    expect(hacizSonGun(new Date(2028, 1, 29)).getTime()).toBe(new Date(2029, 1, 28).getTime())
-    expect(hacizSonGun(new Date(2027, 1, 28)).getTime()).toBe(new Date(2028, 1, 28).getTime())
+    const ist = (s: string) => isoGundenTarih(s)!.getTime()
+    expect(hacizSonGun(isoGundenTarih('2026-03-15')!).getTime()).toBe(ist('2027-03-15'))
+    expect(hacizSonGun(isoGundenTarih('2028-02-29')!).getTime()).toBe(ist('2029-02-28'))
+    expect(hacizSonGun(isoGundenTarih('2027-02-28')!).getTime()).toBe(ist('2028-02-28'))
+  })
+  it('İstanbul gece yarısı saklanan tebliğ (UTC 21:00, önceki gün) doğru günden sayılır', () => {
+    // 15.03.2026 İstanbul 00:00 = 14.03.2026 21:00 UTC
+    expect(hacizSonGun(new Date('2026-03-14T21:00:00Z')).getTime()).toBe(ist2('2027-03-15'))
   })
 })
 

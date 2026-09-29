@@ -43,6 +43,7 @@
  * İHTİYATİ HACİZ olabilir (D1'de 6 olay böyleydi); borçlu malına icrai haciz ile ayırt edilemediği için
  * İİK 78 görevini kapatmak süreyi sessizce kaçırtır. Haciz gerçekten işlendiyse avukat görevi elle kapatır.
  */
+import { yilEkle, gunBasi } from '@/lib/konsrucu/sure/takvim'
 import { Rol, type DosyaDurum } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { tarihTR } from './format'
@@ -126,16 +127,11 @@ export function kesinlesmeMetniMi(aciklama: string | null | undefined): boolean 
 
 /**
  * İİK m.78 son günü: tebliğ + 1 yıl; o gün sonraki yılda yoksa (29 Şubat) ayın SON günü (İİK m.19 —
- * teyit gerekli). Eski setFullYear(+1) 29 Şubat'ı 1 Mart'a taşıyordu — son gün bir gün GEÇ çıkıyordu (B21).
+ * teyit gerekli). İstanbul takvim günüyle hesaplanır (sure/takvim yilEkle; sonuç o günün İstanbul gece yarısı):
+ * sunucu saatiyle hesap, İstanbul gece yarısı saklanan tebliğde (UTC 21:00) bir önceki günden sayıyordu.
  */
 export function hacizSonGun(tebligTarihi: Date): Date {
-  const d = new Date(tebligTarihi)
-  const gun = d.getDate()
-  d.setDate(1)
-  d.setFullYear(d.getFullYear() + 1)
-  const ayinSonGunu = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
-  d.setDate(Math.min(gun, ayinSonGunu))
-  return d
+  return yilEkle(tebligTarihi, 1)
 }
 
 /** Dosyada itiraz izi var mı? (ITIRAZ olayı ya da itiraz sonrası durum) — yalnız görev notu için. */
@@ -176,18 +172,21 @@ export async function tebligGorevleriOlustur(dosyaId: string, tebligTarihi: Date
   const hacizSon = hacizSonGun(tebligTarihi)
   const hacizUyari = new Date(hacizSon.getTime() - HACIZ_UYARI_ERKEN_GUN * GUN_MS)
 
-  // Mükerrer + "en erken tebliğ" kuralı (dosya başı notu). Aynı gün: saat farkı olsa da aynı görev sayılır.
-  // Teorik yarış (eşzamanlı iki TEBLIG işleme) kabul edilmiş risk: UYAP senkronu olayları sıralı işler.
-  const dahaErken = await prisma.takipGorevi.findFirst({
+  // Mükerrer koruması: AYNI tebliğ gününün görevi varsa yenisi açılmaz (IPTAL sayılmaz: yanlış görev temizlenip
+  // gerçek tebliğ gelince görev yeniden kurulur). Farklı
+  // günlü tebliğ (çok borçlu dosyada ikinci borçlu) kendi görevini alır: süre borçlu bazında işler; birinci
+  // borçlunun görevi tamamlanınca/erken tarihli olunca ikincinin süresini ÖRTMEZ (eski "en erken tebliğ" kuralı
+  // örtüyordu). Teorik yarış (eşzamanlı iki TEBLIG işleme) kabul edilmiş risk: UYAP senkronu olayları sıralı işler.
+  const ayniGun = await prisma.takipGorevi.findFirst({
     where: {
       dosyaId,
       baslik: { startsWith: HACIZ_GOREV_ONEK },
       durum: { in: ['ACIK', 'ISLEMDE', 'TAMAMLANDI'] },
-      sonTarih: { lt: new Date(hacizUyari.getTime() + GUN_MS) },
+      sonTarih: { gte: gunBasi(hacizUyari), lt: new Date(gunBasi(hacizUyari).getTime() + GUN_MS) },
     },
     select: { id: true },
   })
-  if (dahaErken) return
+  if (ayniGun) return
 
   // İtiraz varsa görev YİNE açılır (m.78/2 durması metinden güvenle kurulamaz; erken hatırlatma güvenli taraf) — notla.
   const itirazVar = await itirazIziVarMi(dosyaId, dosya.durum)

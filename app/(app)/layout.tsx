@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
@@ -59,10 +60,11 @@ export default async function AppGroupLayout({ children }: { children: React.Rea
   const init = initials(dbUser.ad)
 
   // Sol menü rozetleri: aktif tenant'taki açık önemli olay (borca itiraz) + açık takip görevi sayısı.
+  // Kapanmış dosyanın (TAHSIL/KAPANDI) açık kalmış işi rozeti sonsuza dek kırmızı tutmasın.
   const [onemliSayi, gorevSayi] = aktif
     ? await Promise.all([
-        prisma.onemliOlay.count({ where: { dosya: { musteriId: aktif.id }, durum: { in: ['ACIK', 'ISLEMDE'] } } }),
-        prisma.takipGorevi.count({ where: { dosya: { musteriId: aktif.id }, durum: { in: ['ACIK', 'ISLEMDE'] } } }),
+        prisma.onemliOlay.count({ where: { dosya: { musteriId: aktif.id, durum: { notIn: [...HATIRLATMA_DISI] } }, durum: { in: ['ACIK', 'ISLEMDE'] } } }),
+        prisma.takipGorevi.count({ where: { dosya: { musteriId: aktif.id, durum: { notIn: [...HATIRLATMA_DISI] } }, durum: { in: ['ACIK', 'ISLEMDE'] } } }),
       ])
     : [0, 0]
 

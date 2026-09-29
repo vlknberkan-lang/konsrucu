@@ -70,3 +70,17 @@ export function zamanasimiRadarinda(d: DurumGirdi): boolean {
   if (uyapKapaliMi(d.uyapDurum)) return false
   return true
 }
+
+/**
+ * Hatırlatılacak/listelenecek etkinlik süzgeci (Prisma where parçası). İptal edilmiş, gerçekleşmiş ya da ertelenmiş
+ * (yeni tarihli kaydı ayrıdır) etkinlik, avukatın reddettiği aday (UYAP/Excel) ve kapanmış dosyanın etkinliği
+ * hatırlatılmaz. `yalnizPlanli=false`: listelerde (sabah özeti, Bugün) yalnız iptal ve reddedilen düşer.
+ * teyit NULL olabilir: `not: 'REDDEDILDI'` tek başına NULL'ları da eler, bu yüzden OR.
+ */
+export function etkinlikHatirlatmaSuzgeci(musteriId: string, yalnizPlanli = true) {
+  return {
+    dosya: { musteriId, durum: { notIn: [...HATIRLATMA_DISI] } },
+    durum: yalnizPlanli ? ('PLANLANDI' as const) : { not: 'IPTAL' as const },
+    OR: [{ teyit: null }, { teyit: { not: 'REDDEDILDI' } }],
+  }
+}

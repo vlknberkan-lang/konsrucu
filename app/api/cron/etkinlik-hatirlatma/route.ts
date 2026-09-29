@@ -15,6 +15,7 @@
  * Manuel test:  GET /api/cron/etkinlik-hatirlatma?key=<CRON_SECRET>&dry=1   (dry=1 → göndermeden listeler)
  *               &to=<test alıcısı>  → tüm e-postalar yalnız bu adrese gider; süre saat kapısı atlanır.
  */
+import { etkinlikHatirlatmaSuzgeci } from '@/lib/konsrucu/aktiflik'
 import { prisma } from '@/lib/prisma'
 import { etkinlikHatirlatmaHtml } from '@/lib/konsrucu/hatirlatma-mail'
 import { durumAsama, ASAMA_META } from '@/lib/konsrucu/asama'
@@ -53,7 +54,8 @@ async function handle(req: Request) {
 
     // adaylar: hatırlatması olan, henüz gönderilmemiş, yakın geçmiş/gelecek etkinlikler (per-event hatirlatmaDk JS'te süzülür)
     const adaylar = await prisma.etkinlik.findMany({
-      where: { dosya: { musteriId: t.musteriId }, hatirlatmaDk: { not: null }, hatirlatmaGonderildiAt: null, baslar: { gte: new Date(now.getTime() - TOLERANS_MS) } },
+      // yalnız planlı etkinlik; iptal/ertelenen, reddedilen aday ve kapanmış dosya hatırlatılmaz
+      where: { ...etkinlikHatirlatmaSuzgeci(t.musteriId), hatirlatmaDk: { not: null }, hatirlatmaGonderildiAt: null, baslar: { gte: new Date(now.getTime() - TOLERANS_MS) } },
       orderBy: { baslar: 'asc' },
       take: 500, // due-olmayan yakın etkinlikler pencereyi doldurup uzun vadeli (7g önce) hatırlatmayı dışarıda bırakmasın
       include: { dosya: { include: { borclular: { select: { adUnvan: true }, orderBy: { id: 'asc' } } } } },

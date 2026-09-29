@@ -17,7 +17,7 @@ import { prisma } from '@/lib/prisma'
 import { haftalikRaporHtml, type RaporBolum, type RaporEtkinlik, type RaporZamanasimi } from '@/lib/konsrucu/rapor-mail'
 import { mailGonder } from '@/lib/konsrucu/mail'
 import { cronYetkisiz, cronTenantlar, cronYanit } from '@/lib/konsrucu/cron-ortak'
-import { zamanasimiRadarinda, ZAMANASIMI_RADARI } from '@/lib/konsrucu/aktiflik'
+import { zamanasimiRadarinda, ZAMANASIMI_RADARI, etkinlikHatirlatmaSuzgeci } from '@/lib/konsrucu/aktiflik'
 import { bugunIstBasi, kalanGun } from '@/lib/konsrucu/format'
 
 export const dynamic = 'force-dynamic'
@@ -54,7 +54,7 @@ async function handle(req: Request) {
     const zaSelect = { hukukDosyaNo: true, hasarDosyaNo: true, zamanasimi: true, durum: true, uyapDurum: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' as const } } }
     const [kayit, zaKayit, zaGectiKayit, zaBosSayisi] = await Promise.all([
       prisma.etkinlik.findMany({
-        where: { dosya: { musteriId: t.musteriId }, baslar: { gte: bas, lt: son } },
+        where: { ...etkinlikHatirlatmaSuzgeci(t.musteriId, false), baslar: { gte: bas, lt: son } },
         orderBy: { baslar: 'asc' },
         include: { dosya: { select: { hukukDosyaNo: true, hasarDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } } } },
       }),

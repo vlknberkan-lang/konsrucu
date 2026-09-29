@@ -35,6 +35,11 @@ export async function mailGonder(g: MailGirdi): Promise<{ ok: boolean; id?: stri
 
   if (servis === 'console') {
     console.log('[mail:console]', { to, konu: g.konu, htmlUzunluk: g.html.length, ek: g.attachments?.length ?? 0 })
+    // Canlıda console kipi = ayar eksik: "gönderildi" dönersek hatırlatmalar damgalanıp sessizce kaybolur.
+    if (process.env.NODE_ENV === 'production') {
+      await hataLogla("EMAIL_SERVICE ayarlı değil (console): e-posta gönderilmedi", g.konu)
+      return { ok: false, id: 'console', error: "E-posta kipi 'console': gönderilmedi" }
+    }
     return { ok: true, id: 'console' }
   }
 

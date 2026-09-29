@@ -9,6 +9,7 @@
  *
  * Manuel test:  GET /api/cron/taksit-hatirlatma?key=<CRON_SECRET>&dry=1   (dry=1 → göndermeden listeler)
  */
+import { HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
 import { prisma } from '@/lib/prisma'
 import { taksitHatirlatmaHtml } from '@/lib/konsrucu/taksit-mail'
 import { mailGonder } from '@/lib/konsrucu/mail'
@@ -44,7 +45,8 @@ async function handle(req: Request) {
     const taksitler = await prisma.taksit.findMany({
       where: {
         durum: { in: ['BEKLIYOR', 'KISMI', 'GECIKTI'] },
-        plan: { durum: 'AKTIF', dosya: { musteriId: tn.musteriId } },
+        // kapanmış (tahsil edilmiş/kapatılmış) dosyanın planı AKTIF kalmış olsa da hatırlatılmaz
+        plan: { durum: 'AKTIF', dosya: { musteriId: tn.musteriId, durum: { notIn: [...HATIRLATMA_DISI] } } },
       },
       orderBy: { vadeTarihi: 'asc' },
       take: 500,

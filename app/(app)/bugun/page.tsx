@@ -17,7 +17,7 @@ import { ctx } from '@/lib/konsrucu/db'
 import { prisma } from '@/lib/prisma'
 import { Badge, PageHeader, type Tone } from '@/components/konsrucu/ui'
 import { tarihTR, saatTR, kalanGun, bugunIstBasi, paraTR } from '@/lib/konsrucu/format'
-import { zamanasimiRadarinda, ZAMANASIMI_RADARI, OTOMASYON_DISI, HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
+import { zamanasimiRadarinda, ZAMANASIMI_RADARI, OTOMASYON_DISI, HATIRLATMA_DISI, etkinlikHatirlatmaSuzgeci } from '@/lib/konsrucu/aktiflik'
 import { dosyaHref } from '@/lib/konsrucu/nav'
 import { SiraKaydet } from '@/components/dosya/sira-gecis'
 import {
@@ -104,31 +104,31 @@ export default async function BugunPage({ searchParams }: { searchParams?: { [k:
     prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, onarimDurumu: 'BEKLIYOR' } }),
 
     // ── sabah radarı ──
-    // bugün + yarın etkinlikler (iptaller hariç)
+    // bugün + yarın etkinlikler (iptal, reddedilen aday ve kapanmış dosya hariç)
     prisma.etkinlik.findMany({
-      where: { dosya: { musteriId: aktifMusteriId }, baslar: { gte: bas, lt: yarinSon }, durum: { not: 'IPTAL' } },
+      where: { ...etkinlikHatirlatmaSuzgeci(aktifMusteriId, false), baslar: { gte: bas, lt: yarinSon } },
       orderBy: { baslar: 'asc' },
       take: 30,
       include: { dosya: { select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } } } },
     }),
     // süresi geçen ya da bugün/yarın dolan açık görevler
     prisma.takipGorevi.findMany({
-      where: { dosya: { musteriId: aktifMusteriId }, durum: { in: ['ACIK', 'ISLEMDE'] }, sonTarih: { not: null, lt: new Date(bas.getTime() + 2 * GUN_MS) } },
+      where: { dosya: { musteriId: aktifMusteriId, durum: { notIn: [...HATIRLATMA_DISI] } }, durum: { in: ['ACIK', 'ISLEMDE'] }, sonTarih: { not: null, lt: new Date(bas.getTime() + 2 * GUN_MS) } },
       orderBy: { sonTarih: 'asc' },
       take: 20,
       include: { sorumlu: { select: { ad: true } }, dosya: { select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true } } },
     }),
-    prisma.takipGorevi.count({ where: { dosya: { musteriId: aktifMusteriId }, durum: { in: ['ACIK', 'ISLEMDE'] } } }),
+    prisma.takipGorevi.count({ where: { dosya: { musteriId: aktifMusteriId, durum: { notIn: [...HATIRLATMA_DISI] } }, durum: { in: ['ACIK', 'ISLEMDE'] } } }),
     // açık önemli olaylar (borca itiraz kuyruğu) — son tarihi yakın/boş olanlar öne
     prisma.onemliOlay.findMany({
-      where: { dosya: { musteriId: aktifMusteriId }, durum: { in: ['ACIK', 'ISLEMDE'] } },
+      where: { dosya: { musteriId: aktifMusteriId, durum: { notIn: [...HATIRLATMA_DISI] } }, durum: { in: ['ACIK', 'ISLEMDE'] } },
       orderBy: [{ sonTarih: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }],
       take: 12,
       include: { dosya: { select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } } } },
     }),
     // geciken taksitler (aktif planlar)
     prisma.taksit.findMany({
-      where: { durum: { in: ['BEKLIYOR', 'KISMI', 'GECIKTI'] }, vadeTarihi: { lt: bas }, plan: { durum: 'AKTIF', dosya: { musteriId: aktifMusteriId } } },
+      where: { durum: { in: ['BEKLIYOR', 'KISMI', 'GECIKTI'] }, vadeTarihi: { lt: bas }, plan: { durum: 'AKTIF', dosya: { musteriId: aktifMusteriId, durum: { notIn: [...HATIRLATMA_DISI] } } } },
       orderBy: { vadeTarihi: 'asc' },
       take: 12,
       include: { plan: { select: { dosya: { select: { id: true, hukukDosyaNo: true, hasarDosyaNo: true, borclular: { select: { adUnvan: true }, take: 1, orderBy: { id: 'asc' } } } } } } },
@@ -140,7 +140,7 @@ export default async function BugunPage({ searchParams }: { searchParams?: { [k:
     prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: { lt: bas }, ...uyapAcikWhere } }),
     prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { in: [...ZAMANASIMI_RADARI] }, zamanasimi: null } }),
     // geçmişte kalmış ama sonuçlandırılmamış toplantılar (takvim kapanış disiplini)
-    prisma.etkinlik.count({ where: { dosya: { musteriId: aktifMusteriId }, baslar: { lt: bas }, durum: 'PLANLANDI' } }),
+    prisma.etkinlik.count({ where: { ...etkinlikHatirlatmaSuzgeci(aktifMusteriId), baslar: { lt: bas } } }),
     // UYAP eşleşme sorunu: eklenti v1 "bulamadım/belirsiz" raporu bırakan açık dosyalar (kör nokta radarı)
     prisma.rucuDosyasi.count({ where: { musteriId: aktifMusteriId, durum: { notIn: [...OTOMASYON_DISI] }, uyapEslesme: { not: null, notIn: ['OK'] } } }),
   ])
