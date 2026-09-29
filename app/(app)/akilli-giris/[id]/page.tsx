@@ -46,7 +46,6 @@ import { toTRInput as sayiToTRInput } from '@/lib/konsrucu/sayi'
 import { yolHaritasiYukle, onbellekGuncelle } from '@/lib/konsrucu/yol-haritasi/yukle'
 import { takipTalebiGorunumu } from '@/lib/konsrucu/senkron/takip-talebi-db'
 import { TakipAcDugmesi } from '@/components/akilli-giris/detay/takip-ac-dugmesi'
-import { HapBilgiler } from '@/components/dosya/oneri/hap-bilgiler'
 import { UyapBaglanti } from '@/components/senkron/uyap-baglanti'
 import { IcraNoSenkron } from '@/components/senkron/icra-no-senkron'
 import { TakipTalebiPaneli } from '@/components/takip-talebi/takip-talebi-paneli'
@@ -521,10 +520,6 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
         </>
       ) : (
         <>
-      {/* AI'ın evraktan bulup henüz kontrol edilmemiş bilgileri varsa (öneri) tek kartta; yoksa hiç görünmez */}
-      {oneriPanel && (oneriPanel.hap.onaylanacak > 0 || oneriPanel.hap.celiskiAlanlar.length > 0) && (
-        <div className="mt-[14px]"><HapBilgiler hap={oneriPanel.hap} bulgu={oneriPanel.bulduklarimiz} /></div>
-      )}
 
       {/* gövde: 2 kolon */}
       <div className="dd-grid mt-5">
@@ -730,7 +725,7 @@ export default async function DosyaDetayPage({ params, searchParams }: { params:
                   </>
                 ) : (
                   <>
-                    <OnayButonu dosyaId={dosya.id} onayli={onayli} onayKim={onay?.kim} onayTarih={onay?.tarih} />
+                    <OnayButonu dosyaId={dosya.id} onayli={onayli} onayKim={onay?.kim} onayTarih={onay?.tarih} odemeHaric={Object.keys(oneriPanel?.hap.odemeSuphe ?? {})} />
                     <TakipAcDugmesi dosyaId={dosya.id} hazir={hazir} avukat={avukatRol} />
                   </>
                 )

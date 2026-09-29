@@ -263,7 +263,7 @@ const hapGirdi = z.object({
   borcluHaric: z.array(id).max(100).default([]),
 })
 
-export type HapSonucu = { onaylanan: number; reddedilen: number; teyit: number; hesapIzi: string }
+export type HapSonucu = { onaylanan: number; reddedilen: number; teyit: number; hesapIzi: string; bekleyen: string[] }
 
 const tlYaz = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -290,8 +290,10 @@ export async function hapBilgileriOnaylaEylem(input: z.input<typeof hapGirdi>): 
         tx.borclu.findMany({ where: { dosyaId }, select: { id: true, teyitDurumu: true } }),
       ])
       const plan = hapPlani({ satirlar, borclular, odemeHaric: new Set(p.data.odemeHaric), borcluHaric: new Set(p.data.borcluHaric) })
-      if (plan.celiskiler.length) throw new OneriHata('GECERSIZ', `Önce iki değer arasında seçim yapın: ${plan.celiskiler.join(', ')}.`)
-      if (plan.eksikSecim.length) throw new OneriHata('GECERSIZ', `Önce seçin: ${plan.eksikSecim.join(', ')}.`)
+      // 29.09 (Berkan: "bilgi kontrolünüzü bekliyor" kartı kalksın): onay dosya ekranındaki tek "Avukat onayı ver"
+      // düğmesinden verilir. İki farklı değerli alanlar onaylanmadan bekler (dosyadaki değer korunur, Dosya
+      // bilgileri'nden düzeltilir); rücu sebebi ve yetkili icra seçimi onayı durdurmaz (adliye kaza yerinden türetilir).
+      const bekleyen = [...plan.celiskiler, ...plan.beklemede]
       if (!borclular.some((b) => b.teyitDurumu === 'TEYIT_EDILDI') && !plan.teyitEdilecek.length) {
         throw new OneriHata('GECERSIZ', 'Takip için en az bir borçlu işaretleyin.')
       }
@@ -342,7 +344,7 @@ export async function hapBilgileriOnaylaEylem(input: z.input<typeof hapGirdi>): 
           detayJson: { tur: 'HAP_KONTROL', onaylanan: plan.onaylanacak, reddedilen: plan.reddedilecek, teyit: plan.teyitEdilecek, hesapIziOnaylandi: hesapIzi.startsWith('Hesap izi onaylandı') } as Prisma.InputJsonValue,
         },
       })
-      return { onaylanan: plan.onaylanacak.length, reddedilen: plan.reddedilecek.length, teyit: plan.teyitEdilecek.length, hesapIzi }
+      return { onaylanan: plan.onaylanacak.length, reddedilen: plan.reddedilecek.length, teyit: plan.teyitEdilecek.length, hesapIzi, bekleyen }
     }, { timeout: 30_000 })
     yenile(dosyaId)
     return { ok: true, ...r }
