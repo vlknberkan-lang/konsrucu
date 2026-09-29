@@ -5,6 +5,7 @@
  * dosya detayının arabuluculuk sekmesine götürür. Manuel üstlenme (kilitle) ile çift iş engellenir.
  * Tenant-kapsamlı, auth zorunlu.
  */
+import { HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
 import Link from 'next/link'
 import { ChevronRight, ShieldAlert, SearchX, AlertTriangle } from 'lucide-react'
 import { Prisma, OnemliOlayDurum } from '@prisma/client'
@@ -68,7 +69,7 @@ export default async function OnemliOlaylarPage({ searchParams }: { searchParams
   const sorumluF: 'all' | 'ben' = searchParams.sorumlu === 'ben' ? 'ben' : 'all'
 
   const where: Prisma.OnemliOlayWhereInput = {
-    dosya: { musteriId: aktifMusteriId },
+    dosya: { musteriId: aktifMusteriId, durum: { notIn: [...HATIRLATMA_DISI] } },
     durum: durumF === 'all' ? { in: [OnemliOlayDurum.ACIK, OnemliOlayDurum.ISLEMDE] } : (durumF as OnemliOlayDurum),
     ...(sorumluF === 'ben' ? { sorumluId: dbUser.id } : {}),
     ...(q
@@ -84,7 +85,7 @@ export default async function OnemliOlaylarPage({ searchParams }: { searchParams
       : {}),
   }
 
-  const acikBase: Prisma.OnemliOlayWhereInput = { dosya: { musteriId: aktifMusteriId } }
+  const acikBase: Prisma.OnemliOlayWhereInput = { dosya: { musteriId: aktifMusteriId, durum: { notIn: [...HATIRLATMA_DISI] } } }
   const ayar = await prisma.ayarlar.findUnique({ where: { musteriId: aktifMusteriId }, select: { alacakliUnvan: true } })
   const alacakliEtiket = (ayar?.alacakliUnvan ?? 'Sigorta').replace(/\s*A\.?Ş\.?\s*$/i, '')
   const [rows, acikSay, islemdeSay, banaSay] = await Promise.all([

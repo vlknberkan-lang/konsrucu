@@ -100,7 +100,7 @@ describe('tebligGorevleriOlustur', () => {
     expect(data.aciklama).not.toContain(ITIRAZ_NOT_ISARETI) // itiraz yok → not yok
   })
 
-  it('mükerrer kontrolü AYNI tebliğ günüyle yapılır (önek + vade günü); IPTAL görev sayılmaz', async () => {
+  it('mükerrer kontrolü tebliğ günü ±7 gün ile yapılır (önek + vade aralığı); IPTAL görev sayılmaz', async () => {
     findUnique.mockResolvedValueOnce(aktifDosya as never)
     await tebligGorevleriOlustur('d1', isoGundenTarih('2026-03-15')!, null)
     const vade = new Date(ist2('2027-03-15') - HACIZ_UYARI_ERKEN_GUN * 86_400_000)
@@ -109,13 +109,13 @@ describe('tebligGorevleriOlustur', () => {
         dosyaId: 'd1',
         baslik: { startsWith: HACIZ_GOREV_ONEK },
         durum: { in: ['ACIK', 'ISLEMDE', 'TAMAMLANDI'] },
-        sonTarih: { gte: vade, lt: new Date(vade.getTime() + 86_400_000) },
+        sonTarih: { gte: new Date(vade.getTime() - 7 * 86_400_000), lt: new Date(vade.getTime() + 8 * 86_400_000) },
       },
       select: { id: true },
     })
   })
 
-  it('dosyada erken/aynı günlü İİK 78 görevi varsa ikinciyi açmaz', async () => {
+  it('dosyada yakın günlü (±7 gün) İİK 78 görevi varsa ikinciyi açmaz', async () => {
     findUnique.mockResolvedValueOnce(aktifDosya as never)
     gorevFindFirst.mockResolvedValueOnce({ id: 'g-var' } as never)
     await tebligGorevleriOlustur('d1', new Date(2026, 2, 15), null)

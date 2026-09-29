@@ -130,6 +130,9 @@ export function kesinlesmeMetniMi(aciklama: string | null | undefined): boolean 
  * teyit gerekli). İstanbul takvim günüyle hesaplanır (sure/takvim yilEkle; sonuç o günün İstanbul gece yarısı):
  * sunucu saatiyle hesap, İstanbul gece yarısı saklanan tebliğde (UTC 21:00) bir önceki günden sayıyordu.
  */
+/** İİK 78 görevinde aynı tebliğ sayılan gün farkı (evrak/safahat tarih kayması). */
+export const MUKERRER_GUN = 7
+
 export function hacizSonGun(tebligTarihi: Date): Date {
   return yilEkle(tebligTarihi, 1)
 }
@@ -172,8 +175,9 @@ export async function tebligGorevleriOlustur(dosyaId: string, tebligTarihi: Date
   const hacizSon = hacizSonGun(tebligTarihi)
   const hacizUyari = new Date(hacizSon.getTime() - HACIZ_UYARI_ERKEN_GUN * GUN_MS)
 
-  // Mükerrer koruması: AYNI tebliğ gününün görevi varsa yenisi açılmaz (IPTAL sayılmaz: yanlış görev temizlenip
-  // gerçek tebliğ gelince görev yeniden kurulur). Farklı
+  // Mükerrer koruması: tebliğ günü ±MUKERRER_GUN içinde görev varsa yenisi açılmaz — aynı tebliğ UYAP'tan (evrak ve
+  // safahat) bir gün farkla iki kez gelebilir (IPTAL sayılmaz: yanlış görev temizlenip gerçek tebliğ gelince görev
+  // yeniden kurulur). Daha uzak günlü
   // günlü tebliğ (çok borçlu dosyada ikinci borçlu) kendi görevini alır: süre borçlu bazında işler; birinci
   // borçlunun görevi tamamlanınca/erken tarihli olunca ikincinin süresini ÖRTMEZ (eski "en erken tebliğ" kuralı
   // örtüyordu). Teorik yarış (eşzamanlı iki TEBLIG işleme) kabul edilmiş risk: UYAP senkronu olayları sıralı işler.
@@ -182,7 +186,7 @@ export async function tebligGorevleriOlustur(dosyaId: string, tebligTarihi: Date
       dosyaId,
       baslik: { startsWith: HACIZ_GOREV_ONEK },
       durum: { in: ['ACIK', 'ISLEMDE', 'TAMAMLANDI'] },
-      sonTarih: { gte: gunBasi(hacizUyari), lt: new Date(gunBasi(hacizUyari).getTime() + GUN_MS) },
+      sonTarih: { gte: new Date(gunBasi(hacizUyari).getTime() - MUKERRER_GUN * GUN_MS), lt: new Date(gunBasi(hacizUyari).getTime() + (MUKERRER_GUN + 1) * GUN_MS) },
     },
     select: { id: true },
   })

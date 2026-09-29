@@ -4,6 +4,7 @@
  * Tamamlanan ayrı filtre. Sorumlu/durum/arama süzgeci. Son tarihi yaklaşan/aşan üstte ve renkli.
  * Tenant-kapsamlı, auth zorunlu.
  */
+import { HATIRLATMA_DISI } from '@/lib/konsrucu/aktiflik'
 import Link from 'next/link'
 import { ChevronRight, ListTodo, SearchX, CalendarClock } from 'lucide-react'
 import { Prisma, TakipGorevDurum } from '@prisma/client'
@@ -75,7 +76,7 @@ export default async function GorevlerPage({ searchParams }: { searchParams: SP 
     durumF === 'acik' ? { in: [TakipGorevDurum.ACIK, TakipGorevDurum.ISLEMDE] } : (durumF as TakipGorevDurum)
 
   const where: Prisma.TakipGoreviWhereInput = {
-    dosya: { musteriId: aktifMusteriId },
+    dosya: { musteriId: aktifMusteriId, durum: { notIn: [...HATIRLATMA_DISI] } },
     durum: durumWhere,
     ...(sorumluF === 'ben' ? { sorumluId: dbUser.id } : {}),
     ...(q
@@ -90,7 +91,7 @@ export default async function GorevlerPage({ searchParams }: { searchParams: SP 
       : {}),
   }
 
-  const base: Prisma.TakipGoreviWhereInput = { dosya: { musteriId: aktifMusteriId } }
+  const base: Prisma.TakipGoreviWhereInput = { dosya: { musteriId: aktifMusteriId, durum: { notIn: [...HATIRLATMA_DISI] } } }
   const [rows, acikSay, islemdeSay, tamamSay, banaSay] = await Promise.all([
     prisma.takipGorevi.findMany({
       where,
