@@ -226,7 +226,7 @@ export async function takipTalebiGorunumu(dosyaId: string, musteriId: string): P
     onizleme: {
       alacakli: ay?.alacakliUnvan ?? null,
       borclular: d.borclular.map((b) => ({ ad: b.adUnvan, tur: borcluTuru(b.tcVkn) })),
-      adliye: adli ? `${adli.adliye} Adliyesi (kaza yeri; tevzi daireyi atar)` : null,
+      adliye: adli ? `${adli.adliyeAdi} Adliyesi (kaza yeri; tevzi daireyi atar)` : null,
       yolOrnek: 'İlamsız · Örnek 7 · genel haciz yolu',
       aciklama,
     },

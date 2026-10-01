@@ -109,7 +109,7 @@ export function yetkiliIcraSecenekleri(g: {
   // aynı daireye çıkan seçenekleri birleştir (gerekçeler yan yana)
   const birlesik: YetkiliIcraSecenegi[] = []
   for (const s of secenekler) {
-    const ayni = birlesik.find((x) => trNorm(x.icraDairesi) === trNorm(s.icraDairesi))
+    const ayni = birlesik.find((x) => x.adliye === s.adliye) // rehber adı tekildir ("Gölbaşı (Ankara)" ≠ "Gölbaşı (Adıyaman)")
     if (ayni) {
       ayni.gerekce = `${ayni.gerekce} Aynı daire: ${s.baslik.toLocaleLowerCase('tr-TR')}.`
       continue

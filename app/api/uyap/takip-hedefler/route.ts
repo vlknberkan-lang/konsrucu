@@ -110,7 +110,7 @@ export async function GET(req: Request) {
 
     // ── yetkili adliye: kaza yeri ilçesinden (HMK m.16) — tevzi DAİREYİ adliye içinde kendisi atar ──
     const adli = yetkiliIcraOner(d.kazaYeri, d.il)
-    const ilAdi = adli?.il ?? d.il ?? null
+    const ilAdi = adli?.adliyeIl ?? d.il ?? null // adliyenin ili (ilçe başka ildeki adliyeye bağlı olabilir)
     const ilKodu = ilPlakaKodu(ilAdi)
 
     const aciklama = aciklamaTam(cj.aciklama, footerOlustur(ay))
@@ -176,7 +176,7 @@ export async function GET(req: Request) {
       takipTalebi: tt ? { id: tt.id, surum: tt.surum } : null,
       kazaTarihi: d.kazaTarihi ? d.kazaTarihi.toISOString().slice(0, 10) : d.hasarTarihi ? d.hasarTarihi.toISOString().slice(0, 10) : null,
       kazaYeri: d.kazaYeri ?? null,
-      adliye: adli ? { ad: adli.adliye, il: ilAdi, ilKodu } : null,
+      adliye: adli ? { ad: adli.adliyeAdi, il: ilAdi, ilKodu } : null,
       aciklama,
       engeller,
       uyarilar,

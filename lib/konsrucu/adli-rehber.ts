@@ -1,17 +1,19 @@
 /**
  * KonsRücü — Adlî Rehber · lib/konsrucu/adli-rehber.ts
- * T.C. Adalet Bakanlığı "Adlî Rehber" tablosundan üretilmiş ilçe → bağlı adliye eşlemesi.
+ * HSK "Adlî Yargı Rehberi" (13.05.2026) tablosundan üretilmiş ilçe → bağlı adliye eşlemesi.
  * AMAÇ: rücu yetkisi KAZA YERİdir (HMK m.16). Kaza yeri ilçesinin kendi adliyesi yoksa
  * takip, ilçenin BAĞLI OLDUĞU adliyedeki icra dairesinde açılır. Burada onu çözüyoruz.
- * Veri: adli-rehber.json (1001 ilçe; zincirleme bağlılıklar Faal adliyeye çözülmüş).
+ * Veri: adli-rehber.json (1004 ilçe; zincirleme bağlılıklar Faal adliyeye çözülmüş).
+ * Rehber yenilenince: python scripts/adli-rehber-uret.py <rehber.pdf>
  */
 import rehber from './adli-rehber.json'
 
 export type AdliKayit = {
   ilce: string // mahal/ilçe adı (PDF'teki yazımıyla)
-  adliye: string // takibin açılacağı (Faal) adliye — zincir çözülmüş
+  adliye: string // takibin açılacağı (Faal) adliye — zincir çözülmüş; aynı adlılar "Gölbaşı (Ankara)" biçiminde
   dogrudan: string // doğrudan bağlı olduğu adliye (zincir çözülmeden)
-  il: string // il
+  il: string // ilçenin ili
+  adliyeIl: string // adliyenin ili — ilçe başka ildeki adliyeye bağlı olabilir (Sarıyahşi/Aksaray → Şereflikoçhisar/Ankara)
   durum: string // 'Faal' | 'Birleştirildi' | 'Teşkilat Kurulmadı' | 'Faal Değil'
 }
 
@@ -37,10 +39,21 @@ for (const r of REHBER) {
   else indeks.set(k, [r])
 }
 
-export type AdliyeSonuc = AdliKayit & { kendiAdliyesiVar: boolean; icraDairesi: string }
+// Rehberde adı değişen ilçeler: eski evrakta eski adla geçer. Yalnız il verilmemişse ya da il tutuyorsa uygulanır.
+const ESKI_ADLAR: Record<string, { ilce: string; il: string }> = {
+  eyup: { ilce: 'Eyüpsultan', il: 'İstanbul' },
+  '19 mayis': { ilce: 'Ondokuz Mayıs', il: 'Samsun' },
+  aydinlar: { ilce: 'Tillo', il: 'Siirt' },
+  akkoy: { ilce: 'Pamukkale', il: 'Denizli' },
+  cagliyancerit: { ilce: 'Çağlayancerit', il: 'Kahramanmaraş' },
+}
+
+export type AdliyeSonuc = AdliKayit & { kendiAdliyesiVar: boolean; adliyeAdi: string; icraDairesi: string }
 
 function sonuc(r: AdliKayit): AdliyeSonuc {
-  return { ...r, kendiAdliyesiVar: r.durum === 'Faal', icraDairesi: `${r.adliye} İcra Dairesi` }
+  // UYAP'taki resmî ad parantezsizdir ("Gölbaşı Adliyesi", il koduyla ayrışır)
+  const adliyeAdi = r.adliye.replace(/\s*\(.*?\)\s*/g, ' ').trim()
+  return { ...r, kendiAdliyesiVar: r.durum === 'Faal', adliyeAdi, icraDairesi: `${adliyeAdi} İcra Dairesi` }
 }
 
 /**
@@ -48,8 +61,10 @@ function sonuc(r: AdliKayit): AdliyeSonuc {
  * Döndürür: { adliye, il, icraDairesi, kendiAdliyesiVar, … } ya da bulunamazsa null.
  */
 export function adliyeBul(ilce: string, il?: string | null): AdliyeSonuc | null {
-  const key = trNorm(ilce)
+  let key = trNorm(ilce)
   if (!key) return null
+  const eski = ESKI_ADLAR[key]
+  if (!indeks.has(key) && eski && (!il || trNorm(il) === trNorm(eski.il))) key = trNorm(eski.ilce)
   let hits = indeks.get(key) ?? []
   if (!hits.length) return null
   if (hits.length > 1 && il) {
